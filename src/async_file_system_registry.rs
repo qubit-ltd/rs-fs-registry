@@ -12,6 +12,8 @@ use std::sync::Arc;
 use qubit_spi::{
     AsyncProviderDefinition,
     AsyncProviderRegistry,
+    AsyncResolvingServiceProvider,
+    ProviderDescriptor,
     ProviderSelection,
 };
 
@@ -78,7 +80,7 @@ impl AsyncFileSystemRegistry {
             .map_err(map_registration_error)
     }
 
-    /// Returns the selection used by [`Self::resolve_async`].
+    /// Returns the selection used by [`Self::resolve_default_async`].
     #[must_use]
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
@@ -87,6 +89,41 @@ impl AsyncFileSystemRegistry {
     /// Replaces the selection used by future default resolutions.
     pub fn set_default_selection(&self, selection: ProviderSelection) {
         self.providers.set_default_selection(selection);
+    }
+
+    /// Resolves a provider selection without creating a filesystem.
+    pub fn resolve_selected(
+        &self,
+        selection: &ProviderSelection,
+    ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
+        self.providers
+            .resolve_selected(selection)
+            .map_err(map_provider_resolution_error)
+    }
+
+    /// Resolves the current default selection without creating a filesystem.
+    pub fn resolve(
+        &self,
+    ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
+        self.providers.resolve().map_err(map_provider_resolution_error)
+    }
+
+    /// Returns provider descriptors in registration order.
+    #[must_use]
+    pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
+        self.providers.descriptors()
+    }
+
+    /// Returns the number of registered providers.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.providers.len()
+    }
+
+    /// Returns whether no provider is registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.providers.is_empty()
     }
 
     /// Resolves configuration using its explicit selection or URI scheme.
@@ -116,7 +153,7 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves configuration through a supplied selection.
-    pub fn resolve_selected_async<'a>(
+    pub fn resolve_selected_config_async<'a>(
         &'a self,
         selection: &ProviderSelection,
         config: &'a FileSystemConfig,
@@ -134,7 +171,7 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves configuration through the current default selection.
-    pub fn resolve_async<'a>(
+    pub fn resolve_default_async<'a>(
         &'a self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {

@@ -18,6 +18,7 @@ use qubit_spi::error::{
 };
 use qubit_spi::{
     ProviderDefinition,
+    ProviderDescriptor,
     ProviderRegistry,
     ProviderSelection,
     ResolvingServiceProvider,
@@ -163,6 +164,27 @@ impl FileSystemRegistry {
         self.providers
             .resolve()
             .map_err(map_provider_resolution_error)
+    }
+
+    /// Returns provider descriptors in registration order.
+    #[inline]
+    #[must_use]
+    pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
+        self.providers.descriptors()
+    }
+
+    /// Returns the number of registered providers.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.providers.len()
+    }
+
+    /// Returns whether no provider is registered.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.providers.is_empty()
     }
 
     /// Resolves a complete configuration into a provider-decoded result.

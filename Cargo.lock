@@ -87,7 +87,6 @@ dependencies = [
 name = "qubit-fs-registry"
 version = "0.1.0"
 dependencies = [
- "parking_lot",
  "qubit-fs",
  "qubit-spi",
 ]

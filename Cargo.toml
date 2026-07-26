@@ -1,5 +1,6 @@
 [package]
 name = "qubit-fs-registry"
+autotests = false
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.94"
@@ -7,12 +8,31 @@ authors = ["Haixing Hu <starfish.hu@gmail.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/qubit-ltd/rs-fs-registry"
 description = "Provider registry and SPI integration for qubit-fs"
+homepage = "https://github.com/qubit-ltd/rs-fs-registry"
+documentation = "https://docs.rs/qubit-fs-registry"
+readme = "README.md"
+include = [
+  "/Cargo.toml",
+  "/LICENSE",
+  "/README.md",
+  "/README.zh_CN.md",
+  "/src/**",
+  "/tests/**",
+]
+keywords = ["filesystem", "registry", "provider", "qubit"]
+categories = ["filesystem"]
 
 [lib]
 name = "qubit_fs_registry"
 doctest = true
 
+[[test]]
+name = "integration_tests"
+path = "tests/mod.rs"
+
 [dependencies]
-parking_lot = "0.12"
 qubit-fs = { path = "../rs-fs", version = "0.2" }
 qubit-spi = { path = "../rs-spi", version = "0.10" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }

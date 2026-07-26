@@ -17,13 +17,12 @@ use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;
 use qubit_fs::{
-    FsResult,
     FsUri,
     UserMetadata,
 };
 
 /// Complete non-secret configuration passed through registry and provider SPI.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct FileSystemConfig {
     uri: FsUri,
     selection: Option<ProviderSelection>,
@@ -54,14 +53,13 @@ impl FileSystemConfig {
 
     /// Sets validated non-sensitive provider options.
     ///
-    /// # Errors
-    /// Returns [`crate::FsErrorKind::InvalidOptions`] when a top-level key or
-    /// any key nested in a string map or JSON object resembles credential
-    /// material.
+    /// [`UserMetadata`] rejects sensitive option keys when it is built.
     /// Secrets must be referenced through [`CredentialRef`].
-    pub fn with_options(mut self, options: UserMetadata) -> FsResult<Self> {
+    #[inline]
+    #[must_use]
+    pub fn with_options(mut self, options: UserMetadata) -> Self {
         self.options = options;
-        Ok(self)
+        self
     }
 
     /// Sets a credential source reference without embedding secret material.
