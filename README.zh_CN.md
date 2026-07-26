@@ -40,13 +40,29 @@ fn open_local_file() -> FsResult<()> {
 
 `FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `UserMetadata` 和可选
 `CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；构造时会拒绝
-credential-like option key。所有 secret 只能通过 `CredentialRef` 保存。
+credential-like option key。`CredentialRef` 只保存 provider 能识别的引用，例如 profile
+名称、环境变量名称或外部凭据 provider ID；它绝不保存 secret 值。
+
+自动选择会从 URI scheme 派生 provider selector。请使用 selector 兼容的 scheme（例如
+`file` 或 `s3`）；无法派生时，请提供显式 `ProviderSelection`。
 
 同步和异步 registry 都公开 provider descriptor、catalog 大小、底层 selection 解析，
 以及 URI/config 便捷方法。`resolve_selected` 与 `resolve` 返回某一时刻的 provider
 snapshot。`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
 selection 创建文件系统；异步版本使用 `_async` 后缀。Catalog ID 保留
 `ProviderId` 强类型。
+
+## 编写 provider
+
+Provider crate 需要直接依赖 SPI：
+
+```bash
+cargo add qubit-spi
+```
+
+实现 `ProviderMetadata` 和 `ServiceProvider<FileSystemSpec>`，并从 provider 的配置化
+创建路径返回 `FileSystemResolution`。应用程序通过 `qubit-fs-registry` 使用 provider；
+provider 则使用 SPI 契约公开 metadata、selection identity 与 resolution。
 
 ## 测试
 

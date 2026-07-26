@@ -6,6 +6,21 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Provider discovery and registry integration for [`qubit_fs`].
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! use qubit_fs::{FsResult, FsUri};
+//! use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+//!
+//! fn resolve_from_registered_providers(
+//!     registry: &FileSystemRegistry,
+//! ) -> FsResult<()> {
+//!     let config = FileSystemConfig::new(FsUri::parse("file:///tmp/example")?);
+//!     let _resource = registry.resource(&config)?;
+//!     Ok(())
+//! }
+//! ```
 
 #![deny(missing_docs)]
 
