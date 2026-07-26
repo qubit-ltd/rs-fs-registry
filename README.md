@@ -43,9 +43,10 @@ fn open_local_file() -> FsResult<()> {
 `FileSystemConfig` contains a URI, optional `ProviderSelection`, validated
 `UserMetadata`, and an optional `CredentialRef`. Build `UserMetadata` before
 passing it to `with_options`; construction rejects credential-like option keys.
-`CredentialRef` stores only provider-recognized references, such as profile
-names, environment-variable names, or external credential-provider IDs; it
-never stores secret values.
+`CredentialRef` values must contain only provider-recognized references, such
+as profile names, environment-variable names, or external credential-provider
+IDs. They must not contain credentials, tokens, passwords, private keys, or
+other secret material.
 
 Automatic selection derives a provider selector from the URI scheme. Use a
 selector-compatible scheme (for example, `file` or `s3`), or provide an
@@ -57,6 +58,25 @@ methods. `resolve_selected` and `resolve` return a point-in-time provider
 snapshot. `resolve_selected_config` and `resolve_default_config` create a
 filesystem through explicit or default selection; asynchronous counterparts
 use the `_async` suffix. Provider catalog IDs retain the `ProviderId` type.
+
+### Asynchronous usage
+
+Register asynchronous providers during application assembly, then await the
+same URI convenience flow. URI convenience futures own their URI configuration
+and provider snapshot, so they can outlive the registry handle and URI passed
+to the method.
+
+```rust,no_run
+use qubit_fs::{AsyncFileResource, FsResult, FsUri};
+use qubit_fs_registry::AsyncFileSystemRegistry;
+
+async fn open_async(
+    registry: &AsyncFileSystemRegistry,
+) -> FsResult<AsyncFileResource> {
+    let uri = FsUri::parse("memory:///example.txt")?;
+    registry.resource_uri_async(&uri).await
+}
+```
 
 ## Writing a provider
 
@@ -70,6 +90,9 @@ Implement `ProviderMetadata` and `ServiceProvider<FileSystemSpec>`, then
 return `FileSystemResolution` from the provider's configured creation path.
 Applications consume the provider through `qubit-fs-registry`; providers use
 the SPI contract to expose their metadata, selection identity, and resolution.
+Asynchronous providers implement `ProviderMetadata` and
+`AsyncServiceProvider<FileSystemSpec>`; the registry accepts them through its
+`AsyncFileSystemProvider` bound.
 
 ## Testing
 

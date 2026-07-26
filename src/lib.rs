@@ -21,6 +21,20 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! # Async quick start
+//!
+//! ```no_run
+//! use qubit_fs::{AsyncFileResource, FsResult, FsUri};
+//! use qubit_fs_registry::AsyncFileSystemRegistry;
+//!
+//! async fn resolve_from_registered_async_providers(
+//!     registry: &AsyncFileSystemRegistry,
+//! ) -> FsResult<AsyncFileResource> {
+//!     let uri = FsUri::parse("file:///tmp/example")?;
+//!     registry.resource_uri_async(&uri).await
+//! }
+//! ```
 
 #![deny(missing_docs)]
 

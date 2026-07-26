@@ -7,8 +7,13 @@
 // =============================================================================
 //! Credential references used by filesystem provider configuration.
 
-/// Reference to credentials without storing secret values.
+/// Reference to credentials that must not contain secret material.
+///
+/// Each value must identify a provider-recognized credential source, such as a
+/// profile name, environment-variable name, or external provider ID. It must
+/// not contain a credential, token, password, private key, or other secret.
 #[derive(Clone, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CredentialRef {
     /// Use the provider's default credential chain.
     DefaultChain,

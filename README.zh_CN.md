@@ -40,8 +40,9 @@ fn open_local_file() -> FsResult<()> {
 
 `FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `UserMetadata` 和可选
 `CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；构造时会拒绝
-credential-like option key。`CredentialRef` 只保存 provider 能识别的引用，例如 profile
-名称、环境变量名称或外部凭据 provider ID；它绝不保存 secret 值。
+credential-like option key。`CredentialRef` 的值必须只包含 provider 能识别的引用，例如
+profile 名称、环境变量名称或外部凭据 provider ID；不得包含 credential、token、password、
+private key 或其他 secret 材料。
 
 自动选择会从 URI scheme 派生 provider selector。请使用 selector 兼容的 scheme（例如
 `file` 或 `s3`）；无法派生时，请提供显式 `ProviderSelection`。
@@ -51,6 +52,24 @@ credential-like option key。`CredentialRef` 只保存 provider 能识别的引�
 snapshot。`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
 selection 创建文件系统；异步版本使用 `_async` 后缀。Catalog ID 保留
 `ProviderId` 强类型。
+
+### 异步使用
+
+在应用程序组装阶段注册异步 provider 后，可以等待同样的 URI 便捷流程。URI 便捷方法返回的
+future 自行持有 URI 配置和 provider snapshot，因此可以在传入的 registry handle 与 URI 离开
+作用域后继续使用。
+
+```rust,no_run
+use qubit_fs::{AsyncFileResource, FsResult, FsUri};
+use qubit_fs_registry::AsyncFileSystemRegistry;
+
+async fn open_async(
+    registry: &AsyncFileSystemRegistry,
+) -> FsResult<AsyncFileResource> {
+    let uri = FsUri::parse("memory:///example.txt")?;
+    registry.resource_uri_async(&uri).await
+}
+```
 
 ## 编写 provider
 
@@ -63,6 +82,8 @@ cargo add qubit-spi
 实现 `ProviderMetadata` 和 `ServiceProvider<FileSystemSpec>`，并从 provider 的配置化
 创建路径返回 `FileSystemResolution`。应用程序通过 `qubit-fs-registry` 使用 provider；
 provider 则使用 SPI 契约公开 metadata、selection identity 与 resolution。
+异步 provider 需要实现 `ProviderMetadata` 和 `AsyncServiceProvider<FileSystemSpec>`；registry
+通过 `AsyncFileSystemProvider` 约束接收它们。
 
 ## 测试
 
