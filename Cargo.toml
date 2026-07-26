@@ -1,0 +1,18 @@
+[package]
+name = "qubit-fs-registry"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+authors = ["Haixing Hu <starfish.hu@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/qubit-ltd/rs-fs-registry"
+description = "Provider registry and SPI integration for qubit-fs"
+
+[lib]
+name = "qubit_fs_registry"
+doctest = true
+
+[dependencies]
+parking_lot = "0.12"
+qubit-fs = { path = "../rs-fs", version = "0.2" }
+qubit-spi = { path = "../rs-spi", version = "0.10" }
