@@ -13,21 +13,45 @@ use qubit_fs_registry::CredentialRef;
 fn test_credential_reference_variants_are_comparable() {
     assert_eq!(CredentialRef::DefaultChain, CredentialRef::DefaultChain);
     assert_eq!(
-        CredentialRef::Profile("production".to_owned()),
-        CredentialRef::Profile("production".to_owned()),
-    );
-    assert_eq!(
-        CredentialRef::Environment {
-            access_key: "ACCESS_KEY".to_owned(),
-            secret_key: "SECRET_KEY".to_owned(),
+        CredentialRef::Profile {
+            name: "production".to_owned(),
         },
-        CredentialRef::Environment {
-            access_key: "ACCESS_KEY".to_owned(),
-            secret_key: "SECRET_KEY".to_owned(),
+        CredentialRef::Profile {
+            name: "production".to_owned(),
         },
     );
     assert_eq!(
-        CredentialRef::Provider("vault".to_owned()),
-        CredentialRef::Provider("vault".to_owned()),
+        CredentialRef::Environment {
+            access_key_env: "ACCESS_KEY".to_owned(),
+            secret_key_env: "SECRET_KEY".to_owned(),
+        },
+        CredentialRef::Environment {
+            access_key_env: "ACCESS_KEY".to_owned(),
+            secret_key_env: "SECRET_KEY".to_owned(),
+        },
     );
+    assert_eq!(
+        CredentialRef::Provider {
+            id: "vault".to_owned(),
+        },
+        CredentialRef::Provider {
+            id: "vault".to_owned(),
+        },
+    );
+}
+
+/// Verifies debug output never exposes credential reference payloads.
+#[test]
+fn test_credential_reference_debug_redacts_payloads() {
+    let reference = CredentialRef::Environment {
+        access_key_env: "PRODUCTION_ACCESS_KEY".to_owned(),
+        secret_key_env: "PRODUCTION_SECRET_KEY".to_owned(),
+    };
+
+    let debug = format!("{reference:?}");
+
+    assert!(debug.contains("Environment"));
+    assert!(debug.contains("<redacted>"));
+    assert!(!debug.contains("PRODUCTION_ACCESS_KEY"));
+    assert!(!debug.contains("PRODUCTION_SECRET_KEY"));
 }

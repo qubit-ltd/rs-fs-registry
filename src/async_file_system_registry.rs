@@ -199,10 +199,10 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// The future returns an error when selection validation, provider
-    /// resolution, or asynchronous creation fails.
+    /// The future returns an error when the URI scheme cannot form a provider
+    /// selector, provider resolution fails, or asynchronous creation fails.
     pub fn resolve_config_async<'a>(
-        &'a self,
+        &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
         let resolver = match config.selection() {
@@ -243,7 +243,7 @@ impl AsyncFileSystemRegistry {
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
     pub fn resolve_selected_config_async<'a>(
-        &'a self,
+        &self,
         selection: &ProviderSelection,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
@@ -276,7 +276,7 @@ impl AsyncFileSystemRegistry {
     /// creation fails.
     #[inline]
     pub fn resolve_default_config_async<'a>(
-        &'a self,
+        &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
         let resolver = self
@@ -307,16 +307,11 @@ impl AsyncFileSystemRegistry {
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
     pub fn file_system_async<'a>(
-        &'a self,
+        &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, Arc<dyn AsyncFileSystem>> {
-        Box::pin(async move {
-            Ok(self
-                .resolve_config_async(config)
-                .await?
-                .file_system()
-                .clone())
-        })
+        let resolution = self.resolve_config_async(config);
+        Box::pin(async move { Ok(resolution.await?.file_system().clone()) })
     }
 
     /// Resolves complete configuration into a bound asynchronous resource.
@@ -335,11 +330,12 @@ impl AsyncFileSystemRegistry {
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
     pub fn resource_async<'a>(
-        &'a self,
+        &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, AsyncFileResource> {
+        let resolution = self.resolve_config_async(config);
         Box::pin(async move {
-            let resolution = self.resolve_config_async(config).await?;
+            let resolution = resolution.await?;
             let (fs, path, canonical_uri) = resolution.into_parts();
             let location = FileLocation::new(fs.info().id().clone(), path)
                 .with_uri(canonical_uri);
@@ -408,7 +404,8 @@ impl AsyncFileSystemRegistry {
 }
 
 impl Clone for AsyncFileSystemRegistry {
-    /// Clones the Registry while retaining the same shared SPI state.
+    /// Clones the registry while retaining the same shared SPI state.
+    #[inline(always)]
     fn clone(&self) -> Self {
         Self {
             providers: self.providers.clone(),
@@ -417,7 +414,8 @@ impl Clone for AsyncFileSystemRegistry {
 }
 
 impl Default for AsyncFileSystemRegistry {
-    /// Creates an empty asynchronous-filesystem Registry.
+    /// Creates an empty asynchronous filesystem registry.
+    #[inline(always)]
     fn default() -> Self {
         Self {
             providers: AsyncProviderRegistry::default(),

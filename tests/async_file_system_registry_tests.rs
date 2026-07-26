@@ -242,6 +242,32 @@ where
     }
 }
 
+/// Verifies configuration futures retain only the configuration borrow.
+#[test]
+fn test_config_resolution_futures_outlive_registry() {
+    let config = FileSystemConfig::new(
+        FsUri::parse("missing:///resource").expect("URI should parse"),
+    );
+    let selection =
+        ProviderSelection::named("missing").expect("selection should parse");
+    let (configured, selected, default) = {
+        let registry = AsyncFileSystemRegistry::default();
+        (
+            registry.resolve_config_async(&config),
+            registry.resolve_selected_config_async(&selection, &config),
+            registry.resolve_default_config_async(&config),
+        )
+    };
+
+    for error in [
+        ready(configured).expect_err("configured resolution should fail"),
+        ready(selected).expect_err("selected resolution should fail"),
+        ready(default).expect_err("default resolution should fail"),
+    ] {
+        assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    }
+}
+
 /// Verifies an empty async registry exposes consistent catalog state and
 /// low-level resolution errors.
 #[test]
@@ -281,7 +307,9 @@ fn test_async_registry_accepts_async_only_provider_and_passes_complete_config()
             .with("region", "test-1")
             .expect("options should be valid"),
     )
-    .with_credentials(CredentialRef::Profile("integration".to_owned()));
+    .with_credentials(CredentialRef::Profile {
+        name: "integration".to_owned(),
+    });
 
     let resource = ready(registry.resource_async(&config))
         .expect("complete config should resolve asynchronously");
@@ -434,26 +462,27 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
     registry.set_default_selection(selection.clone());
     assert_eq!(selection.target(), registry.default_selection().target());
 
-    let uri = FsUri::parse("async-capture:///resource").unwrap();
+    let uri =
+        FsUri::parse("async-capture:///resource").expect("URI should parse");
     let config = FileSystemConfig::new(uri.clone());
     assert_eq!(
         "resolved",
         ready(registry.resolve_default_config_async(&config))
-            .unwrap()
+            .expect("default configuration should resolve")
             .path()
             .as_str(),
     );
     assert_eq!(
         "resolved",
         ready(registry.resolve_selected_config_async(&selection, &config))
-            .unwrap()
+            .expect("selected configuration should resolve")
             .path()
             .as_str(),
     );
     assert_eq!(
         "async-only",
         ready(registry.file_system_async(&config))
-            .unwrap()
+            .expect("filesystem configuration should resolve")
             .info()
             .id()
             .as_str(),
@@ -461,7 +490,7 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
     assert_eq!(
         "async-only",
         ready(registry.file_system_uri_async(&uri))
-            .unwrap()
+            .expect("URI filesystem configuration should resolve")
             .info()
             .id()
             .as_str(),
@@ -469,7 +498,7 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
     assert_eq!(
         "resolved",
         ready(registry.resource_uri_async(&uri))
-            .unwrap()
+            .expect("URI resource configuration should resolve")
             .path()
             .as_str(),
     );
@@ -479,24 +508,28 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
 fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point()
  {
     let registry = AsyncFileSystemRegistry::default();
-    let uri = FsUri::parse("missing:///resource").unwrap();
+    let uri = FsUri::parse("missing:///resource").expect("URI should parse");
     let config = FileSystemConfig::new(uri.clone());
     let selection =
         ProviderSelection::named("missing").expect("selection should parse");
 
     let errors = [
-        ready(registry.resolve_default_config_async(&config)).unwrap_err(),
-        ready(registry.resolve_config_async(&config)).unwrap_err(),
+        ready(registry.resolve_default_config_async(&config))
+            .expect_err("default resolution should fail"),
+        ready(registry.resolve_config_async(&config))
+            .expect_err("configuration resolution should fail"),
         ready(registry.resolve_selected_config_async(&selection, &config))
-            .unwrap_err(),
+            .expect_err("selected resolution should fail"),
         ready(registry.file_system_async(&config))
             .err()
             .expect("filesystem creation should fail"),
-        ready(registry.resource_async(&config)).unwrap_err(),
+        ready(registry.resource_async(&config))
+            .expect_err("resource resolution should fail"),
         ready(registry.file_system_uri_async(&uri))
             .err()
             .expect("URI filesystem creation should fail"),
-        ready(registry.resource_uri_async(&uri)).unwrap_err(),
+        ready(registry.resource_uri_async(&uri))
+            .expect_err("URI resource resolution should fail"),
     ];
     for error in errors {
         assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
@@ -505,11 +538,17 @@ fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point
     let invalid_selector_config = FileSystemConfig::new(
         FsUri::parse("missing-:///resource").expect("URI scheme should parse"),
     );
-    assert_eq!(
-        FsErrorKind::ProviderUnavailable,
-        ready(registry.resolve_config_async(&invalid_selector_config))
-            .unwrap_err()
-            .kind(),
+    let error = ready(registry.resolve_config_async(&invalid_selector_config))
+        .expect_err("the URI scheme should not form a provider selector");
+    assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert!(
+        error
+            .source()
+            .and_then(|source| source
+                .downcast_ref::<qubit_spi::error::ProviderSelectionBuildError>(
+            ))
+            .is_some(),
+        "selection validation diagnostics should be retained",
     );
 }
 

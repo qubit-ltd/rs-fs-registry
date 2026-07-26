@@ -200,17 +200,19 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when provider resolution or creation fails.
+    /// Returns [`FsError`] when the URI scheme cannot form a provider selector,
+    /// provider resolution fails, or creation fails.
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
     ) -> FsResult<FileSystemResolution<dyn FileSystem>> {
-        let selection = match config.selection() {
-            Some(selection) => selection.clone(),
+        let resolver = match config.selection() {
+            Some(selection) => self.resolve_selected(selection),
             None => ProviderSelection::named(config.uri().scheme().as_str())
-                .map_err(map_provider_selection_build_error)?,
+                .map_err(map_provider_selection_build_error)
+                .and_then(|selection| self.resolve_selected(&selection)),
         };
-        self.resolve_selected(&selection)?
+        resolver?
             .create_configured(config)
             .map_err(map_provider_creation_error)
     }

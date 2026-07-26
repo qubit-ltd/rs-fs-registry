@@ -49,6 +49,7 @@ use qubit_spi::{
         ProviderCreationError,
         ProviderError,
         ProviderErrorKind,
+        ProviderSelectionBuildError,
         RegistrationError,
     },
 };
@@ -212,7 +213,7 @@ fn test_registry_maps_all_provider_creation_failure_classes() {
 fn test_registry_maps_invalid_uri_scheme_selection() {
     let registry = FileSystemRegistry::default();
     let config = FileSystemConfig::new(
-        FsUri::parse("mock+v1:///resource").expect("URI should parse"),
+        FsUri::parse("mock-:///resource").expect("URI should parse"),
     );
 
     let error = registry
@@ -220,6 +221,15 @@ fn test_registry_maps_invalid_uri_scheme_selection() {
         .expect_err("the URI scheme should not form a provider selector");
 
     assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert!(
+        error
+            .source()
+            .and_then(
+                |source| source.downcast_ref::<ProviderSelectionBuildError>()
+            )
+            .is_some(),
+        "selection validation diagnostics should be retained",
+    );
 }
 
 /// Verifies a configured chain falls back after an unavailable provider.

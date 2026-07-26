@@ -56,7 +56,9 @@ fn test_config_debug_redacts_values_and_credential_references() {
             .with("endpoint", "storage.internal")
             .expect("metadata should accept a non-sensitive key"),
     )
-    .with_credentials(CredentialRef::Profile("production".to_owned()));
+    .with_credentials(CredentialRef::Profile {
+        name: "production".to_owned(),
+    });
 
     let debug = format!("{config:?}");
 
