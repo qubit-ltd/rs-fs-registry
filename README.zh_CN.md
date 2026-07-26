@@ -38,7 +38,7 @@ fn open_local_file() -> FsResult<()> {
 ```
 
 `FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `UserMetadata` 和可选
-`CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；它会拒绝
+`CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；构造时会拒绝
 credential-like option key。所有 secret 只能通过 `CredentialRef` 保存。
 
 同步和异步 registry 都公开 provider descriptor、catalog 大小、底层 selection 解析，

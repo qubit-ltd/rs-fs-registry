@@ -41,8 +41,8 @@ fn open_local_file() -> FsResult<()> {
 
 `FileSystemConfig` contains a URI, optional `ProviderSelection`, validated
 `UserMetadata`, and an optional `CredentialRef`. Build `UserMetadata` before
-passing it to `with_options`; it rejects credential-like option keys. Store
-secrets only through `CredentialRef`.
+passing it to `with_options`; construction rejects credential-like option keys.
+Store secrets only through `CredentialRef`.
 
 Both synchronous and asynchronous registries expose provider descriptors,
 catalog size, low-level selection resolution, and URI/config convenience
