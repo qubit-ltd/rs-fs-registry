@@ -29,3 +29,9 @@ fn config_builder_preserves_validated_options_without_a_fallible_step() {
     assert_eq!(Some(&selection), config.selection());
     assert_eq!(&options, config.options());
 }
+
+/// Verifies sensitive options fail before reaching the configuration builder.
+#[test]
+fn sensitive_options_are_rejected_while_building_user_metadata() {
+    assert!(UserMetadata::new().with("access_token", "plaintext").is_err());
+}
