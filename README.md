@@ -7,8 +7,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
-`qubit-fs-registry` provides runtime provider discovery, complete filesystem
-configuration, and SPI integration for [`qubit-fs`](https://crates.io/crates/qubit-fs).
+`qubit-fs-registry` provides runtime provider registration and resolution,
+complete filesystem configuration, and SPI integration for [`qubit-fs`](https://crates.io/crates/qubit-fs).
 Applications that only need filesystem traits and value types should depend on
 `qubit-fs` alone.
 
@@ -57,7 +57,10 @@ catalog size, low-level selection resolution, and URI/config convenience
 methods. `resolve_selected` and `resolve` return a point-in-time provider
 snapshot. `resolve_selected_config` and `resolve_default_config` create a
 filesystem through explicit or default selection; asynchronous counterparts
-use the `_async` suffix. Provider catalog IDs retain the `ProviderId` type.
+use the `_async` suffix. They reject a configuration whose embedded selection
+conflicts with the explicit or current default selection; use `resolve_config`
+when the configuration itself owns selection. Provider catalog IDs retain the
+`ProviderId` type.
 
 ### Asynchronous usage
 

@@ -10,34 +10,16 @@
 use std::sync::Arc;
 
 use qubit_spi::{
-    AsyncProviderDefinition,
-    AsyncProviderRegistry,
-    AsyncResolvingServiceProvider,
-    ProviderDescriptor,
-    ProviderId,
-    ProviderSelection,
+    AsyncProviderDefinition, AsyncProviderRegistry, AsyncResolvingServiceProvider,
+    ProviderDescriptor, ProviderId, ProviderSelection,
 };
 
 use super::file_system_registry::{
-    map_provider_creation_error,
-    map_provider_resolution_error,
-    map_provider_selection_build_error,
-    map_registration_error,
+    ensure_selection_matches_config, map_provider_creation_error, map_provider_resolution_error,
+    map_registration_error, selection_for_config,
 };
-use crate::{
-    AsyncFileSystemProvider,
-    FileSystemConfig,
-    FileSystemResolution,
-    FileSystemSpec,
-};
-use qubit_fs::{
-    AsyncFileResource,
-    AsyncFileSystem,
-    FileLocation,
-    FsFuture,
-    FsResult,
-    FsUri,
-};
+use crate::{AsyncFileSystemProvider, FileSystemConfig, FileSystemResolution, FileSystemSpec};
+use qubit_fs::{AsyncFileResource, AsyncFileSystem, FileLocation, FsFuture, FsResult, FsUri};
 
 /// Shared asynchronous-filesystem Registry facade.
 ///
@@ -80,12 +62,8 @@ impl AsyncFileSystemRegistry {
     /// Returns a conflict error without mutation when any provider selector is
     /// already registered.
     #[inline(always)]
-    pub fn register_shared(
-        &self,
-        provider: Arc<dyn AsyncFileSystemProvider>,
-    ) -> FsResult<()> {
-        let provider: Arc<dyn AsyncProviderDefinition<FileSystemSpec>> =
-            provider;
+    pub fn register_shared(&self, provider: Arc<dyn AsyncFileSystemProvider>) -> FsResult<()> {
+        let provider: Arc<dyn AsyncProviderDefinition<FileSystemSpec>> = provider;
         self.providers
             .register_shared(provider)
             .map_err(map_registration_error)
@@ -145,9 +123,7 @@ impl AsyncFileSystemRegistry {
     ///
     /// Returns an error when the default selection matches no provider.
     #[inline(always)]
-    pub fn resolve(
-        &self,
-    ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
+    pub fn resolve(&self) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
         self.providers
             .resolve()
             .map_err(map_provider_resolution_error)
@@ -205,19 +181,11 @@ impl AsyncFileSystemRegistry {
         &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = match config.selection() {
-            Some(selection) => self
-                .providers
-                .resolve_selected(selection)
-                .map_err(map_provider_resolution_error),
-            None => ProviderSelection::named(config.uri().scheme().as_str())
-                .map_err(map_provider_selection_build_error)
-                .and_then(|selection| {
-                    self.providers
-                        .resolve_selected(&selection)
-                        .map_err(map_provider_resolution_error)
-                }),
-        };
+        let resolver = selection_for_config(config).and_then(|selection| {
+            self.providers
+                .resolve_selected(&selection)
+                .map_err(map_provider_resolution_error)
+        });
         Box::pin(async move {
             resolver?
                 .create_configured(config)
@@ -245,19 +213,11 @@ impl AsyncFileSystemRegistry {
         &self,
         config: FileSystemConfig,
     ) -> FsFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = match config.selection() {
-            Some(selection) => self
-                .providers
-                .resolve_selected(selection)
-                .map_err(map_provider_resolution_error),
-            None => ProviderSelection::named(config.uri().scheme().as_str())
-                .map_err(map_provider_selection_build_error)
-                .and_then(|selection| {
-                    self.providers
-                        .resolve_selected(&selection)
-                        .map_err(map_provider_resolution_error)
-                }),
-        };
+        let resolver = selection_for_config(&config).and_then(|selection| {
+            self.providers
+                .resolve_selected(&selection)
+                .map_err(map_provider_resolution_error)
+        });
         Box::pin(async move {
             resolver?
                 .create_configured(&config)
@@ -280,17 +240,19 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// The future returns an error when provider resolution or creation fails.
+    /// The future returns an error when the configuration selection conflicts
+    /// with `selection`, provider resolution fails, or creation fails.
     #[inline]
     pub fn resolve_selected_config_async<'a>(
         &self,
         selection: &ProviderSelection,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = self
-            .providers
-            .resolve_selected(selection)
-            .map_err(map_provider_resolution_error);
+        let resolver = ensure_selection_matches_config(selection, config).and_then(|()| {
+            self.providers
+                .resolve_selected(selection)
+                .map_err(map_provider_resolution_error)
+        });
         Box::pin(async move {
             resolver?
                 .create_configured(config)
@@ -312,23 +274,16 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// The future returns an error when default provider resolution or
+    /// The future returns an error when the configuration selection conflicts
+    /// with the default selection, default provider resolution fails, or
     /// creation fails.
     #[inline]
     pub fn resolve_default_config_async<'a>(
         &self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = self
-            .providers
-            .resolve()
-            .map_err(map_provider_resolution_error);
-        Box::pin(async move {
-            resolver?
-                .create_configured(config)
-                .await
-                .map_err(map_provider_creation_error)
-        })
+        let selection = self.default_selection();
+        self.resolve_selected_config_async(&selection, config)
     }
 
     /// Creates an asynchronous filesystem from complete configuration.
@@ -340,9 +295,9 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Returns
     ///
-    /// A future yielding the shared asynchronous filesystem. The future owns a
-    /// copy of `uri` and a provider snapshot, so it does not borrow the
-    /// registry or URI after this method returns.
+    /// A future yielding the shared asynchronous filesystem. The future
+    /// retains the `config` borrow but does not borrow the registry after this
+    /// method returns.
     ///
     /// # Errors
     ///
@@ -365,7 +320,9 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Returns
     ///
-    /// A future yielding a resource bound to its provider-decoded path.
+    /// A future yielding a resource bound to its provider-decoded path. The
+    /// future retains the `config` borrow but does not borrow the registry
+    /// after this method returns.
     ///
     /// # Errors
     ///
@@ -379,8 +336,7 @@ impl AsyncFileSystemRegistry {
         Box::pin(async move {
             let resolution = resolution.await?;
             let (fs, path, canonical_uri) = resolution.into_parts();
-            let location = FileLocation::new(fs.info().id().clone(), path)
-                .with_uri(canonical_uri);
+            let location = FileLocation::new(fs.info().id().clone(), path).with_uri(canonical_uri);
             Ok(AsyncFileResource::from_location(fs, location))
         })
     }
@@ -393,7 +349,9 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Returns
     ///
-    /// A future yielding the shared asynchronous filesystem.
+    /// A future yielding the shared asynchronous filesystem. The future owns
+    /// a URI configuration copy and a provider snapshot, so it does not borrow
+    /// the registry or URI after this method returns.
     ///
     /// # Errors
     ///
@@ -403,8 +361,7 @@ impl AsyncFileSystemRegistry {
         &self,
         uri: &FsUri,
     ) -> FsFuture<'static, Arc<dyn AsyncFileSystem>> {
-        let resolution =
-            self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
+        let resolution = self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
         Box::pin(async move { Ok(resolution.await?.file_system().clone()) })
     }
 
@@ -417,24 +374,19 @@ impl AsyncFileSystemRegistry {
     /// # Returns
     ///
     /// A future yielding a resource bound to its provider-decoded path. The
-    /// future owns a copy of `uri` and a provider snapshot, so it does not
-    /// borrow the registry or URI after this method returns.
+    /// future owns a URI configuration copy and a provider snapshot, so it
+    /// does not borrow the registry or URI after this method returns.
     ///
     /// # Errors
     ///
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
-    pub fn resource_uri_async(
-        &self,
-        uri: &FsUri,
-    ) -> FsFuture<'static, AsyncFileResource> {
-        let resolution =
-            self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
+    pub fn resource_uri_async(&self, uri: &FsUri) -> FsFuture<'static, AsyncFileResource> {
+        let resolution = self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
         Box::pin(async move {
             let resolution = resolution.await?;
             let (fs, path, canonical_uri) = resolution.into_parts();
-            let location = FileLocation::new(fs.info().id().clone(), path)
-                .with_uri(canonical_uri);
+            let location = FileLocation::new(fs.info().id().clone(), path).with_uri(canonical_uri);
             Ok(AsyncFileResource::from_location(fs, location))
         })
     }

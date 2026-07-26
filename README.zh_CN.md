@@ -8,7 +8,7 @@
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
 `qubit-fs-registry` 为 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供运行时
-provider 发现、完整文件系统配置与 SPI 集成。只使用文件系统 trait 和值类型的程序
+provider 注册与解析、完整文件系统配置与 SPI 集成。只使用文件系统 trait 和值类型的程序
 应仅依赖 `qubit-fs`。
 
 ## 安装
@@ -51,7 +51,8 @@ private key 或其他 secret 材料。
 以及 URI/config 便捷方法。`resolve_selected` 与 `resolve` 返回某一时刻的 provider
 snapshot。`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
 selection 创建文件系统；异步版本使用 `_async` 后缀。Catalog ID 保留
-`ProviderId` 强类型。
+`ProviderId` 强类型。当 config 内嵌的 selection 与显式 selection 或当前默认 selection
+冲突时，这两个方法会返回错误；由 config 自身决定 selection 时请使用 `resolve_config`。
 
 ### 异步使用
 
