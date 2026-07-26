@@ -19,6 +19,7 @@ use qubit_spi::error::{
 use qubit_spi::{
     ProviderDefinition,
     ProviderDescriptor,
+    ProviderId,
     ProviderRegistry,
     ProviderSelection,
     ResolvingServiceProvider,
@@ -167,21 +168,21 @@ impl FileSystemRegistry {
     }
 
     /// Returns provider descriptors in registration order.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
         self.providers.descriptors()
     }
 
     /// Returns the number of registered providers.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.providers.len()
     }
 
     /// Returns whether no provider is registered.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
@@ -210,6 +211,54 @@ impl FileSystemRegistry {
                 .map_err(map_provider_selection_build_error)?,
         };
         self.resolve_selected(&selection)?
+            .create_configured(config)
+            .map_err(map_provider_creation_error)
+    }
+
+    /// Resolves configuration through a supplied provider selection.
+    ///
+    /// # Parameters
+    ///
+    /// * `selection` - Provider target and creation fallback policy.
+    /// * `config` - Complete filesystem configuration passed to the provider.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem and its provider-decoded resource location.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FsError`] when provider resolution or creation fails.
+    #[inline]
+    pub fn resolve_selected_config(
+        &self,
+        selection: &ProviderSelection,
+        config: &FileSystemConfig,
+    ) -> FsResult<FileSystemResolution<dyn FileSystem>> {
+        self.resolve_selected(selection)?
+            .create_configured(config)
+            .map_err(map_provider_creation_error)
+    }
+
+    /// Resolves configuration through the current default provider selection.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Complete filesystem configuration passed to the provider.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem and its provider-decoded resource location.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FsError`] when default provider resolution or creation fails.
+    #[inline]
+    pub fn resolve_default_config(
+        &self,
+        config: &FileSystemConfig,
+    ) -> FsResult<FileSystemResolution<dyn FileSystem>> {
+        self.resolve()?
             .create_configured(config)
             .map_err(map_provider_creation_error)
     }
@@ -277,14 +326,10 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// Canonical provider IDs.
-    #[inline]
+    #[inline(always)]
     #[must_use]
-    pub fn provider_ids(&self) -> Vec<String> {
-        self.providers
-            .provider_ids()
-            .into_iter()
-            .map(|id| id.as_str().to_owned())
-            .collect()
+    pub fn provider_ids(&self) -> Vec<ProviderId> {
+        self.providers.provider_ids()
     }
 }
 

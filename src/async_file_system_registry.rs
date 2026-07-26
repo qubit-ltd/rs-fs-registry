@@ -14,6 +14,7 @@ use qubit_spi::{
     AsyncProviderRegistry,
     AsyncResolvingServiceProvider,
     ProviderDescriptor,
+    ProviderId,
     ProviderSelection,
 };
 
@@ -50,10 +51,15 @@ pub struct AsyncFileSystemRegistry {
 impl AsyncFileSystemRegistry {
     /// Registers an owned asynchronous filesystem provider.
     ///
+    /// # Parameters
+    ///
+    /// * `provider` - Provider definition moved into shared registry storage.
+    ///
     /// # Errors
     ///
     /// Returns a conflict error without mutation when any provider selector is
     /// already registered.
+    #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FsResult<()>
     where
         P: AsyncFileSystemProvider,
@@ -65,10 +71,15 @@ impl AsyncFileSystemRegistry {
 
     /// Registers an already shared asynchronous filesystem provider.
     ///
+    /// # Parameters
+    ///
+    /// * `provider` - Shared provider definition retained by the registry.
+    ///
     /// # Errors
     ///
     /// Returns a conflict error without mutation when any provider selector is
     /// already registered.
+    #[inline(always)]
     pub fn register_shared(
         &self,
         provider: Arc<dyn AsyncFileSystemProvider>,
@@ -80,18 +91,41 @@ impl AsyncFileSystemRegistry {
             .map_err(map_registration_error)
     }
 
-    /// Returns the selection used by [`Self::resolve_default_async`].
+    /// Returns the selection used by [`Self::resolve_default_config_async`].
+    ///
+    /// # Returns
+    ///
+    /// The registry's current default provider selection.
+    #[inline(always)]
     #[must_use]
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
     }
 
     /// Replaces the selection used by future default resolutions.
+    ///
+    /// # Parameters
+    ///
+    /// * `selection` - Validated provider target and fallback policy.
+    #[inline(always)]
     pub fn set_default_selection(&self, selection: ProviderSelection) {
         self.providers.set_default_selection(selection);
     }
 
     /// Resolves a provider selection without creating a filesystem.
+    ///
+    /// # Parameters
+    ///
+    /// * `selection` - Provider target and fallback policy.
+    ///
+    /// # Returns
+    ///
+    /// A point-in-time asynchronous provider candidate snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selection matches no registered provider.
+    #[inline(always)]
     pub fn resolve_selected(
         &self,
         selection: &ProviderSelection,
@@ -102,31 +136,71 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves the current default selection without creating a filesystem.
+    ///
+    /// # Returns
+    ///
+    /// A point-in-time asynchronous provider candidate snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the default selection matches no provider.
+    #[inline(always)]
     pub fn resolve(
         &self,
     ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
-        self.providers.resolve().map_err(map_provider_resolution_error)
+        self.providers
+            .resolve()
+            .map_err(map_provider_resolution_error)
     }
 
     /// Returns provider descriptors in registration order.
+    ///
+    /// # Returns
+    ///
+    /// Owned descriptor snapshots in successful registration order.
+    #[inline(always)]
     #[must_use]
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
         self.providers.descriptors()
     }
 
     /// Returns the number of registered providers.
+    ///
+    /// # Returns
+    ///
+    /// The number of successful registrations.
+    #[inline(always)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.providers.len()
     }
 
     /// Returns whether no provider is registered.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the provider catalog is empty.
+    #[inline(always)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
 
     /// Resolves configuration using its explicit selection or URI scheme.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - URI, optional selection, options, and credential reference.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding the configured filesystem and provider-decoded
+    /// resource location.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when selection validation, provider
+    /// resolution, or asynchronous creation fails.
     pub fn resolve_config_async<'a>(
         &'a self,
         config: &'a FileSystemConfig,
@@ -153,6 +227,21 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves configuration through a supplied selection.
+    ///
+    /// # Parameters
+    ///
+    /// * `selection` - Provider target and fallback policy.
+    /// * `config` - Complete filesystem configuration passed to the provider.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding the configured filesystem and provider-decoded
+    /// resource location.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when provider resolution or creation fails.
+    #[inline]
     pub fn resolve_selected_config_async<'a>(
         &'a self,
         selection: &ProviderSelection,
@@ -171,7 +260,22 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves configuration through the current default selection.
-    pub fn resolve_default_async<'a>(
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Complete filesystem configuration passed to the provider.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding the configured filesystem and provider-decoded
+    /// resource location.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when default provider resolution or
+    /// creation fails.
+    #[inline]
+    pub fn resolve_default_config_async<'a>(
         &'a self,
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
@@ -188,6 +292,20 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Creates an asynchronous filesystem from complete configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Complete configuration used to select and create a
+    ///   filesystem.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding the shared asynchronous filesystem.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when provider resolution or creation fails.
+    #[inline]
     pub fn file_system_async<'a>(
         &'a self,
         config: &'a FileSystemConfig,
@@ -202,6 +320,20 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves complete configuration into a bound asynchronous resource.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Complete configuration used to select and create a
+    ///   filesystem.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding a resource bound to its provider-decoded path.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when provider resolution or creation fails.
+    #[inline]
     pub fn resource_async<'a>(
         &'a self,
         config: &'a FileSystemConfig,
@@ -216,6 +348,19 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Creates an asynchronous filesystem from URI-only configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `uri` - Resource URI used with empty options and no credentials.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding the shared asynchronous filesystem.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when provider resolution or creation fails.
+    #[inline]
     pub fn file_system_uri_async<'a>(
         &'a self,
         uri: &'a FsUri,
@@ -227,6 +372,19 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves URI-only configuration into a bound asynchronous resource.
+    ///
+    /// # Parameters
+    ///
+    /// * `uri` - Resource URI used with empty options and no credentials.
+    ///
+    /// # Returns
+    ///
+    /// A future yielding a resource bound to its provider-decoded path.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when provider resolution or creation fails.
+    #[inline]
     pub fn resource_uri_async<'a>(
         &'a self,
         uri: &'a FsUri,
@@ -238,13 +396,14 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Returns canonical provider IDs in registration order.
+    ///
+    /// # Returns
+    ///
+    /// Owned canonical provider IDs in successful registration order.
+    #[inline(always)]
     #[must_use]
-    pub fn provider_ids(&self) -> Vec<String> {
-        self.providers
-            .provider_ids()
-            .into_iter()
-            .map(|id| id.as_str().to_owned())
-            .collect()
+    pub fn provider_ids(&self) -> Vec<ProviderId> {
+        self.providers.provider_ids()
     }
 }
 

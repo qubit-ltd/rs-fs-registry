@@ -10,11 +10,14 @@ use qubit_fs::{
     FsUri,
     UserMetadata,
 };
-use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::{
+    CredentialRef,
+    FileSystemConfig,
+};
 use qubit_spi::ProviderSelection;
 
 #[test]
-fn config_builder_preserves_validated_options_without_a_fallible_step() {
+fn test_config_builder_preserves_validated_options_without_a_fallible_step() {
     let selection =
         ProviderSelection::named("mock").expect("selection should parse");
     let options = UserMetadata::new()
@@ -28,10 +31,36 @@ fn config_builder_preserves_validated_options_without_a_fallible_step() {
 
     assert_eq!(Some(&selection), config.selection());
     assert_eq!(&options, config.options());
+    assert!(config.credentials().is_none());
 }
 
 /// Verifies sensitive options fail before reaching the configuration builder.
 #[test]
-fn sensitive_options_are_rejected_while_building_user_metadata() {
-    assert!(UserMetadata::new().with("access_token", "plaintext").is_err());
+fn test_sensitive_options_are_rejected_while_building_user_metadata() {
+    assert!(
+        UserMetadata::new()
+            .with("access_token", "plaintext")
+            .is_err()
+    );
+}
+
+/// Verifies configuration debugging exposes neither option values nor
+/// credential reference contents.
+#[test]
+fn test_config_debug_redacts_values_and_credential_references() {
+    let config = FileSystemConfig::new(
+        FsUri::parse("mock:///resource").expect("URI should parse"),
+    )
+    .with_options(
+        UserMetadata::new()
+            .with("endpoint", "storage.internal")
+            .expect("metadata should accept a non-sensitive key"),
+    )
+    .with_credentials(CredentialRef::Profile("production".to_owned()));
+
+    let debug = format!("{config:?}");
+
+    assert!(debug.contains("endpoint"));
+    assert!(!debug.contains("storage.internal"));
+    assert!(!debug.contains("production"));
 }

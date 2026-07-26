@@ -88,6 +88,7 @@ name = "qubit-fs-registry"
 version = "0.1.0"
 dependencies = [
  "qubit-fs",
+ "qubit-io",
  "qubit-spi",
 ]
 
@@ -98,6 +99,8 @@ version = "0.14.0"
 [[package]]
 name = "qubit-spi"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16fd0c6e65f2f736d5b3518afcacce6d37e9e3e3243cad0e845e42399152e613"
 dependencies = [
  "parking_lot",
  "qubit-collections",

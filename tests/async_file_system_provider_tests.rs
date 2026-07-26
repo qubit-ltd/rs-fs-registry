@@ -21,7 +21,7 @@ use qubit_spi::error::ProviderErrorKind;
 
 /// Verifies async provider failures retain filesystem classifications.
 #[test]
-fn async_provider_error_mapping_preserves_classification_and_source() {
+fn test_async_provider_error_mapping_preserves_classification_and_source() {
     let error = map_async_provider_error(FsError::new(
         FsErrorKind::ProviderUnavailable,
         FsOperation::Provider,
@@ -43,4 +43,44 @@ fn async_provider_error_mapping_preserves_classification_and_source() {
         retains_filesystem_error,
         "the SPI error should retain its filesystem source",
     );
+}
+
+#[test]
+fn test_async_provider_error_mapping_classifies_every_filesystem_failure() {
+    let cases = [
+        (
+            FsErrorKind::UnsupportedOperation,
+            ProviderErrorKind::Unsupported,
+        ),
+        (
+            FsErrorKind::UnsupportedCapability,
+            ProviderErrorKind::Unsupported,
+        ),
+        (
+            FsErrorKind::RequirementNotMet,
+            ProviderErrorKind::Unsupported,
+        ),
+        (
+            FsErrorKind::InvalidUri,
+            ProviderErrorKind::InvalidConfiguration,
+        ),
+        (
+            FsErrorKind::InvalidPath,
+            ProviderErrorKind::InvalidConfiguration,
+        ),
+        (
+            FsErrorKind::InvalidOptions,
+            ProviderErrorKind::InvalidConfiguration,
+        ),
+        (FsErrorKind::Other, ProviderErrorKind::InitializationFailed),
+    ];
+
+    for (filesystem_kind, provider_kind) in cases {
+        let error = map_async_provider_error(FsError::new(
+            filesystem_kind,
+            FsOperation::Provider,
+            "classified test failure",
+        ));
+        assert_eq!(provider_kind, error.kind());
+    }
 }

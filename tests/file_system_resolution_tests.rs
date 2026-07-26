@@ -28,7 +28,7 @@ use qubit_fs_registry::FileSystemResolution;
 
 /// Verifies provider-decoded paths and canonical URIs remain paired.
 #[test]
-fn resolution_preserves_decoded_path_and_canonical_uri() {
+fn test_resolution_preserves_decoded_path_and_canonical_uri() {
     let filesystem: Arc<dyn FileSystem> = Arc::new(ResolutionFileSystem);
     let resolution = FileSystemResolution::new(
         filesystem,
@@ -43,7 +43,14 @@ fn resolution_preserves_decoded_path_and_canonical_uri() {
         "/bucket/a%25252Fb",
         resolution.canonical_uri().path().as_encoded(),
     );
-    assert_eq!("resolution-test", resolution.file_system().info().id().as_str());
+    assert_eq!(
+        "resolution-test",
+        resolution.file_system().info().id().as_str()
+    );
+    let debug = format!("{resolution:?}");
+    assert!(debug.contains("FileSystemResolution"));
+    assert!(debug.contains("bucket/a%252Fb"));
+    assert!(debug.contains("canonical_uri"));
 
     let cloned = resolution.clone();
     let (filesystem, path, uri) = cloned.into_parts();
@@ -56,7 +63,8 @@ struct ResolutionFileSystem;
 
 impl FileSystemProperties for ResolutionFileSystem {
     fn info(&self) -> &FileSystemInfo {
-        static INFO: std::sync::OnceLock<FileSystemInfo> = std::sync::OnceLock::new();
+        static INFO: std::sync::OnceLock<FileSystemInfo> =
+            std::sync::OnceLock::new();
         INFO.get_or_init(|| {
             FileSystemInfo::new(
                 FileSystemId::new("resolution-test")

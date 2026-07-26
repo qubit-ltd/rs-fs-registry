@@ -24,15 +24,27 @@ use qubit_fs::{
 /// Complete non-secret configuration passed through registry and provider SPI.
 #[derive(Clone, Eq, PartialEq)]
 pub struct FileSystemConfig {
+    /// Resource URI used for provider selection and path decoding.
     uri: FsUri,
+    /// Optional provider selection overriding URI-scheme selection.
     selection: Option<ProviderSelection>,
+    /// Validated non-sensitive options passed to provider creation.
     options: UserMetadata,
+    /// Optional reference identifying an external credential source.
     credentials: Option<CredentialRef>,
 }
 
 impl FileSystemConfig {
     /// Creates provider configuration from a resource URI.
-    #[inline]
+    ///
+    /// # Parameters
+    ///
+    /// * `uri` - Secret-free resource URI used for provider resolution.
+    ///
+    /// # Returns
+    ///
+    /// A configuration with no explicit selection, options, or credentials.
+    #[inline(always)]
     #[must_use]
     pub fn new(uri: FsUri) -> Self {
         Self {
@@ -44,7 +56,15 @@ impl FileSystemConfig {
     }
 
     /// Sets an explicit provider selection and fallback policy.
-    #[inline]
+    ///
+    /// # Parameters
+    ///
+    /// * `selection` - Provider target and creation fallback policy.
+    ///
+    /// # Returns
+    ///
+    /// The updated configuration.
+    #[inline(always)]
     #[must_use]
     pub fn with_selection(mut self, selection: ProviderSelection) -> Self {
         self.selection = Some(selection);
@@ -55,7 +75,15 @@ impl FileSystemConfig {
     ///
     /// [`UserMetadata`] rejects sensitive option keys when it is built.
     /// Secrets must be referenced through [`CredentialRef`].
-    #[inline]
+    ///
+    /// # Parameters
+    ///
+    /// * `options` - Validated non-sensitive provider options.
+    ///
+    /// # Returns
+    ///
+    /// The updated configuration.
+    #[inline(always)]
     #[must_use]
     pub fn with_options(mut self, options: UserMetadata) -> Self {
         self.options = options;
@@ -63,7 +91,15 @@ impl FileSystemConfig {
     }
 
     /// Sets a credential source reference without embedding secret material.
-    #[inline]
+    ///
+    /// # Parameters
+    ///
+    /// * `credentials` - Reference identifying an external credential source.
+    ///
+    /// # Returns
+    ///
+    /// The updated configuration.
+    #[inline(always)]
     #[must_use]
     pub fn with_credentials(mut self, credentials: CredentialRef) -> Self {
         self.credentials = Some(credentials);
@@ -71,28 +107,45 @@ impl FileSystemConfig {
     }
 
     /// Returns the resource URI used for provider resolution.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// The configured secret-free resource URI.
+    #[inline(always)]
     #[must_use]
     pub const fn uri(&self) -> &FsUri {
         &self.uri
     }
 
     /// Returns the optional explicit provider selection.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// `Some` when provider selection is explicit; otherwise `None`.
+    #[inline(always)]
     #[must_use]
     pub const fn selection(&self) -> Option<&ProviderSelection> {
         self.selection.as_ref()
     }
 
     /// Returns validated non-sensitive provider options.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// The provider options, which may be empty.
+    #[inline(always)]
     #[must_use]
     pub const fn options(&self) -> &UserMetadata {
         &self.options
     }
 
     /// Returns the optional credential source reference.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// `Some` when an external credential source is configured; otherwise
+    /// `None`.
+    #[inline(always)]
     #[must_use]
     pub const fn credentials(&self) -> Option<&CredentialRef> {
         self.credentials.as_ref()

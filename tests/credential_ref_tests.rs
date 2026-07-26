@@ -10,7 +10,7 @@ use qubit_fs_registry::CredentialRef;
 
 /// Verifies credential references retain only selection data.
 #[test]
-fn credential_reference_variants_are_comparable() {
+fn test_credential_reference_variants_are_comparable() {
     assert_eq!(CredentialRef::DefaultChain, CredentialRef::DefaultChain);
     assert_eq!(
         CredentialRef::Profile("production".to_owned()),
