@@ -540,7 +540,7 @@ fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point
     );
     let error = ready(registry.resolve_config_async(&invalid_selector_config))
         .expect_err("the URI scheme should not form a provider selector");
-    assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
     assert!(
         error
             .source()
@@ -651,7 +651,7 @@ fn test_async_registry_retains_ordered_failures_when_fallback_is_exhausted() {
         ready(registry.resolve_selected_config_async(&selection, &config))
             .expect_err("every admitted provider should fail");
 
-    assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
     assert_eq!(Some("second-unsupported"), error.provider(),);
     let creation = error
         .source()

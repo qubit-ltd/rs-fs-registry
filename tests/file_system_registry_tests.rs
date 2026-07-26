@@ -176,7 +176,7 @@ fn test_registry_maps_all_provider_creation_failure_classes() {
         (
             "unsupported",
             ProviderErrorKind::Unsupported,
-            FsErrorKind::ProviderUnavailable,
+            FsErrorKind::RequirementNotMet,
         ),
         (
             "invalid-configuration",
@@ -220,7 +220,7 @@ fn test_registry_maps_invalid_uri_scheme_selection() {
         .resolve_config(&config)
         .expect_err("the URI scheme should not form a provider selector");
 
-    assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
     assert!(
         error
             .source()

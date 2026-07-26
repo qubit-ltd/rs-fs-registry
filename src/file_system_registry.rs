@@ -414,14 +414,14 @@ pub(super) fn map_provider_resolution_error(
 ///
 /// # Returns
 ///
-/// A provider-unavailable filesystem error preserving the validation failure.
+/// An invalid-options filesystem error preserving the validation failure.
 #[inline]
 pub(super) fn map_provider_selection_build_error(
     error: ProviderSelectionBuildError,
 ) -> FsError {
     let message = error.to_string();
     FsError::with_source(
-        FsErrorKind::ProviderUnavailable,
+        FsErrorKind::InvalidOptions,
         FsOperation::Provider,
         &message,
         error,
@@ -444,9 +444,8 @@ pub(super) fn map_provider_creation_error(
     let decisive_attempt = error.decisive_attempt();
     let provider = decisive_attempt.provider_id().clone();
     let kind = match decisive_attempt.error().kind() {
-        ProviderErrorKind::Unsupported | ProviderErrorKind::Unavailable => {
-            FsErrorKind::ProviderUnavailable
-        }
+        ProviderErrorKind::Unsupported => FsErrorKind::RequirementNotMet,
+        ProviderErrorKind::Unavailable => FsErrorKind::ProviderUnavailable,
         ProviderErrorKind::InvalidConfiguration => FsErrorKind::InvalidOptions,
         ProviderErrorKind::InitializationFailed => FsErrorKind::Other,
         _ => FsErrorKind::Other,
