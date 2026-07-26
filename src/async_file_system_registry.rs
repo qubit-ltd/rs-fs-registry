@@ -226,6 +226,46 @@ impl AsyncFileSystemRegistry {
         })
     }
 
+    /// Resolves owned configuration using its explicit selection or URI scheme.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Owned URI, optional selection, options, and credential
+    ///   reference retained by the returned future.
+    ///
+    /// # Returns
+    ///
+    /// A future independent of the registry and configuration caller borrows.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when the URI scheme cannot form a provider
+    /// selector, provider resolution fails, or asynchronous creation fails.
+    fn resolve_owned_config_async(
+        &self,
+        config: FileSystemConfig,
+    ) -> FsFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
+        let resolver = match config.selection() {
+            Some(selection) => self
+                .providers
+                .resolve_selected(selection)
+                .map_err(map_provider_resolution_error),
+            None => ProviderSelection::named(config.uri().scheme().as_str())
+                .map_err(map_provider_selection_build_error)
+                .and_then(|selection| {
+                    self.providers
+                        .resolve_selected(&selection)
+                        .map_err(map_provider_resolution_error)
+                }),
+        };
+        Box::pin(async move {
+            resolver?
+                .create_configured(&config)
+                .await
+                .map_err(map_provider_creation_error)
+        })
+    }
+
     /// Resolves configuration through a supplied selection.
     ///
     /// # Parameters
@@ -300,7 +340,9 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Returns
     ///
-    /// A future yielding the shared asynchronous filesystem.
+    /// A future yielding the shared asynchronous filesystem. The future owns a
+    /// copy of `uri` and a provider snapshot, so it does not borrow the
+    /// registry or URI after this method returns.
     ///
     /// # Errors
     ///
@@ -357,14 +399,13 @@ impl AsyncFileSystemRegistry {
     ///
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
-    pub fn file_system_uri_async<'a>(
-        &'a self,
-        uri: &'a FsUri,
-    ) -> FsFuture<'a, Arc<dyn AsyncFileSystem>> {
-        Box::pin(async move {
-            self.file_system_async(&FileSystemConfig::new(uri.clone()))
-                .await
-        })
+    pub fn file_system_uri_async(
+        &self,
+        uri: &FsUri,
+    ) -> FsFuture<'static, Arc<dyn AsyncFileSystem>> {
+        let resolution =
+            self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
+        Box::pin(async move { Ok(resolution.await?.file_system().clone()) })
     }
 
     /// Resolves URI-only configuration into a bound asynchronous resource.
@@ -375,19 +416,26 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Returns
     ///
-    /// A future yielding a resource bound to its provider-decoded path.
+    /// A future yielding a resource bound to its provider-decoded path. The
+    /// future owns a copy of `uri` and a provider snapshot, so it does not
+    /// borrow the registry or URI after this method returns.
     ///
     /// # Errors
     ///
     /// The future returns an error when provider resolution or creation fails.
     #[inline]
-    pub fn resource_uri_async<'a>(
-        &'a self,
-        uri: &'a FsUri,
-    ) -> FsFuture<'a, AsyncFileResource> {
+    pub fn resource_uri_async(
+        &self,
+        uri: &FsUri,
+    ) -> FsFuture<'static, AsyncFileResource> {
+        let resolution =
+            self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
         Box::pin(async move {
-            self.resource_async(&FileSystemConfig::new(uri.clone()))
-                .await
+            let resolution = resolution.await?;
+            let (fs, path, canonical_uri) = resolution.into_parts();
+            let location = FileLocation::new(fs.info().id().clone(), path)
+                .with_uri(canonical_uri);
+            Ok(AsyncFileResource::from_location(fs, location))
         })
     }
 

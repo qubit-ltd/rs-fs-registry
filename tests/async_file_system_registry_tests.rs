@@ -268,6 +268,44 @@ fn test_config_resolution_futures_outlive_registry() {
     }
 }
 
+/// Verifies URI convenience futures own the URI and provider snapshot.
+#[test]
+fn test_uri_resolution_futures_outlive_registry_and_uri() {
+    let (filesystem, resource) = {
+        let registry = AsyncFileSystemRegistry::default();
+        registry
+            .register(CapturingAsyncProvider {
+                descriptor: descriptor("async-capture"),
+                captured: Arc::new(Mutex::new(None)),
+                path: "resolved-after-drop",
+            })
+            .expect("provider should register");
+        let uri = FsUri::parse("async-capture:///resource")
+            .expect("URI should parse");
+
+        (
+            registry.file_system_uri_async(&uri),
+            registry.resource_uri_async(&uri),
+        )
+    };
+
+    assert_eq!(
+        "async-only",
+        ready(filesystem)
+            .expect("filesystem future should retain provider snapshot")
+            .info()
+            .id()
+            .as_str(),
+    );
+    assert_eq!(
+        "resolved-after-drop",
+        ready(resource)
+            .expect("resource future should retain provider snapshot")
+            .path()
+            .as_str(),
+    );
+}
+
 /// Verifies an empty async registry exposes consistent catalog state and
 /// low-level resolution errors.
 #[test]
