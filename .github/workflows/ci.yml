@@ -4,27 +4,15 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 
 permissions:
   contents: read
+  pull-requests: write
+  pages: write
+  id-token: write
 
 jobs:
-  checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.94.0
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-06-05
-          components: rustfmt, clippy
-      - run: cargo +nightly-2026-06-05 fmt -- --check --config-path .rs-ci/rustfmt.toml
-      - run: cargo +nightly-2026-06-05 clippy --all-targets --all-features -- -D warnings
-      - run: ./style-check.sh
-      - run: cargo +1.94.0 build --all-features
-      - run: cargo +1.94.0 test --all-features
-      - run: RUSTDOCFLAGS="-D warnings -D missing-docs" cargo +1.94.0 doc --no-deps --all-features
+  rust-ci:
+    uses: qubit-ltd/rs-ci/.github/workflows/rust-ci.yml@main
