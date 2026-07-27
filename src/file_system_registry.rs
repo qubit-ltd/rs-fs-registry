@@ -10,32 +10,16 @@
 use std::sync::Arc;
 
 use qubit_spi::{
-    ProviderDefinition,
-    ProviderDescriptor,
-    ProviderId,
-    ProviderRegistry,
-    ProviderSelection,
+    ProviderDefinition, ProviderDescriptor, ProviderId, ProviderRegistry, ProviderSelection,
     ResolvingServiceProvider,
 };
 
-use crate::internal::{
-    ensure_selection_matches_config,
-    selection_for_config,
-};
+use crate::internal::{ensure_selection_matches_config, selection_for_config};
 use crate::{
-    FileSystemConfig,
-    FileSystemProvider,
-    FileSystemResolution,
-    FileSystemRegistryError,
-    FileSystemRegistryResult,
-    FileSystemSpec,
+    FileSystemConfig, FileSystemProvider, FileSystemRegistryError, FileSystemRegistryResult,
+    FileSystemResolution, FileSystemSpec,
 };
-use qubit_fs::{
-    FileLocation,
-    FileResource,
-    FileSystem,
-    FsUri,
-};
+use qubit_fs::{FileResource, FileSystem, FsUri};
 
 /// Shared runtime registry of self-described filesystem providers.
 ///
@@ -155,9 +139,7 @@ impl FileSystemRegistry {
     /// Returns [`qubit_fs::FsError`] when the default selection matches no
     /// registered provider.
     #[inline(always)]
-    pub fn resolve(
-        &self,
-    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
+    pub fn resolve(&self) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
         self.providers
             .resolve()
             .map_err(FileSystemRegistryError::from)
@@ -206,8 +188,8 @@ impl FileSystemRegistry {
         &self,
         config: &FileSystemConfig,
     ) -> FileSystemRegistryResult<FileSystemResolution<dyn FileSystem>> {
-        let resolver = selection_for_config(config)
-            .and_then(|selection| self.resolve_selected(&selection));
+        let resolver =
+            selection_for_config(config).and_then(|selection| self.resolve_selected(&selection));
         resolver?
             .create_configured(config)
             .map_err(FileSystemRegistryError::from)
@@ -297,15 +279,10 @@ impl FileSystemRegistry {
     /// Returns [`qubit_fs::FsError`] when provider resolution or creation
     /// fails.
     #[inline]
-    pub fn resource(
-        &self,
-        config: &FileSystemConfig,
-    ) -> FileSystemRegistryResult<FileResource> {
+    pub fn resource(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileResource> {
         let resolution = self.resolve_config(config)?;
         let (fs, path, canonical_uri) = resolution.into_parts();
-        let location = FileLocation::new(fs.info().id().clone(), path)
-            .with_uri(canonical_uri);
-        Ok(FileResource::from_location(fs, location))
+        Ok(FileResource::from_resolved(fs, path, canonical_uri))
     }
 
     /// Creates a filesystem using empty options and no credential reference.
@@ -315,10 +292,7 @@ impl FileSystemRegistry {
     /// # Errors
     /// Returns a provider resolution or creation error.
     #[inline]
-    pub fn file_system_uri(
-        &self,
-        uri: &FsUri,
-    ) -> FileSystemRegistryResult<Arc<dyn FileSystem>> {
+    pub fn file_system_uri(&self, uri: &FsUri) -> FileSystemRegistryResult<Arc<dyn FileSystem>> {
         self.file_system(&FileSystemConfig::new(uri.clone()))
     }
 
