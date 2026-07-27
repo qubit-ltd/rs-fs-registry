@@ -20,6 +20,7 @@ use crate::{
 };
 use qubit_fs::{
     AsyncFileSystem,
+    FsError,
     FileSystem,
 };
 
@@ -29,6 +30,7 @@ pub struct FileSystemSpec;
 
 impl ServiceSpec for FileSystemSpec {
     type Config = FileSystemConfig;
+    type Error = FsError;
 }
 
 impl SyncServiceSpec for FileSystemSpec {

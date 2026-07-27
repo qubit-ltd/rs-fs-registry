@@ -20,23 +20,21 @@ use qubit_spi::{
 
 use crate::internal::{
     ensure_selection_matches_config,
-    map_provider_creation_error,
-    map_provider_resolution_error,
-    map_registration_error,
     selection_for_config,
 };
 use crate::{
     AsyncFileSystemProvider,
     FileSystemConfig,
     FileSystemResolution,
+    FileSystemRegistryError,
+    FileSystemRegistryResult,
     FileSystemSpec,
+    RegistryFuture,
 };
 use qubit_fs::{
     AsyncFileResource,
     AsyncFileSystem,
     FileLocation,
-    FsFuture,
-    FsResult,
     FsUri,
 };
 
@@ -61,13 +59,13 @@ impl AsyncFileSystemRegistry {
     /// Returns a conflict error without mutation when any provider selector is
     /// already registered.
     #[inline(always)]
-    pub fn register<P>(&self, provider: P) -> FsResult<()>
+    pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
         P: AsyncProviderDefinition<FileSystemSpec>,
     {
         self.providers
             .register(provider)
-            .map_err(map_registration_error)
+            .map_err(FileSystemRegistryError::from)
     }
 
     /// Registers an already shared asynchronous filesystem provider.
@@ -84,10 +82,10 @@ impl AsyncFileSystemRegistry {
     pub fn register_shared(
         &self,
         provider: Arc<AsyncFileSystemProvider>,
-    ) -> FsResult<()> {
+    ) -> FileSystemRegistryResult<()> {
         self.providers
             .register_shared(provider)
-            .map_err(map_registration_error)
+            .map_err(FileSystemRegistryError::from)
     }
 
     /// Returns the selection used by [`Self::resolve_default_config_async`].
@@ -128,10 +126,10 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_selected(
         &self,
         selection: &ProviderSelection,
-    ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
+    ) -> FileSystemRegistryResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
         self.providers
             .resolve_selected(selection)
-            .map_err(map_provider_resolution_error)
+            .map_err(FileSystemRegistryError::from)
     }
 
     /// Resolves the current default selection without creating a filesystem.
@@ -146,10 +144,10 @@ impl AsyncFileSystemRegistry {
     #[inline(always)]
     pub fn resolve(
         &self,
-    ) -> FsResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
+    ) -> FileSystemRegistryResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
         self.providers
             .resolve()
-            .map_err(map_provider_resolution_error)
+            .map_err(FileSystemRegistryError::from)
     }
 
     /// Returns provider descriptors in registration order.
@@ -205,17 +203,19 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_config_async<'a>(
         &self,
         config: &'a FileSystemConfig,
-    ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = selection_for_config(config).and_then(|selection| {
+    ) -> RegistryFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
+        let resolver: FileSystemRegistryResult<
+            AsyncResolvingServiceProvider<FileSystemSpec>,
+        > = selection_for_config(config).and_then(|selection| {
             self.providers
                 .resolve_selected(&selection)
-                .map_err(map_provider_resolution_error)
+                .map_err(FileSystemRegistryError::from)
         });
         Box::pin(async move {
             resolver?
                 .create_configured(config)
                 .await
-                .map_err(map_provider_creation_error)
+                .map_err(FileSystemRegistryError::from)
         })
     }
 
@@ -240,18 +240,20 @@ impl AsyncFileSystemRegistry {
         &self,
         selection: &ProviderSelection,
         config: &'a FileSystemConfig,
-    ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = ensure_selection_matches_config(selection, config)
+    ) -> RegistryFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
+        let resolver: FileSystemRegistryResult<
+            AsyncResolvingServiceProvider<FileSystemSpec>,
+        > = ensure_selection_matches_config(selection, config)
             .and_then(|()| {
                 self.providers
                     .resolve_selected(selection)
-                    .map_err(map_provider_resolution_error)
+                    .map_err(FileSystemRegistryError::from)
             });
         Box::pin(async move {
             resolver?
                 .create_configured(config)
                 .await
-                .map_err(map_provider_creation_error)
+                .map_err(FileSystemRegistryError::from)
         })
     }
 
@@ -275,7 +277,7 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_default_config_async<'a>(
         &self,
         config: &'a FileSystemConfig,
-    ) -> FsFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
+    ) -> RegistryFuture<'a, FileSystemResolution<dyn AsyncFileSystem>> {
         let selection = self.default_selection();
         self.resolve_selected_config_async(&selection, config)
     }
@@ -302,7 +304,7 @@ impl AsyncFileSystemRegistry {
     pub fn file_system_async<'a>(
         &self,
         config: &'a FileSystemConfig,
-    ) -> FsFuture<'a, Arc<dyn AsyncFileSystem>> {
+    ) -> RegistryFuture<'a, Arc<dyn AsyncFileSystem>> {
         let resolution = self.resolve_config_async(config);
         Box::pin(async move {
             let resolution = resolution.await?;
@@ -333,7 +335,7 @@ impl AsyncFileSystemRegistry {
     pub fn resource_async<'a>(
         &self,
         config: &'a FileSystemConfig,
-    ) -> FsFuture<'a, AsyncFileResource> {
+    ) -> RegistryFuture<'a, AsyncFileResource> {
         let resolution = self.resolve_config_async(config);
         Box::pin(async move {
             let resolution = resolution.await?;
@@ -365,7 +367,7 @@ impl AsyncFileSystemRegistry {
     pub fn file_system_uri_async(
         &self,
         uri: &FsUri,
-    ) -> FsFuture<'static, Arc<dyn AsyncFileSystem>> {
+    ) -> RegistryFuture<'static, Arc<dyn AsyncFileSystem>> {
         let resolution =
             self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
         Box::pin(async move {
@@ -396,7 +398,7 @@ impl AsyncFileSystemRegistry {
     pub fn resource_uri_async(
         &self,
         uri: &FsUri,
-    ) -> FsFuture<'static, AsyncFileResource> {
+    ) -> RegistryFuture<'static, AsyncFileResource> {
         let resolution =
             self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
         Box::pin(async move {
@@ -437,17 +439,19 @@ impl AsyncFileSystemRegistry {
     fn resolve_owned_config_async(
         &self,
         config: FileSystemConfig,
-    ) -> FsFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = selection_for_config(&config).and_then(|selection| {
+    ) -> RegistryFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
+        let resolver: FileSystemRegistryResult<
+            AsyncResolvingServiceProvider<FileSystemSpec>,
+        > = selection_for_config(&config).and_then(|selection| {
             self.providers
                 .resolve_selected(&selection)
-                .map_err(map_provider_resolution_error)
+                .map_err(FileSystemRegistryError::from)
         });
         Box::pin(async move {
             resolver?
                 .create_configured(&config)
                 .await
-                .map_err(map_provider_creation_error)
+                .map_err(FileSystemRegistryError::from)
         })
     }
 }

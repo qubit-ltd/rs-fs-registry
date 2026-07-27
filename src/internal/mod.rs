@@ -11,8 +11,5 @@ mod registry_support;
 
 pub(super) use registry_support::{
     ensure_selection_matches_config,
-    map_provider_creation_error,
-    map_provider_resolution_error,
-    map_registration_error,
     selection_for_config,
 };

@@ -6,12 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FsErrorKind,
-    FsUri,
-};
+use qubit_fs::FsUri;
 use qubit_fs_registry::{
     FileSystemConfig,
+    FileSystemRegistryError,
     FileSystemRegistry,
 };
 use qubit_spi::ProviderSelection;
@@ -31,5 +29,5 @@ fn test_explicit_selection_takes_precedence_over_invalid_uri_scheme() {
         .resolve_config(&config)
         .expect_err("explicit selection should be resolved before URI scheme");
 
-    assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
 }

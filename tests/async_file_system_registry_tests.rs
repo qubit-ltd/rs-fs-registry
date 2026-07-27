@@ -47,14 +47,13 @@ use qubit_fs_registry::{
     AsyncFileSystemRegistry,
     CredentialRef,
     FileSystemConfig,
+    FileSystemRegistryError,
     FileSystemResolution,
     FileSystemSpec,
-    map_provider_error,
 };
 use qubit_io::AsyncInput;
 use qubit_spi::error::{
-    ProviderCreationError,
-    ProviderError,
+    ProviderFailure,
     ProviderResolutionError,
 };
 use qubit_spi::{
@@ -159,7 +158,7 @@ impl AsyncServiceProvider<FileSystemSpec> for CapturingAsyncProvider {
         config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderError>,
+        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
     > {
         *self.captured.lock().expect("lock should succeed") =
             Some(config.clone());
@@ -193,15 +192,11 @@ impl AsyncServiceProvider<FileSystemSpec> for ErrorAsyncProvider {
         _config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderError>,
+        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
     > {
         let kind = self.kind;
         Box::pin(async move {
-            Err(map_provider_error(FsError::new(
-                kind,
-                FsOperation::Provider,
-                "provider creation failed",
-            )))
+            Err(provider_failure(kind, "provider creation failed"))
         })
     }
 }
@@ -218,15 +213,32 @@ impl AsyncServiceProvider<FileSystemSpec> for UnavailableAsyncProvider {
         _config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderError>,
+        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
     > {
         Box::pin(async {
-            Err(map_provider_error(FsError::new(
+            Err(provider_failure(
                 FsErrorKind::ProviderUnavailable,
-                FsOperation::Provider,
                 "provider is unavailable",
-            )))
+            ))
         })
+    }
+}
+
+/// Creates a typed provider failure that retains the original filesystem error.
+fn provider_failure(
+    kind: FsErrorKind,
+    message: &'static str,
+) -> ProviderFailure<FsError> {
+    let error = FsError::new(kind, FsOperation::Provider, message);
+    match kind {
+        FsErrorKind::ProviderUnavailable => ProviderFailure::unavailable(error),
+        FsErrorKind::UnsupportedOperation
+        | FsErrorKind::UnsupportedCapability
+        | FsErrorKind::RequirementNotMet => ProviderFailure::unsupported(error),
+        FsErrorKind::InvalidUri | FsErrorKind::InvalidPath | FsErrorKind::InvalidOptions => {
+            ProviderFailure::invalid_configuration(error)
+        }
+        _ => ProviderFailure::initialization_failed(error),
     }
 }
 
@@ -264,7 +276,7 @@ fn test_config_resolution_futures_outlive_registry() {
         ready(selected).expect_err("selected resolution should fail"),
         ready(default).expect_err("default resolution should fail"),
     ] {
-        assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+        assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
     }
 }
 
@@ -468,7 +480,7 @@ fn test_async_registry_rejects_conflicting_provider_selectors() {
         })
         .expect_err("duplicate selector should fail atomically");
 
-    assert_eq!(FsErrorKind::Conflict, error.kind());
+    assert!(matches!(error, FileSystemRegistryError::Registration(_)));
     assert_eq!(
         vec!["async-capture"],
         registry
@@ -561,8 +573,7 @@ fn test_async_registry_selected_configuration_rejects_conflicting_embedded_selec
         ready(registry.resolve_selected_config_async(&selection, &config))
             .expect_err("conflicting provider selections should be rejected");
 
-    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
-    assert!(error.to_string().contains("conflicts"));
+    assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
 }
 
 /// Verifies default selection rejects a conflicting configuration selection.
@@ -583,8 +594,7 @@ fn test_async_registry_default_configuration_rejects_conflicting_embedded_select
     let error = ready(registry.resolve_default_config_async(&config))
         .expect_err("conflicting provider selections should be rejected");
 
-    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
-    assert!(error.to_string().contains("conflicts"));
+    assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
 }
 
 #[test]
@@ -615,7 +625,7 @@ fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point
             .expect_err("URI resource resolution should fail"),
     ];
     for error in errors {
-        assert_eq!(FsErrorKind::ProviderUnavailable, error.kind());
+        assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
     }
 
     let invalid_selector_config = FileSystemConfig::new(
@@ -623,16 +633,7 @@ fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point
     );
     let error = ready(registry.resolve_config_async(&invalid_selector_config))
         .expect_err("the URI scheme should not form a provider selector");
-    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
-    assert!(
-        error
-            .source()
-            .and_then(|source| source
-                .downcast_ref::<qubit_spi::error::ProviderSelectionBuildError>(
-            ))
-            .is_some(),
-        "selection validation diagnostics should be retained",
-    );
+    assert!(matches!(error, FileSystemRegistryError::Selection(_)));
 }
 
 #[test]
@@ -666,23 +667,18 @@ fn test_async_registry_applies_each_creation_fallback_policy() {
         .with_fallback_policy(FallbackPolicy::Never);
     let error = ready(registry.resolve_selected_config_async(&never, &config))
         .expect_err("never policy should stop at the first error");
-    assert_eq!(FsErrorKind::Other, error.kind());
-    assert_eq!(Some("broken"), error.provider());
-    let creation = error
-        .source()
-        .and_then(|source| source.downcast_ref::<ProviderCreationError>())
-        .expect("creation aggregate should be retained");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("creation should preserve its typed aggregate");
+    };
     assert_eq!("broken", creation.decisive_attempt().provider_id().as_str());
 
     let absence = ProviderSelection::chain(["broken", "async-capture"])
         .unwrap()
         .with_fallback_policy(FallbackPolicy::OnAbsence);
-    assert_eq!(
-        FsErrorKind::Other,
-        ready(registry.resolve_selected_config_async(&absence, &config))
-            .unwrap_err()
-            .kind(),
-    );
+    assert!(matches!(
+        ready(registry.resolve_selected_config_async(&absence, &config)).unwrap_err(),
+        FileSystemRegistryError::Creation(_)
+    ));
 
     let unsupported =
         ProviderSelection::chain(["unsupported", "async-capture"])
@@ -734,12 +730,9 @@ fn test_async_registry_retains_ordered_failures_when_fallback_is_exhausted() {
         ready(registry.resolve_selected_config_async(&selection, &config))
             .expect_err("every admitted provider should fail");
 
-    assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
-    assert_eq!(Some("second-unsupported"), error.provider(),);
-    let creation = error
-        .source()
-        .and_then(|source| source.downcast_ref::<ProviderCreationError>())
-        .expect("aggregate source should be retained");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("creation should preserve its typed aggregate");
+    };
     assert_eq!(
         ["first-offline", "second-unsupported"],
         creation
@@ -787,11 +780,10 @@ fn test_async_registry_aggregates_failures_before_policy_stops_fallback() {
         ready(registry.resolve_selected_config_async(&selection, &config))
             .expect_err("non-absence failure should stop fallback");
 
-    assert_eq!(FsErrorKind::Other, error.kind());
-    let diagnostics = error
-        .source()
-        .expect("aggregate source should be retained")
-        .to_string();
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("creation should preserve its typed aggregate");
+    };
+    let diagnostics = creation.to_string();
     assert!(diagnostics.contains("stopped by fallback policy"));
     assert!(diagnostics.contains("first-offline"));
     assert!(diagnostics.contains("second-broken"));
@@ -843,17 +835,16 @@ fn test_async_registry_automatic_priority_aliases_and_deduplication_are_stable()
     let conflicting = descriptor("other")
         .with_aliases(["fast"])
         .expect("alias should parse");
-    assert_eq!(
-        FsErrorKind::Conflict,
+    assert!(matches!(
         registry
             .register(CapturingAsyncProvider {
                 descriptor: conflicting,
                 captured: Arc::new(Mutex::new(None)),
                 path: "other",
             })
-            .unwrap_err()
-            .kind(),
-    );
+            .unwrap_err(),
+        FileSystemRegistryError::Registration(_)
+    ));
     assert_eq!(
         vec!["low", "high"],
         registry
@@ -882,7 +873,7 @@ impl AsyncServiceProvider<FileSystemSpec> for PendingAsyncProvider {
         config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderError>,
+        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
     > {
         let entered = self.entered.clone();
         let release = self
