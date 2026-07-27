@@ -24,6 +24,7 @@ use qubit_fs::{FileResource, FileSystem, FsUri};
 /// Shared runtime registry of self-described filesystem providers.
 ///
 /// Clones observe the same registrations and default provider selection.
+#[derive(Debug)]
 pub struct FileSystemRegistry {
     /// Typed SPI registry shared by application and downstream consumers.
     providers: ProviderRegistry<FileSystemSpec>,
@@ -32,7 +33,7 @@ pub struct FileSystemRegistry {
 impl FileSystemRegistry {
     /// Registers an owned self-described filesystem provider at runtime.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `provider` - Provider definition moved into shared registry storage.
     ///
@@ -43,8 +44,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the provider ID or an alias conflicts
-    /// with an existing registration.
+    /// Returns [`FileSystemRegistryError::Registration`] when the provider ID
+    /// or an alias conflicts with an existing registration.
     #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
@@ -57,7 +58,7 @@ impl FileSystemRegistry {
 
     /// Registers an already shared self-described filesystem provider.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `provider` - Shared provider definition retained by the registry.
     ///
@@ -68,8 +69,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the provider ID or an alias conflicts
-    /// with an existing registration.
+    /// Returns [`FileSystemRegistryError::Registration`] when the provider ID
+    /// or an alias conflicts with an existing registration.
     #[inline(always)]
     pub fn register_shared(
         &self,
@@ -93,7 +94,7 @@ impl FileSystemRegistry {
 
     /// Replaces the selection used by future default resolutions.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `selection` - Validated provider target and creation fallback policy.
     #[inline(always)]
@@ -103,7 +104,7 @@ impl FileSystemRegistry {
 
     /// Resolves a provider selection without creating a filesystem.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `selection` - Provider target and creation fallback policy.
     ///
@@ -114,8 +115,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the selection matches no registered
-    /// provider.
+    /// Returns [`FileSystemRegistryError::Resolution`] when the selection
+    /// matches no registered provider.
     #[inline(always)]
     pub fn resolve_selected(
         &self,
@@ -136,8 +137,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the default selection matches no
-    /// registered provider.
+    /// Returns [`FileSystemRegistryError::Resolution`] when the default
+    /// selection matches no registered provider.
     #[inline(always)]
     pub fn resolve(&self) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
         self.providers
@@ -172,7 +173,7 @@ impl FileSystemRegistry {
     /// derives a named selection from the URI scheme. This does not use the
     /// registry default selection.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `config` - URI, optional selection, options, and credential reference.
     ///
@@ -182,8 +183,10 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the URI scheme cannot form a provider
-    /// selector, provider resolution fails, or creation fails.
+    /// Returns [`FileSystemRegistryError::Selection`] when the URI scheme
+    /// cannot form a provider selector, [`FileSystemRegistryError::Resolution`]
+    /// when no provider matches, or [`FileSystemRegistryError::Creation`] when
+    /// provider creation terminates without a filesystem.
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
@@ -208,8 +211,11 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the configuration selection conflicts
-    /// with `selection`, provider resolution fails, or creation fails.
+    /// Returns [`FileSystemRegistryError::SelectionConflict`] when the
+    /// configuration selection conflicts with `selection`,
+    /// [`FileSystemRegistryError::Resolution`] when no provider matches, or
+    /// [`FileSystemRegistryError::Creation`] when provider creation terminates
+    /// without a filesystem.
     #[inline]
     pub fn resolve_selected_config(
         &self,
@@ -234,9 +240,11 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when the configuration selection conflicts
-    /// with the default selection, default provider resolution fails, or
-    /// creation fails.
+    /// Returns [`FileSystemRegistryError::SelectionConflict`] when the
+    /// configuration selection conflicts with the default selection,
+    /// [`FileSystemRegistryError::Resolution`] when no provider matches, or
+    /// [`FileSystemRegistryError::Creation`] when provider creation terminates
+    /// without a filesystem.
     #[inline]
     pub fn resolve_default_config(
         &self,
@@ -250,8 +258,18 @@ impl FileSystemRegistry {
     ///
     /// Selection follows [`Self::resolve_config`].
     ///
+    /// # Parameters
+    ///
+    /// * `config` - Complete filesystem configuration used for selection and
+    ///   provider creation.
+    ///
+    /// # Returns
+    ///
+    /// Shared configured filesystem.
+    ///
     /// # Errors
-    /// Returns a provider resolution or creation error.
+    /// Returns the same [`FileSystemRegistryError`] variants as
+    /// [`Self::resolve_config`].
     pub fn file_system(
         &self,
         config: &FileSystemConfig,
@@ -265,7 +283,7 @@ impl FileSystemRegistry {
     ///
     /// Selection follows [`Self::resolve_config`].
     ///
-    /// # Arguments
+    /// # Parameters
     ///
     /// * `config` - URI, selection, options, and credential reference.
     ///
@@ -276,8 +294,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`qubit_fs::FsError`] when provider resolution or creation
-    /// fails.
+    /// Returns the same [`FileSystemRegistryError`] variants as
+    /// [`Self::resolve_config`].
     #[inline]
     pub fn resource(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileResource> {
         let resolution = self.resolve_config(config)?;
@@ -289,8 +307,17 @@ impl FileSystemRegistry {
     ///
     /// Uses a named selection derived from the URI scheme.
     ///
+    /// # Parameters
+    ///
+    /// * `uri` - Resource URI used for provider selection.
+    ///
+    /// # Returns
+    ///
+    /// Shared configured filesystem.
+    ///
     /// # Errors
-    /// Returns a provider resolution or creation error.
+    /// Returns the same [`FileSystemRegistryError`] variants as
+    /// [`Self::resolve_config`].
     #[inline]
     pub fn file_system_uri(&self, uri: &FsUri) -> FileSystemRegistryResult<Arc<dyn FileSystem>> {
         self.file_system(&FileSystemConfig::new(uri.clone()))
@@ -300,8 +327,17 @@ impl FileSystemRegistry {
     ///
     /// Uses a named selection derived from the URI scheme.
     ///
+    /// # Parameters
+    ///
+    /// * `uri` - Resource URI used for provider selection.
+    ///
+    /// # Returns
+    ///
+    /// Bound resource with its provider-decoded path and canonical URI.
+    ///
     /// # Errors
-    /// Returns a provider resolution, creation, or path-decoding error.
+    /// Returns the same [`FileSystemRegistryError`] variants as
+    /// [`Self::resolve_config`].
     #[inline]
     pub fn resource_uri(&self, uri: &FsUri) -> FileSystemRegistryResult<FileResource> {
         self.resource(&FileSystemConfig::new(uri.clone()))

@@ -9,17 +9,14 @@
 
 use qubit_spi::ProviderSelection;
 
-use crate::{
-    FileSystemConfig,
-    FileSystemRegistryError,
-    FileSystemRegistryResult,
-};
+use crate::{FileSystemConfig, FileSystemRegistryError, FileSystemRegistryResult};
 
 /// Returns the provider selection owned or implied by a configuration.
 ///
 /// # Errors
 ///
-/// Returns [`FsError`] when the URI scheme cannot form a provider selection.
+/// Returns [`FileSystemRegistryError::Selection`] when the URI scheme cannot
+/// form a provider selection.
 #[inline]
 pub(crate) fn selection_for_config(
     config: &FileSystemConfig,
@@ -35,7 +32,8 @@ pub(crate) fn selection_for_config(
 ///
 /// # Errors
 ///
-/// Returns [`FsError`] when the configuration embeds a different selection.
+/// Returns [`FileSystemRegistryError::SelectionConflict`] when the
+/// configuration embeds a different selection.
 #[inline]
 pub(crate) fn ensure_selection_matches_config(
     selection: &ProviderSelection,

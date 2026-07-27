@@ -25,6 +25,7 @@ use qubit_fs::{AsyncFileResource, AsyncFileSystem, FsUri};
 ///
 /// All catalog operations are synchronous. The returned futures only await
 /// provider creation after the underlying SPI Registry has released its lock.
+#[derive(Debug)]
 pub struct AsyncFileSystemRegistry {
     /// Typed SPI Registry shared by application and downstream consumers.
     providers: AsyncProviderRegistry<FileSystemSpec>,
