@@ -84,9 +84,14 @@ async fn open_async(
     registry: &AsyncFileSystemRegistry,
 ) -> FsResult<AsyncFileResource> {
     let uri = FsUri::parse("memory:///example.txt")?;
-    registry.resource_uri_async(&uri).await
+    registry.resource_uri_async(&uri).await.map_err(Into::into)
 }
 ```
+
+registry 方法返回 `FileSystemRegistryResult`，其
+`FileSystemRegistryError` 会保留注册、selection、解析及 provider 创建诊断信息。
+对于使用 `FsResult` 的应用程序，`FileSystemRegistryError` 可转换为 `FsError`；转换后会将
+typed registry error 保留为 source。
 
 ## 编写 provider
 
