@@ -219,38 +219,6 @@ impl AsyncFileSystemRegistry {
         })
     }
 
-    /// Resolves owned configuration using its explicit selection or URI scheme.
-    ///
-    /// # Parameters
-    ///
-    /// * `config` - Owned URI, optional selection, options, and credential
-    ///   reference retained by the returned future.
-    ///
-    /// # Returns
-    ///
-    /// A future independent of the registry and configuration caller borrows.
-    ///
-    /// # Errors
-    ///
-    /// The future returns an error when the URI scheme cannot form a provider
-    /// selector, provider resolution fails, or asynchronous creation fails.
-    fn resolve_owned_config_async(
-        &self,
-        config: FileSystemConfig,
-    ) -> FsFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
-        let resolver = selection_for_config(&config).and_then(|selection| {
-            self.providers
-                .resolve_selected(&selection)
-                .map_err(map_provider_resolution_error)
-        });
-        Box::pin(async move {
-            resolver?
-                .create_configured(&config)
-                .await
-                .map_err(map_provider_creation_error)
-        })
-    }
-
     /// Resolves configuration through a supplied selection.
     ///
     /// # Parameters
@@ -334,7 +302,11 @@ impl AsyncFileSystemRegistry {
         config: &'a FileSystemConfig,
     ) -> FsFuture<'a, Arc<dyn AsyncFileSystem>> {
         let resolution = self.resolve_config_async(config);
-        Box::pin(async move { Ok(resolution.await?.file_system().clone()) })
+        Box::pin(async move {
+            let resolution = resolution.await?;
+            let (file_system, _, _) = resolution.into_parts();
+            Ok(file_system)
+        })
     }
 
     /// Resolves complete configuration into a bound asynchronous resource.
@@ -390,7 +362,11 @@ impl AsyncFileSystemRegistry {
     ) -> FsFuture<'static, Arc<dyn AsyncFileSystem>> {
         let resolution =
             self.resolve_owned_config_async(FileSystemConfig::new(uri.clone()));
-        Box::pin(async move { Ok(resolution.await?.file_system().clone()) })
+        Box::pin(async move {
+            let resolution = resolution.await?;
+            let (file_system, _, _) = resolution.into_parts();
+            Ok(file_system)
+        })
     }
 
     /// Resolves URI-only configuration into a bound asynchronous resource.
@@ -433,6 +409,38 @@ impl AsyncFileSystemRegistry {
     #[must_use]
     pub fn provider_ids(&self) -> Vec<ProviderId> {
         self.providers.provider_ids()
+    }
+
+    /// Resolves owned configuration using its explicit selection or URI scheme.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Owned URI, optional selection, options, and credential
+    ///   reference retained by the returned future.
+    ///
+    /// # Returns
+    ///
+    /// A future independent of the registry and configuration caller borrows.
+    ///
+    /// # Errors
+    ///
+    /// The future returns an error when the URI scheme cannot form a provider
+    /// selector, provider resolution fails, or asynchronous creation fails.
+    fn resolve_owned_config_async(
+        &self,
+        config: FileSystemConfig,
+    ) -> FsFuture<'static, FileSystemResolution<dyn AsyncFileSystem>> {
+        let resolver = selection_for_config(&config).and_then(|selection| {
+            self.providers
+                .resolve_selected(&selection)
+                .map_err(map_provider_resolution_error)
+        });
+        Box::pin(async move {
+            resolver?
+                .create_configured(&config)
+                .await
+                .map_err(map_provider_creation_error)
+        })
     }
 }
 

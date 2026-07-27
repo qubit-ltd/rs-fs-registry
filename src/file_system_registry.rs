@@ -271,7 +271,9 @@ impl FileSystemRegistry {
         &self,
         config: &FileSystemConfig,
     ) -> FsResult<Arc<dyn FileSystem>> {
-        Ok(self.resolve_config(config)?.file_system().clone())
+        let resolution = self.resolve_config(config)?;
+        let (file_system, _, _) = resolution.into_parts();
+        Ok(file_system)
     }
 
     /// Resolves a complete configuration into a bound file resource.
