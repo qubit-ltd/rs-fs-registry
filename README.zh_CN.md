@@ -47,6 +47,10 @@ private key 或其他 secret 材料。
 自动选择会从 URI scheme 派生 provider selector。请使用 selector 兼容的 scheme（例如
 `file` 或 `s3`）；无法派生时，请提供显式 `ProviderSelection`。
 
+`ProviderSelection`、`ProviderId` 和 `ProviderDescriptor` 是 SPI 所有的类型，本 crate
+有意不重新导出它们。需要构造显式 selection 或使用底层 provider catalog API 的应用程序，
+还必须直接依赖 `qubit-spi`。
+
 同步和异步 registry 都公开 provider descriptor、catalog 大小、底层 selection 解析，
 以及 URI/config 便捷方法。`resolve_selected` 与 `resolve` 返回某一时刻的 provider
 snapshot。`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认

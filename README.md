@@ -52,6 +52,11 @@ Automatic selection derives a provider selector from the URI scheme. Use a
 selector-compatible scheme (for example, `file` or `s3`), or provide an
 explicit `ProviderSelection` when the scheme cannot form one.
 
+`ProviderSelection`, `ProviderId`, and `ProviderDescriptor` are SPI-owned types
+and are intentionally not re-exported by this crate. Applications that
+construct explicit selections or use the low-level provider catalog APIs must
+also add a direct `qubit-spi` dependency.
+
 Both synchronous and asynchronous registries expose provider descriptors,
 catalog size, low-level selection resolution, and URI/config convenience
 methods. `resolve_selected` and `resolve` return a point-in-time provider
