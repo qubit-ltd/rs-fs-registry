@@ -15,7 +15,7 @@ use std::process::Command;
 #[test]
 fn test_readme_rust_examples_compile() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output_dir = manifest_dir.join("target/markdown-doctest");
+    let output_dir = markdown_doctest_output_dir(&manifest_dir);
     recreate_dir(&output_dir);
 
     for (name, path) in [
@@ -30,6 +30,23 @@ fn test_readme_rust_examples_compile() {
         );
         compile_snippets(&manifest_dir, &output_dir, name, &snippets);
     }
+}
+
+/// Returns the current process's isolated Markdown example output directory.
+fn markdown_doctest_output_dir(manifest_dir: &Path) -> PathBuf {
+    manifest_dir.join(format!("target/markdown-doctest-{}", std::process::id()))
+}
+
+/// Verifies concurrent test processes receive independent temporary outputs.
+#[test]
+fn test_markdown_doctest_output_dir_scopes_to_current_process() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output_dir = markdown_doctest_output_dir(&manifest_dir);
+
+    assert!(
+        output_dir.ends_with(format!("markdown-doctest-{}", std::process::id())),
+        "the output directory should be isolated to the current test process",
+    );
 }
 
 /// Recreates a test-owned output directory.
