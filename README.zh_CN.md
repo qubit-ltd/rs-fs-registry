@@ -44,8 +44,20 @@ credential-like option key。`CredentialRef` 的值必须只包含 provider 能�
 profile 名称、环境变量名称或外部凭据 provider ID；不得包含 credential、token、password、
 private key 或其他 secret 材料。
 
-自动选择会从 URI scheme 派生 provider selector。请使用 selector 兼容的 scheme（例如
-`file` 或 `s3`）；无法派生时，请提供显式 `ProviderSelection`。
+### Selection 优先级
+
+下列规则对同步方法和带 `_async` 后缀的异步方法完全一致：
+
+| 方法族 | 使用的 selection（按优先级） |
+| --- | --- |
+| `resolve_config`、`file_system`、`resource` | config 内显式的 `ProviderSelection`；否则由 URI scheme 构造 `ProviderSelection::named`。 |
+| `file_system_uri`、`resource_uri` | 由 URI scheme 构造 `ProviderSelection::named`。 |
+| `resolve_selected_config` | 调用者提供的 selection；如果 config 内嵌不同的 selection，则返回错误。 |
+| `resolve_default_config` | registry 当前的默认 selection；如果 config 内嵌不同的 selection，则返回错误。 |
+| `resolve` | registry 当前的默认 selection。`ProviderSelection::auto()` 使用 SPI registry 确定性的 provider 优先级。 |
+
+请使用 selector 兼容的 URI scheme（例如 `file` 或 `s3`）；无法派生时，请提供显式
+`ProviderSelection`。特别是，`resolve_config` 不会回退到 registry 的默认 selection。
 
 `ProviderSelection`、`ProviderId` 和 `ProviderDescriptor` 是 SPI 所有的类型，本 crate
 有意不重新导出它们。需要构造显式 selection 或使用底层 provider catalog API 的应用程序，
@@ -87,8 +99,9 @@ cargo add qubit-spi
 实现 `ProviderMetadata` 和 `ServiceProvider<FileSystemSpec>`，并从 provider 的配置化
 创建路径返回 `FileSystemResolution`。应用程序通过 `qubit-fs-registry` 使用 provider；
 provider 则使用 SPI 契约公开 metadata、selection identity 与 resolution。
-异步 provider 需要实现 `ProviderMetadata` 和 `AsyncServiceProvider<FileSystemSpec>`；registry
-通过 `AsyncFileSystemProvider` 约束接收它们。
+异步 provider 需要实现 `ProviderMetadata` 和 `AsyncServiceProvider<FileSystemSpec>`。
+`AsyncFileSystemProvider` 是用于共享注册的 trait object alias，例如
+`Arc<AsyncFileSystemProvider>`。
 
 ## 测试
 

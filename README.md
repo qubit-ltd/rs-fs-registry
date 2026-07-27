@@ -48,9 +48,22 @@ as profile names, environment-variable names, or external credential-provider
 IDs. They must not contain credentials, tokens, passwords, private keys, or
 other secret material.
 
-Automatic selection derives a provider selector from the URI scheme. Use a
-selector-compatible scheme (for example, `file` or `s3`), or provide an
-explicit `ProviderSelection` when the scheme cannot form one.
+### Selection precedence
+
+The following rules apply equally to synchronous methods and their `_async`
+counterparts:
+
+| Method family | Selection used, in precedence order |
+| --- | --- |
+| `resolve_config`, `file_system`, `resource` | The configuration's explicit `ProviderSelection`; otherwise `ProviderSelection::named` from its URI scheme. |
+| `file_system_uri`, `resource_uri` | `ProviderSelection::named` from the URI scheme. |
+| `resolve_selected_config` | The supplied selection; an embedded, different configuration selection is rejected. |
+| `resolve_default_config` | The registry's current default selection; an embedded, different configuration selection is rejected. |
+| `resolve` | The registry's current default selection. `ProviderSelection::auto()` uses the SPI registry's deterministic provider priority. |
+
+Use a selector-compatible URI scheme (for example, `file` or `s3`), or supply
+an explicit `ProviderSelection` when the scheme cannot form one. In
+particular, `resolve_config` does not fall back to the registry default.
 
 `ProviderSelection`, `ProviderId`, and `ProviderDescriptor` are SPI-owned types
 and are intentionally not re-exported by this crate. Applications that
@@ -99,8 +112,9 @@ return `FileSystemResolution` from the provider's configured creation path.
 Applications consume the provider through `qubit-fs-registry`; providers use
 the SPI contract to expose their metadata, selection identity, and resolution.
 Asynchronous providers implement `ProviderMetadata` and
-`AsyncServiceProvider<FileSystemSpec>`; the registry accepts them through its
-`AsyncFileSystemProvider` bound.
+`AsyncServiceProvider<FileSystemSpec>`. `AsyncFileSystemProvider` is the
+corresponding trait object alias for shared registrations, such as
+`Arc<AsyncFileSystemProvider>`.
 
 ## Testing
 
