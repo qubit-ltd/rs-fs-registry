@@ -7,19 +7,12 @@
 // =============================================================================
 //! Complete provider configuration used by filesystem registries.
 
-use std::fmt::{
-    Debug,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;
-use qubit_fs::{
-    FsUri,
-    UserMetadata,
-};
+use qubit_fs::{FsUri, UserMetadata};
 
 /// Complete non-secret configuration passed through registry and provider SPI.
 #[derive(Clone, Eq, PartialEq)]
@@ -154,8 +147,7 @@ impl FileSystemConfig {
 
 impl Debug for FileSystemConfig {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        let option_keys: Vec<_> =
-            self.options.iter().map(|(key, _)| key).collect();
+        let option_keys: Vec<_> = self.options.iter().map(|(key, _)| key).collect();
         formatter
             .debug_struct("FileSystemConfig")
             .field("uri", &self.uri)

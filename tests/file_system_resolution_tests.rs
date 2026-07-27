@@ -9,20 +9,9 @@
 use std::sync::Arc;
 
 use qubit_fs::{
-    FileMetadata,
-    FileSystem,
-    FileSystemCapabilities,
-    FileSystemId,
-    FileSystemInfo,
-    FileSystemLimits,
-    FileSystemProperties,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsPath,
-    FsResult,
-    FsUri,
-    PathSemantics,
+    FileMetadata, FileSystem, FileSystemCapabilities, FileSystemId, FileSystemInfo,
+    FileSystemLimits, FileSystemProperties, FsError, FsErrorKind, FsOperation, FsPath, FsResult,
+    FsUri, PathSemantics,
 };
 use qubit_fs_registry::FileSystemResolution;
 
@@ -32,10 +21,8 @@ fn test_resolution_preserves_decoded_path_and_canonical_uri() {
     let filesystem: Arc<dyn FileSystem> = Arc::new(ResolutionFileSystem);
     let resolution = FileSystemResolution::new(
         filesystem,
-        FsPath::parse_literal("bucket/a%252Fb")
-            .expect("the provider path should parse"),
-        FsUri::parse("mock:///bucket/a%25252Fb")
-            .expect("the canonical URI should parse"),
+        FsPath::parse_literal("bucket/a%252Fb").expect("the provider path should parse"),
+        FsUri::parse("mock:///bucket/a%25252Fb").expect("the canonical URI should parse"),
     );
 
     assert_eq!("bucket/a%252Fb", resolution.path().as_str());
@@ -63,8 +50,7 @@ struct ResolutionFileSystem;
 
 impl FileSystemProperties for ResolutionFileSystem {
     fn info(&self) -> &FileSystemInfo {
-        static INFO: std::sync::OnceLock<FileSystemInfo> =
-            std::sync::OnceLock::new();
+        static INFO: std::sync::OnceLock<FileSystemInfo> = std::sync::OnceLock::new();
         INFO.get_or_init(|| {
             FileSystemInfo::new(
                 FileSystemId::new("resolution-test")

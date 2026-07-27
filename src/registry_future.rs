@@ -7,10 +7,7 @@
 // =============================================================================
 //! Future aliases for asynchronous filesystem registry operations.
 
-use std::{
-    future::Future,
-    pin::Pin,
-};
+use std::{future::Future, pin::Pin};
 
 use crate::FileSystemRegistryError;
 
@@ -18,4 +15,5 @@ use crate::FileSystemRegistryError;
 pub type FileSystemRegistryResult<T> = Result<T, FileSystemRegistryError>;
 
 /// Sendable future returned by an asynchronous filesystem registry operation.
-pub type RegistryFuture<'a, T> = Pin<Box<dyn Future<Output = FileSystemRegistryResult<T>> + Send + 'a>>;
+pub type RegistryFuture<'a, T> =
+    Pin<Box<dyn Future<Output = FileSystemRegistryResult<T>> + Send + 'a>>;
