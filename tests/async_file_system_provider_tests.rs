@@ -16,13 +16,13 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
 };
-use qubit_fs_registry::map_async_provider_error;
+use qubit_fs_registry::map_provider_error;
 use qubit_spi::error::ProviderErrorKind;
 
 /// Verifies async provider failures retain filesystem classifications.
 #[test]
-fn test_async_provider_error_mapping_preserves_classification_and_source() {
-    let error = map_async_provider_error(FsError::new(
+fn test_provider_error_mapping_preserves_classification_and_source() {
+    let error = map_provider_error(FsError::new(
         FsErrorKind::ProviderUnavailable,
         FsOperation::Provider,
         "test provider failure",
@@ -46,7 +46,7 @@ fn test_async_provider_error_mapping_preserves_classification_and_source() {
 }
 
 #[test]
-fn test_async_provider_error_mapping_classifies_every_filesystem_failure() {
+fn test_provider_error_mapping_classifies_every_filesystem_failure() {
     let cases = [
         (
             FsErrorKind::UnsupportedOperation,
@@ -76,7 +76,7 @@ fn test_async_provider_error_mapping_classifies_every_filesystem_failure() {
     ];
 
     for (filesystem_kind, provider_kind) in cases {
-        let error = map_async_provider_error(FsError::new(
+        let error = map_provider_error(FsError::new(
             filesystem_kind,
             FsOperation::Provider,
             "classified test failure",

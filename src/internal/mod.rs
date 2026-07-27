@@ -5,11 +5,14 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+//! Private helpers shared by synchronous and asynchronous registries.
 
-mod async_file_system_provider_tests;
-mod async_file_system_registry_tests;
-mod credential_ref_tests;
-mod file_system_config_tests;
-mod file_system_registry_tests;
-mod file_system_resolution_tests;
-mod internal;
+mod registry_support;
+
+pub(super) use registry_support::{
+    ensure_selection_matches_config,
+    map_provider_creation_error,
+    map_provider_resolution_error,
+    map_registration_error,
+    selection_for_config,
+};

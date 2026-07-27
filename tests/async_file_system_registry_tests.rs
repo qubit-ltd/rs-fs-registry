@@ -49,7 +49,7 @@ use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemResolution,
     FileSystemSpec,
-    map_async_provider_error,
+    map_provider_error,
 };
 use qubit_io::AsyncInput;
 use qubit_spi::error::{
@@ -197,7 +197,7 @@ impl AsyncServiceProvider<FileSystemSpec> for ErrorAsyncProvider {
     > {
         let kind = self.kind;
         Box::pin(async move {
-            Err(map_async_provider_error(FsError::new(
+            Err(map_provider_error(FsError::new(
                 kind,
                 FsOperation::Provider,
                 "provider creation failed",
@@ -221,7 +221,7 @@ impl AsyncServiceProvider<FileSystemSpec> for UnavailableAsyncProvider {
         Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderError>,
     > {
         Box::pin(async {
-            Err(map_async_provider_error(FsError::new(
+            Err(map_provider_error(FsError::new(
                 FsErrorKind::ProviderUnavailable,
                 FsOperation::Provider,
                 "provider is unavailable",
@@ -486,7 +486,7 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
         registry.default_selection().target(),
         ProviderSelectionTargetRef::Auto,
     ));
-    let provider: Arc<dyn AsyncFileSystemProvider> =
+    let provider: Arc<AsyncFileSystemProvider> =
         Arc::new(CapturingAsyncProvider {
             descriptor: descriptor("async-capture"),
             captured: Arc::new(Mutex::new(None)),

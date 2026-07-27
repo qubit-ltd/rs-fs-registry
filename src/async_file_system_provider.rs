@@ -5,7 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Asynchronous filesystem provider contract and error classification.
+//! Asynchronous filesystem provider trait object alias and error mapping.
 
 use qubit_spi::AsyncProviderDefinition;
 use qubit_spi::error::{
@@ -20,30 +20,26 @@ use qubit_fs::{
 
 use crate::FileSystemSpec;
 
-/// Metadata-bearing asynchronous filesystem provider.
-pub trait AsyncFileSystemProvider:
-    AsyncProviderDefinition<FileSystemSpec>
-{
-}
-
-impl<T> AsyncFileSystemProvider for T where
-    T: AsyncProviderDefinition<FileSystemSpec> + ?Sized
-{
-}
+/// Metadata-bearing asynchronous filesystem provider trait object type.
+///
+/// Implementations expose filesystem creation behavior and the stable
+/// descriptor used when registering them in an
+/// [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry).
+pub type AsyncFileSystemProvider = dyn AsyncProviderDefinition<FileSystemSpec>;
 
 /// Converts a filesystem creation failure into an SPI leaf provider failure.
 ///
 /// # Arguments
 ///
-/// * `error` - Filesystem error returned while creating an async filesystem.
+/// * `error` - Filesystem error returned while creating a filesystem.
 ///
 /// # Returns
 ///
 /// A classified provider error retaining the original filesystem error as its
 /// source.
 #[must_use]
-pub fn map_async_provider_error(error: FsError) -> ProviderError {
-    let reason = format!("asynchronous filesystem provider failed: {error}");
+pub fn map_provider_error(error: FsError) -> ProviderError {
+    let reason = format!("filesystem provider failed: {error}");
     let kind = match error.kind() {
         FsErrorKind::ProviderUnavailable => ProviderErrorKind::Unavailable,
         FsErrorKind::UnsupportedOperation

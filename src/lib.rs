@@ -46,10 +46,11 @@ mod file_system_provider;
 mod file_system_registry;
 mod file_system_resolution;
 mod file_system_spec;
+mod internal;
 
 pub use async_file_system_provider::{
     AsyncFileSystemProvider,
-    map_async_provider_error,
+    map_provider_error,
 };
 pub use async_file_system_registry::AsyncFileSystemRegistry;
 pub use credential_ref::CredentialRef;

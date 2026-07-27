@@ -18,7 +18,7 @@ use qubit_spi::{
     ProviderSelection,
 };
 
-use super::file_system_registry::{
+use crate::internal::{
     ensure_selection_matches_config,
     map_provider_creation_error,
     map_provider_resolution_error,
@@ -63,7 +63,7 @@ impl AsyncFileSystemRegistry {
     #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FsResult<()>
     where
-        P: AsyncFileSystemProvider,
+        P: AsyncProviderDefinition<FileSystemSpec>,
     {
         self.providers
             .register(provider)
@@ -83,10 +83,8 @@ impl AsyncFileSystemRegistry {
     #[inline(always)]
     pub fn register_shared(
         &self,
-        provider: Arc<dyn AsyncFileSystemProvider>,
+        provider: Arc<AsyncFileSystemProvider>,
     ) -> FsResult<()> {
-        let provider: Arc<dyn AsyncProviderDefinition<FileSystemSpec>> =
-            provider;
         self.providers
             .register_shared(provider)
             .map_err(map_registration_error)
@@ -189,6 +187,8 @@ impl AsyncFileSystemRegistry {
 
     /// Resolves configuration using its explicit selection or URI scheme.
     ///
+    /// This does not use the registry default selection.
+    ///
     /// # Parameters
     ///
     /// * `config` - URI, optional selection, options, and credential reference.
@@ -282,6 +282,8 @@ impl AsyncFileSystemRegistry {
 
     /// Creates an asynchronous filesystem from complete configuration.
     ///
+    /// Selection follows [`Self::resolve_config_async`].
+    ///
     /// # Parameters
     ///
     /// * `config` - Complete configuration used to select and create a
@@ -310,6 +312,8 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves complete configuration into a bound asynchronous resource.
+    ///
+    /// Selection follows [`Self::resolve_config_async`].
     ///
     /// # Parameters
     ///
@@ -342,6 +346,8 @@ impl AsyncFileSystemRegistry {
 
     /// Creates an asynchronous filesystem from URI-only configuration.
     ///
+    /// Uses a named selection derived from the URI scheme.
+    ///
     /// # Parameters
     ///
     /// * `uri` - Resource URI used with empty options and no credentials.
@@ -370,6 +376,8 @@ impl AsyncFileSystemRegistry {
     }
 
     /// Resolves URI-only configuration into a bound asynchronous resource.
+    ///
+    /// Uses a named selection derived from the URI scheme.
     ///
     /// # Parameters
     ///

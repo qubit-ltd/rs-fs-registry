@@ -9,13 +9,6 @@
 
 use std::sync::Arc;
 
-use qubit_spi::error::{
-    ProviderCreationError,
-    ProviderErrorKind,
-    ProviderResolutionError,
-    ProviderSelectionBuildError,
-    RegistrationError,
-};
 use qubit_spi::{
     ProviderDefinition,
     ProviderDescriptor,
@@ -25,19 +18,23 @@ use qubit_spi::{
     ResolvingServiceProvider,
 };
 
-use crate::FileSystemResolution;
+use crate::internal::{
+    ensure_selection_matches_config,
+    map_provider_creation_error,
+    map_provider_resolution_error,
+    map_registration_error,
+    selection_for_config,
+};
 use crate::{
     FileSystemConfig,
     FileSystemProvider,
+    FileSystemResolution,
     FileSystemSpec,
 };
 use qubit_fs::{
     FileLocation,
     FileResource,
     FileSystem,
-    FsError,
-    FsErrorKind,
-    FsOperation,
     FsResult,
     FsUri,
 };
@@ -64,8 +61,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the provider ID or an alias conflicts with an
-    /// existing registration.
+    /// Returns [`qubit_fs::FsError`] when the provider ID or an alias conflicts
+    /// with an existing registration.
     #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FsResult<()>
     where
@@ -89,8 +86,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the provider ID or an alias conflicts with an
-    /// existing registration.
+    /// Returns [`qubit_fs::FsError`] when the provider ID or an alias conflicts
+    /// with an existing registration.
     #[inline(always)]
     pub fn register_shared(
         &self,
@@ -135,7 +132,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the selection matches no registered provider.
+    /// Returns [`qubit_fs::FsError`] when the selection matches no registered
+    /// provider.
     #[inline(always)]
     pub fn resolve_selected(
         &self,
@@ -156,8 +154,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the default selection matches no registered
-    /// provider.
+    /// Returns [`qubit_fs::FsError`] when the default selection matches no
+    /// registered provider.
     #[inline(always)]
     pub fn resolve(
         &self,
@@ -190,6 +188,10 @@ impl FileSystemRegistry {
 
     /// Resolves a complete configuration into a provider-decoded result.
     ///
+    /// Uses the configuration's explicit selection when present; otherwise it
+    /// derives a named selection from the URI scheme. This does not use the
+    /// registry default selection.
+    ///
     /// # Arguments
     ///
     /// * `config` - URI, optional selection, options, and credential reference.
@@ -200,8 +202,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the URI scheme cannot form a provider selector,
-    /// provider resolution fails, or creation fails.
+    /// Returns [`qubit_fs::FsError`] when the URI scheme cannot form a provider
+    /// selector, provider resolution fails, or creation fails.
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
@@ -226,8 +228,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the configuration selection conflicts with
-    /// `selection`, provider resolution fails, or creation fails.
+    /// Returns [`qubit_fs::FsError`] when the configuration selection conflicts
+    /// with `selection`, provider resolution fails, or creation fails.
     #[inline]
     pub fn resolve_selected_config(
         &self,
@@ -252,8 +254,9 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when the configuration selection conflicts with the
-    /// default selection, default provider resolution fails, or creation fails.
+    /// Returns [`qubit_fs::FsError`] when the configuration selection conflicts
+    /// with the default selection, default provider resolution fails, or
+    /// creation fails.
     #[inline]
     pub fn resolve_default_config(
         &self,
@@ -264,6 +267,8 @@ impl FileSystemRegistry {
     }
 
     /// Creates a filesystem from the complete configuration.
+    ///
+    /// Selection follows [`Self::resolve_config`].
     ///
     /// # Errors
     /// Returns a provider resolution or creation error.
@@ -278,6 +283,8 @@ impl FileSystemRegistry {
 
     /// Resolves a complete configuration into a bound file resource.
     ///
+    /// Selection follows [`Self::resolve_config`].
+    ///
     /// # Arguments
     ///
     /// * `config` - URI, selection, options, and credential reference.
@@ -289,7 +296,8 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`FsError`] when provider resolution or creation fails.
+    /// Returns [`qubit_fs::FsError`] when provider resolution or creation
+    /// fails.
     #[inline]
     pub fn resource(
         &self,
@@ -304,6 +312,8 @@ impl FileSystemRegistry {
 
     /// Creates a filesystem using empty options and no credential reference.
     ///
+    /// Uses a named selection derived from the URI scheme.
+    ///
     /// # Errors
     /// Returns a provider resolution or creation error.
     #[inline]
@@ -315,6 +325,8 @@ impl FileSystemRegistry {
     }
 
     /// Resolves a URI-only convenience configuration into a resource.
+    ///
+    /// Uses a named selection derived from the URI scheme.
     ///
     /// # Errors
     /// Returns a provider resolution, creation, or path-decoding error.
@@ -362,137 +374,4 @@ impl Default for FileSystemRegistry {
             providers: ProviderRegistry::default(),
         }
     }
-}
-
-/// Returns the provider selection owned or implied by a configuration.
-///
-/// # Errors
-///
-/// Returns [`FsError`] when the URI scheme cannot form a provider selection.
-#[inline]
-pub(super) fn selection_for_config(
-    config: &FileSystemConfig,
-) -> FsResult<ProviderSelection> {
-    match config.selection() {
-        Some(selection) => Ok(selection.clone()),
-        None => ProviderSelection::named(config.uri().scheme().as_str())
-            .map_err(map_provider_selection_build_error),
-    }
-}
-
-/// Ensures an external selection agrees with a configuration selection.
-///
-/// # Errors
-///
-/// Returns [`FsError`] when the configuration embeds a different selection.
-#[inline]
-pub(super) fn ensure_selection_matches_config(
-    selection: &ProviderSelection,
-    config: &FileSystemConfig,
-) -> FsResult<()> {
-    if let Some(config_selection) = config.selection()
-        && config_selection != selection
-    {
-        return Err(FsError::new(
-            FsErrorKind::InvalidOptions,
-            FsOperation::Provider,
-            "configured provider selection conflicts with requested selection",
-        ));
-    }
-    Ok(())
-}
-
-/// Maps an SPI registration error into the filesystem error model.
-///
-/// # Arguments
-///
-/// * `error` - SPI selector-conflict diagnostic.
-///
-/// # Returns
-///
-/// A filesystem provider error preserving the original source.
-#[inline]
-pub(super) fn map_registration_error(error: RegistrationError) -> FsError {
-    let message = error.to_string();
-    FsError::with_source(
-        FsErrorKind::Conflict,
-        FsOperation::Provider,
-        &message,
-        error,
-    )
-}
-
-/// Maps an SPI selection error into a filesystem provider error.
-///
-/// # Arguments
-///
-/// * `error` - Failure produced before any provider creates a service.
-///
-/// # Returns
-///
-/// A provider-unavailable filesystem error preserving the selection failure.
-#[inline]
-pub(super) fn map_provider_resolution_error(
-    error: ProviderResolutionError,
-) -> FsError {
-    let message = error.to_string();
-    FsError::with_source(
-        FsErrorKind::ProviderUnavailable,
-        FsOperation::Provider,
-        &message,
-        error,
-    )
-}
-
-/// Maps invalid provider-selection input into the filesystem error model.
-///
-/// # Arguments
-///
-/// * `error` - Failure produced while validating a provider selector.
-///
-/// # Returns
-///
-/// An invalid-options filesystem error preserving the validation failure.
-#[inline]
-pub(super) fn map_provider_selection_build_error(
-    error: ProviderSelectionBuildError,
-) -> FsError {
-    let message = error.to_string();
-    FsError::with_source(
-        FsErrorKind::InvalidOptions,
-        FsOperation::Provider,
-        &message,
-        error,
-    )
-}
-
-/// Maps an SPI provider-creation error into the filesystem error model.
-///
-/// # Arguments
-///
-/// * `error` - Direct or aggregate provider creation failure.
-///
-/// # Returns
-///
-/// A filesystem provider error classified from the retained SPI diagnostics.
-#[inline]
-pub(super) fn map_provider_creation_error(
-    error: ProviderCreationError,
-) -> FsError {
-    let decisive_attempt = error.decisive_attempt();
-    let provider = decisive_attempt.provider_id().clone();
-    let kind = match decisive_attempt.error().kind() {
-        ProviderErrorKind::Unsupported => FsErrorKind::RequirementNotMet,
-        ProviderErrorKind::Unavailable => FsErrorKind::ProviderUnavailable,
-        ProviderErrorKind::InvalidConfiguration => FsErrorKind::InvalidOptions,
-        ProviderErrorKind::InitializationFailed => FsErrorKind::Other,
-        _ => FsErrorKind::Other,
-    };
-    FsError::with_source(
-        kind,
-        FsOperation::Provider,
-        "filesystem provider creation failed",
-        error,
-    )
-    .with_provider(provider)
 }
