@@ -43,15 +43,45 @@ fn test_credential_reference_variants_are_comparable() {
 /// Verifies debug output never exposes credential reference payloads.
 #[test]
 fn test_credential_reference_debug_redacts_payloads() {
-    let reference = CredentialRef::Environment {
-        access_key_env: "PRODUCTION_ACCESS_KEY".to_owned(),
-        secret_key_env: "PRODUCTION_SECRET_KEY".to_owned(),
-    };
+    let cases = [
+        (
+            CredentialRef::DefaultChain,
+            "CredentialRef::DefaultChain",
+            &[] as &[&str],
+        ),
+        (
+            CredentialRef::Profile {
+                name: "production-profile".to_owned(),
+            },
+            "CredentialRef::Profile(<redacted>)",
+            &["production-profile"] as &[&str],
+        ),
+        (
+            CredentialRef::Environment {
+                access_key_env: "PRODUCTION_ACCESS_KEY".to_owned(),
+                secret_key_env: "PRODUCTION_SECRET_KEY".to_owned(),
+            },
+            concat!(
+                "CredentialRef::Environment { ",
+                "access_key_env: <redacted>, ",
+                "secret_key_env: <redacted> }",
+            ),
+            &["PRODUCTION_ACCESS_KEY", "PRODUCTION_SECRET_KEY"] as &[&str],
+        ),
+        (
+            CredentialRef::Provider {
+                id: "production-vault".to_owned(),
+            },
+            "CredentialRef::Provider(<redacted>)",
+            &["production-vault"] as &[&str],
+        ),
+    ];
 
-    let debug = format!("{reference:?}");
-
-    assert!(debug.contains("Environment"));
-    assert!(debug.contains("<redacted>"));
-    assert!(!debug.contains("PRODUCTION_ACCESS_KEY"));
-    assert!(!debug.contains("PRODUCTION_SECRET_KEY"));
+    for (reference, expected, payloads) in cases {
+        let debug = format!("{reference:?}");
+        assert_eq!(debug, expected);
+        for payload in payloads {
+            assert!(!debug.contains(payload));
+        }
+    }
 }
