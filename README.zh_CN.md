@@ -23,7 +23,7 @@ cargo add qubit-fs-local --features registry
 在应用组装阶段注册后端 crate。没有显式 selection 时，provider 按 URI scheme 选择。
 
 ```rust
-use qubit_fs::{FsResult, FsUri};
+use qubit_fs::{ConnectionUri, FsResult};
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
@@ -31,14 +31,14 @@ fn open_local_file() -> FsResult<()> {
     let registry = FileSystemRegistry::default();
     registry.register(LocalFileSystemProvider)?;
 
-    let config = FileSystemConfig::new(FsUri::parse("file:///tmp/example.txt")?);
-    let resource = registry.resource(&config)?;
-    println!("{}", resource.path());
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
+    let resolution = registry.resolve_config(&config)?;
+    println!("{}", resolution.path());
     Ok(())
 }
 ```
 
-`FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `UserMetadata` 和可选
+`FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `NonSensitiveMetadata` 和可选
 `CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；构造时会拒绝
 credential-like option key。`CredentialRef` 的值必须只包含 provider 能识别的引用，例如
 profile 名称、环境变量名称或外部凭据 provider ID；不得包含 credential、token、password、
@@ -50,11 +50,10 @@ private key 或其他 secret 材料。
 
 | 方法族 | 使用的 selection（按优先级） |
 | --- | --- |
-| `resolve_config`、`file_system`、`resource` | config 内显式的 `ProviderSelection`；否则由 URI scheme 构造 `ProviderSelection::named`。 |
-| `file_system_uri`、`resource_uri` | 由 URI scheme 构造 `ProviderSelection::named`。 |
+| `resolve_config` | config 内显式的 `ProviderSelection`；否则由 URI scheme 构造 `ProviderSelection::named`。 |
+| `resolve_uri` | 由 URI scheme 构造 `ProviderSelection::named`。 |
 | `resolve_selected_config` | 调用者提供的 selection；如果 config 内嵌不同的 selection，则返回错误。 |
 | `resolve_default_config` | registry 当前的默认 selection；如果 config 内嵌不同的 selection，则返回错误。 |
-| `resolve` | registry 当前的默认 selection。`ProviderSelection::auto()` 使用 SPI registry 确定性的 provider 优先级。 |
 
 请使用 selector 兼容的 URI scheme（例如 `file` 或 `s3`）；无法派生时，请提供显式
 `ProviderSelection`。特别是，`resolve_config` 不会回退到 registry 的默认 selection。
@@ -63,10 +62,9 @@ private key 或其他 secret 材料。
 有意不重新导出它们。需要构造显式 selection 或使用底层 provider catalog API 的应用程序，
 还必须直接依赖 `qubit-spi`。
 
-同步和异步 registry 都公开 provider descriptor、catalog 大小、底层 selection 解析，
-以及 URI/config 便捷方法。`resolve_selected` 与 `resolve` 返回某一时刻的 provider
-snapshot。`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
-selection 创建文件系统；异步版本使用 `_async` 后缀。Catalog ID 保留
+同步和异步 registry 都公开 provider descriptor、catalog 大小与 URI/config 便捷方法。
+`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
+selection 创建 concrete resolution；异步配置方法消费 owned config。Catalog ID 保留
 `ProviderId` 强类型。当 config 内嵌的 selection 与显式 selection 或当前默认 selection
 冲突时，这两个方法会返回错误；由 config 自身决定 selection 时请使用 `resolve_config`。
 
@@ -77,14 +75,16 @@ future 自行持有 URI 配置和 provider snapshot，因此可以在传入的 r
 作用域后继续使用。
 
 ```rust,no_run
-use qubit_fs::{AsyncFileResource, FsResult, FsUri};
-use qubit_fs_registry::AsyncFileSystemRegistry;
+use qubit_fs::{ConnectionUri, FsResult};
+use qubit_fs_registry::{AsyncFileSystemRegistry, FileSystemConfig};
 
 async fn open_async(
     registry: &AsyncFileSystemRegistry,
-) -> FsResult<AsyncFileResource> {
-    let uri = FsUri::parse("memory:///example.txt")?;
-    registry.resource_uri_async(&uri).await.map_err(Into::into)
+) -> FsResult<()> {
+    let config = FileSystemConfig::new(ConnectionUri::parse("memory:///example.txt")?);
+    let resolution = registry.resolve_config(config).await.map_err(Into::into)?;
+    let _file_system = resolution.file_system().clone();
+    Ok(())
 }
 ```
 
