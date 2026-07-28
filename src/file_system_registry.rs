@@ -10,16 +10,31 @@
 use std::sync::Arc;
 
 use qubit_spi::{
-    ProviderDefinition, ProviderDescriptor, ProviderId, ProviderRegistry, ProviderSelection,
+    ProviderDefinition,
+    ProviderDescriptor,
+    ProviderId,
+    ProviderRegistry,
+    ProviderSelection,
     ResolvingServiceProvider,
 };
 
-use crate::internal::{ensure_selection_matches_config, selection_for_config};
-use crate::{
-    FileSystemConfig, FileSystemProvider, FileSystemRegistryError, FileSystemRegistryResult,
-    FileSystemResolution, FileSystemSpec,
+use crate::internal::{
+    ensure_selection_matches_config,
+    selection_for_config,
 };
-use qubit_fs::{FileResource, FileSystem, FsUri};
+use crate::{
+    FileSystemConfig,
+    FileSystemProvider,
+    FileSystemRegistryError,
+    FileSystemRegistryResult,
+    FileSystemResolution,
+    FileSystemSpec,
+};
+use qubit_fs::{
+    FileResource,
+    FileSystem,
+    FsUri,
+};
 
 /// Shared runtime registry of self-described filesystem providers.
 ///
@@ -121,7 +136,8 @@ impl FileSystemRegistry {
     pub fn resolve_selected(
         &self,
         selection: &ProviderSelection,
-    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
+    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
+    {
         self.providers
             .resolve_selected(selection)
             .map_err(FileSystemRegistryError::from)
@@ -140,7 +156,10 @@ impl FileSystemRegistry {
     /// Returns [`FileSystemRegistryError::Resolution`] when the default
     /// selection matches no registered provider.
     #[inline(always)]
-    pub fn resolve(&self) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
+    pub fn resolve(
+        &self,
+    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
+    {
         self.providers
             .resolve()
             .map_err(FileSystemRegistryError::from)
@@ -191,8 +210,8 @@ impl FileSystemRegistry {
         &self,
         config: &FileSystemConfig,
     ) -> FileSystemRegistryResult<FileSystemResolution<dyn FileSystem>> {
-        let resolver =
-            selection_for_config(config).and_then(|selection| self.resolve_selected(&selection));
+        let resolver = selection_for_config(config)
+            .and_then(|selection| self.resolve_selected(&selection));
         resolver?
             .create_configured(config)
             .map_err(FileSystemRegistryError::from)
@@ -297,7 +316,10 @@ impl FileSystemRegistry {
     /// Returns the same [`FileSystemRegistryError`] variants as
     /// [`Self::resolve_config`].
     #[inline]
-    pub fn resource(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileResource> {
+    pub fn resource(
+        &self,
+        config: &FileSystemConfig,
+    ) -> FileSystemRegistryResult<FileResource> {
         let resolution = self.resolve_config(config)?;
         let (fs, path, canonical_uri) = resolution.into_parts();
         Ok(FileResource::from_resolved(fs, path, canonical_uri))
@@ -319,7 +341,10 @@ impl FileSystemRegistry {
     /// Returns the same [`FileSystemRegistryError`] variants as
     /// [`Self::resolve_config`].
     #[inline]
-    pub fn file_system_uri(&self, uri: &FsUri) -> FileSystemRegistryResult<Arc<dyn FileSystem>> {
+    pub fn file_system_uri(
+        &self,
+        uri: &FsUri,
+    ) -> FileSystemRegistryResult<Arc<dyn FileSystem>> {
         self.file_system(&FileSystemConfig::new(uri.clone()))
     }
 
@@ -339,7 +364,10 @@ impl FileSystemRegistry {
     /// Returns the same [`FileSystemRegistryError`] variants as
     /// [`Self::resolve_config`].
     #[inline]
-    pub fn resource_uri(&self, uri: &FsUri) -> FileSystemRegistryResult<FileResource> {
+    pub fn resource_uri(
+        &self,
+        uri: &FsUri,
+    ) -> FileSystemRegistryResult<FileResource> {
         self.resource(&FileSystemConfig::new(uri.clone()))
     }
 

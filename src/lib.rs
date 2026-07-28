@@ -62,4 +62,7 @@ pub use file_system_registry::FileSystemRegistry;
 pub use file_system_registry_error::FileSystemRegistryError;
 pub use file_system_resolution::FileSystemResolution;
 pub use file_system_spec::FileSystemSpec;
-pub use registry_future::{FileSystemRegistryResult, RegistryFuture};
+pub use registry_future::{
+    FileSystemRegistryResult,
+    RegistryFuture,
+};

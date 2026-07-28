@@ -8,10 +8,14 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::process::Command;
 
-/// Verifies every Rust README example compiles with its documented dependencies.
+/// Verifies every Rust README example compiles with its documented
+/// dependencies.
 #[test]
 fn test_readme_rust_examples_compile() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -44,7 +48,8 @@ fn test_markdown_doctest_output_dir_scopes_to_current_process() {
     let output_dir = markdown_doctest_output_dir(&manifest_dir);
 
     assert!(
-        output_dir.ends_with(format!("markdown-doctest-{}", std::process::id())),
+        output_dir
+            .ends_with(format!("markdown-doctest-{}", std::process::id())),
         "the output directory should be isolated to the current test process",
     );
 }
@@ -52,14 +57,17 @@ fn test_markdown_doctest_output_dir_scopes_to_current_process() {
 /// Recreates a test-owned output directory.
 fn recreate_dir(path: &Path) {
     if path.exists() {
-        fs::remove_dir_all(path).expect("failed to remove old markdown doctest directory");
+        fs::remove_dir_all(path)
+            .expect("failed to remove old markdown doctest directory");
     }
-    fs::create_dir_all(path).expect("failed to create markdown doctest directory");
+    fs::create_dir_all(path)
+        .expect("failed to create markdown doctest directory");
 }
 
 /// Extracts fenced Rust snippets from one Markdown document.
 fn extract_rust_snippets(path: &Path) -> Vec<String> {
-    let content = fs::read_to_string(path).expect("failed to read Markdown file");
+    let content =
+        fs::read_to_string(path).expect("failed to read Markdown file");
     let mut snippets = Vec::new();
     let mut in_rust = false;
     let mut current = String::new();
@@ -96,10 +104,16 @@ fn is_rust_fence(language: &str) -> bool {
 }
 
 /// Compiles every extracted snippet as an independent binary crate.
-fn compile_snippets(manifest_dir: &Path, output_dir: &Path, name: &str, snippets: &[String]) {
+fn compile_snippets(
+    manifest_dir: &Path,
+    output_dir: &Path,
+    name: &str,
+    snippets: &[String],
+) {
     let crate_dir = output_dir.join(name);
     let bin_dir = crate_dir.join("src/bin");
-    fs::create_dir_all(&bin_dir).expect("failed to create snippet binary directory");
+    fs::create_dir_all(&bin_dir)
+        .expect("failed to create snippet binary directory");
 
     fs::write(
         crate_dir.join("Cargo.toml"),
@@ -129,8 +143,11 @@ fn compile_snippets(manifest_dir: &Path, output_dir: &Path, name: &str, snippets
 /// Builds a temporary manifest with the dependencies used by README examples.
 fn build_markdown_doctest_manifest(name: &str, manifest_dir: &Path) -> String {
     let registry = toml_basic_string(&manifest_dir.display().to_string());
-    let filesystem = toml_basic_string(&manifest_dir.join("../rs-fs").display().to_string());
-    let local = toml_basic_string(&manifest_dir.join("../rs-fs-local").display().to_string());
+    let filesystem =
+        toml_basic_string(&manifest_dir.join("../rs-fs").display().to_string());
+    let local = toml_basic_string(
+        &manifest_dir.join("../rs-fs-local").display().to_string(),
+    );
 
     format!(
         r#"[package]
@@ -171,7 +188,8 @@ fn toml_basic_string(value: &str) -> String {
 
 /// Wraps item-only snippets in a minimal binary entry point.
 fn normalize_snippet(snippet: &str) -> String {
-    let allow_example_noise = "#![allow(dead_code, unused_imports, unused_variables)]\n";
+    let allow_example_noise =
+        "#![allow(dead_code, unused_imports, unused_variables)]\n";
     if snippet.contains("fn main") {
         format!("{allow_example_noise}{snippet}\n")
     } else {

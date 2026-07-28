@@ -9,7 +9,11 @@
 
 use qubit_spi::ProviderSelection;
 
-use crate::{FileSystemConfig, FileSystemRegistryError, FileSystemRegistryResult};
+use crate::{
+    FileSystemConfig,
+    FileSystemRegistryError,
+    FileSystemRegistryResult,
+};
 
 /// Returns the provider selection owned or implied by a configuration.
 ///

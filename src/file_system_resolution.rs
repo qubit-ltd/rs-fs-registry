@@ -7,10 +7,17 @@
 // =============================================================================
 //! Provider-decoded filesystem resolution.
 
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as FmtResult,
+};
 use std::sync::Arc;
 
-use qubit_fs::{FsPath, FsUri};
+use qubit_fs::{
+    FsPath,
+    FsUri,
+};
 
 /// Filesystem object paired with its provider-decoded resource location.
 ///
@@ -40,7 +47,11 @@ impl<F: ?Sized> FileSystemResolution<F> {
     /// A resolution retaining all three identity components.
     #[inline(always)]
     #[must_use]
-    pub fn new(file_system: Arc<F>, path: FsPath, canonical_uri: FsUri) -> Self {
+    pub fn new(
+        file_system: Arc<F>,
+        path: FsPath,
+        canonical_uri: FsUri,
+    ) -> Self {
         Self {
             file_system,
             path,

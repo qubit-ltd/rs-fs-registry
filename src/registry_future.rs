@@ -7,7 +7,10 @@
 // =============================================================================
 //! Future aliases for asynchronous filesystem registry operations.
 
-use std::{future::Future, pin::Pin};
+use std::{
+    future::Future,
+    pin::Pin,
+};
 
 use crate::FileSystemRegistryError;
 

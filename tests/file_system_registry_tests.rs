@@ -6,27 +6,55 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
 use qubit_fs::{
-    FileMetadata, FileSystem, FileSystemCapabilities, FileSystemId, FileSystemInfo,
-    FileSystemLimits, FileSystemProperties, FsError, FsErrorKind, FsOperation, FsPath, FsResult,
-    FsUri, PathSemantics, UserMetadata,
+    FileMetadata,
+    FileSystem,
+    FileSystemCapabilities,
+    FileSystemId,
+    FileSystemInfo,
+    FileSystemLimits,
+    FileSystemProperties,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsPath,
+    FsResult,
+    FsUri,
+    PathSemantics,
+    UserMetadata,
 };
 use qubit_fs_registry::{
-    FileSystemConfig, FileSystemProvider, FileSystemRegistry, FileSystemRegistryError,
-    FileSystemResolution, FileSystemSpec,
+    FileSystemConfig,
+    FileSystemProvider,
+    FileSystemRegistry,
+    FileSystemRegistryError,
+    FileSystemResolution,
+    FileSystemSpec,
 };
 use qubit_spi::{
-    FallbackPolicy, ProviderDescriptor, ProviderId, ProviderMetadata, ProviderSelection,
+    FallbackPolicy,
+    ProviderDescriptor,
+    ProviderId,
+    ProviderMetadata,
+    ProviderSelection,
     ServiceProvider,
-    error::{ProviderFailure, ProviderFailureKind, ProviderSelectionBuildError},
+    error::{
+        ProviderFailure,
+        ProviderFailureKind,
+        ProviderSelectionBuildError,
+    },
 };
 
 #[test]
 fn test_sync_registry_exposes_catalog_state_and_low_level_resolution() {
     let registry = FileSystemRegistry::default();
-    let selection = ProviderSelection::named("missing").expect("selection should parse");
+    let selection =
+        ProviderSelection::named("missing").expect("selection should parse");
 
     assert!(registry.is_empty());
     assert_eq!(0, registry.len());
@@ -73,7 +101,8 @@ fn test_registry_registers_shared_providers_and_tracks_default_selection() {
     registry
         .register_shared(provider)
         .expect("shared provider should register");
-    let selection = ProviderSelection::named("unavailable").expect("selection should parse");
+    let selection = ProviderSelection::named("unavailable")
+        .expect("selection should parse");
 
     registry.set_default_selection(selection.clone());
 
@@ -91,7 +120,8 @@ fn test_registry_clones_observe_runtime_registrations() {
         })
         .expect("provider should register");
 
-    let selection = ProviderSelection::named("capture").expect("selection should parse");
+    let selection =
+        ProviderSelection::named("capture").expect("selection should parse");
     assert!(
         clone.resolve_selected(&selection).is_ok(),
         "the clone should observe the shared provider catalog",
@@ -119,8 +149,9 @@ fn test_registry_preserves_provider_creation_failures() {
     registry
         .register(UnavailableProvider)
         .expect("provider should register");
-    let config =
-        FileSystemConfig::new(FsUri::parse("unavailable:///resource").expect("URI should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("unavailable:///resource").expect("URI should parse"),
+    );
     let error = registry
         .resolve_config(&config)
         .expect_err("the unavailable provider should fail creation");
@@ -168,7 +199,8 @@ fn test_registry_preserves_each_provider_failure_class() {
             .register(FailingProvider { id, provider_kind })
             .expect("provider should register");
         let config = FileSystemConfig::new(
-            FsUri::parse(&format!("{id}:///resource")).expect("URI should parse"),
+            FsUri::parse(&format!("{id}:///resource"))
+                .expect("URI should parse"),
         );
 
         let error = registry
@@ -190,8 +222,9 @@ fn test_registry_preserves_each_provider_failure_class() {
 #[test]
 fn test_registry_preserves_invalid_uri_scheme_selection() {
     let registry = FileSystemRegistry::default();
-    let config =
-        FileSystemConfig::new(FsUri::parse("mock-:///resource").expect("URI should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("mock-:///resource").expect("URI should parse"),
+    );
 
     let error = registry
         .resolve_config(&config)
@@ -199,7 +232,9 @@ fn test_registry_preserves_invalid_uri_scheme_selection() {
 
     assert!(matches!(
         error,
-        FileSystemRegistryError::Selection(ProviderSelectionBuildError::InvalidSelector { .. })
+        FileSystemRegistryError::Selection(
+            ProviderSelectionBuildError::InvalidSelector { .. }
+        )
     ));
 }
 
@@ -218,9 +253,10 @@ fn test_registry_applies_provider_fallback_policy() {
     let selection = ProviderSelection::chain(["unavailable", "capture"])
         .expect("the provider chain should parse")
         .with_fallback_policy(FallbackPolicy::OnAbsence);
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"))
-            .with_selection(selection.clone());
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    )
+    .with_selection(selection.clone());
 
     let resolution = registry
         .resolve_selected_config(&selection, &config)
@@ -240,14 +276,17 @@ fn test_registry_binds_provider_decoded_paths_from_complete_configuration() {
         })
         .expect("provider should register");
 
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///raw%2Fkey").expect("URI should parse"))
-            .with_selection(ProviderSelection::named("capture").expect("selection should parse"))
-            .with_options(
-                UserMetadata::new()
-                    .with("region", "test-1")
-                    .expect("metadata should accept a non-sensitive key"),
-            );
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///raw%2Fkey").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("capture").expect("selection should parse"),
+    )
+    .with_options(
+        UserMetadata::new()
+            .with("region", "test-1")
+            .expect("metadata should accept a non-sensitive key"),
+    );
 
     let resource = registry
         .resource(&config)
@@ -296,9 +335,11 @@ fn test_registry_resolves_selected_and_default_configurations() {
             captured: Arc::new(Mutex::new(None)),
         })
         .expect("provider should register");
-    let selection = ProviderSelection::named("capture").expect("selection should parse");
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"));
+    let selection =
+        ProviderSelection::named("capture").expect("selection should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    );
 
     registry
         .resolve_selected_config(&selection, &config)
@@ -312,12 +353,17 @@ fn test_registry_resolves_selected_and_default_configurations() {
 
 /// Verifies explicit selection rejects a conflicting configuration selection.
 #[test]
-fn test_registry_selected_configuration_rejects_conflicting_embedded_selection() {
+fn test_registry_selected_configuration_rejects_conflicting_embedded_selection()
+{
     let registry = FileSystemRegistry::default();
-    let selection = ProviderSelection::named("requested").expect("selection should parse");
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"))
-            .with_selection(ProviderSelection::named("embedded").expect("selection should parse"));
+    let selection =
+        ProviderSelection::named("requested").expect("selection should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("embedded").expect("selection should parse"),
+    );
 
     let error = registry
         .resolve_selected_config(&selection, &config)
@@ -331,14 +377,18 @@ fn test_registry_selected_configuration_rejects_conflicting_embedded_selection()
 
 /// Verifies default selection rejects a conflicting configuration selection.
 #[test]
-fn test_registry_default_configuration_rejects_conflicting_embedded_selection() {
+fn test_registry_default_configuration_rejects_conflicting_embedded_selection()
+{
     let registry = FileSystemRegistry::default();
     registry.set_default_selection(
         ProviderSelection::named("default").expect("selection should parse"),
     );
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"))
-            .with_selection(ProviderSelection::named("embedded").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("embedded").expect("selection should parse"),
+    );
 
     let error = registry
         .resolve_default_config(&config)
@@ -354,7 +404,9 @@ struct UnavailableProvider;
 
 impl ProviderMetadata for UnavailableProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(ProviderId::new("unavailable").expect("provider ID should parse"))
+        ProviderDescriptor::new(
+            ProviderId::new("unavailable").expect("provider ID should parse"),
+        )
     }
 }
 
@@ -362,7 +414,8 @@ impl ServiceProvider<FileSystemSpec> for UnavailableProvider {
     fn create_configured(
         &self,
         _config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>> {
+    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>>
+    {
         Err(ProviderFailure::unavailable(FsError::new(
             FsErrorKind::ProviderUnavailable,
             FsOperation::Provider,
@@ -378,7 +431,9 @@ struct FailingProvider {
 
 impl ProviderMetadata for FailingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider ID should parse"))
+        ProviderDescriptor::new(
+            ProviderId::new(self.id).expect("provider ID should parse"),
+        )
     }
 }
 
@@ -386,21 +441,32 @@ impl ServiceProvider<FileSystemSpec> for FailingProvider {
     fn create_configured(
         &self,
         _config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>> {
+    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>>
+    {
         let error = FsError::new(
             match self.provider_kind {
-                ProviderFailureKind::Unsupported => FsErrorKind::RequirementNotMet,
-                ProviderFailureKind::InvalidConfiguration => FsErrorKind::InvalidOptions,
+                ProviderFailureKind::Unsupported => {
+                    FsErrorKind::RequirementNotMet
+                }
+                ProviderFailureKind::InvalidConfiguration => {
+                    FsErrorKind::InvalidOptions
+                }
                 ProviderFailureKind::InitializationFailed => FsErrorKind::Other,
-                ProviderFailureKind::Unavailable => FsErrorKind::ProviderUnavailable,
+                ProviderFailureKind::Unavailable => {
+                    FsErrorKind::ProviderUnavailable
+                }
                 _ => FsErrorKind::Other,
             },
             FsOperation::Provider,
             "classified provider failure",
         );
         Err(match self.provider_kind {
-            ProviderFailureKind::Unsupported => ProviderFailure::unsupported(error),
-            ProviderFailureKind::Unavailable => ProviderFailure::unavailable(error),
+            ProviderFailureKind::Unsupported => {
+                ProviderFailure::unsupported(error)
+            }
+            ProviderFailureKind::Unavailable => {
+                ProviderFailure::unavailable(error)
+            }
             ProviderFailureKind::InvalidConfiguration => {
                 ProviderFailure::invalid_configuration(error)
             }
@@ -418,7 +484,9 @@ struct CapturingProvider {
 
 impl ProviderMetadata for CapturingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(ProviderId::new("capture").expect("provider ID should parse"))
+        ProviderDescriptor::new(
+            ProviderId::new("capture").expect("provider ID should parse"),
+        )
     }
 }
 
@@ -426,12 +494,15 @@ impl ServiceProvider<FileSystemSpec> for CapturingProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>> {
-        *self.captured.lock().expect("lock should succeed") = Some(config.clone());
+    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>>
+    {
+        *self.captured.lock().expect("lock should succeed") =
+            Some(config.clone());
         let filesystem: Arc<dyn FileSystem> = Arc::new(CapturingFileSystem);
         Ok(FileSystemResolution::new(
             filesystem,
-            FsPath::parse_literal("provider-decoded/%252F").expect("provider path should parse"),
+            FsPath::parse_literal("provider-decoded/%252F")
+                .expect("provider path should parse"),
             config.uri().clone(),
         ))
     }
@@ -441,7 +512,8 @@ struct CapturingFileSystem;
 
 impl FileSystemProperties for CapturingFileSystem {
     fn info(&self) -> &FileSystemInfo {
-        static INFO: std::sync::OnceLock<FileSystemInfo> = std::sync::OnceLock::new();
+        static INFO: std::sync::OnceLock<FileSystemInfo> =
+            std::sync::OnceLock::new();
         INFO.get_or_init(|| {
             FileSystemInfo::new(
                 FileSystemId::new("capture-instance")

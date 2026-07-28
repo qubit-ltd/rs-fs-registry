@@ -9,4 +9,7 @@
 
 mod registry_support;
 
-pub(super) use registry_support::{ensure_selection_matches_config, selection_for_config};
+pub(super) use registry_support::{
+    ensure_selection_matches_config,
+    selection_for_config,
+};

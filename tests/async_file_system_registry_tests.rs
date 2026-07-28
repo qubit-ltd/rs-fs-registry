@@ -10,23 +10,61 @@ use std::error::Error;
 use std::future::Future;
 use std::io::Result as IoResult;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, mpsc};
-use std::task::{Context, Poll, Waker};
+use std::sync::{
+    Arc,
+    Mutex,
+    mpsc,
+};
+use std::task::{
+    Context,
+    Poll,
+    Waker,
+};
 
 use qubit_fs::{
-    AsyncFileReader, AsyncFileSystem, FileKind, FileLocation, FileMetadata, FileSystemCapabilities,
-    FileSystemId, FileSystemInfo, FileSystemProperties, FsError, FsErrorKind, FsFuture,
-    FsOperation, FsPath, FsUri, OpenedFileInfo, PathSemantics, ReadOptions, UserMetadata,
+    AsyncFileReader,
+    AsyncFileSystem,
+    FileKind,
+    FileLocation,
+    FileMetadata,
+    FileSystemCapabilities,
+    FileSystemId,
+    FileSystemInfo,
+    FileSystemProperties,
+    FsError,
+    FsErrorKind,
+    FsFuture,
+    FsOperation,
+    FsPath,
+    FsUri,
+    OpenedFileInfo,
+    PathSemantics,
+    ReadOptions,
+    UserMetadata,
 };
 use qubit_fs_registry::{
-    AsyncFileSystemProvider, AsyncFileSystemRegistry, CredentialRef, FileSystemConfig,
-    FileSystemRegistryError, FileSystemResolution, FileSystemSpec,
+    AsyncFileSystemProvider,
+    AsyncFileSystemRegistry,
+    CredentialRef,
+    FileSystemConfig,
+    FileSystemRegistryError,
+    FileSystemResolution,
+    FileSystemSpec,
 };
 use qubit_io::AsyncInput;
-use qubit_spi::error::{ProviderFailure, ProviderResolutionError};
+use qubit_spi::error::{
+    ProviderFailure,
+    ProviderResolutionError,
+};
 use qubit_spi::{
-    AsyncServiceProvider, FallbackPolicy, ProviderDescriptor, ProviderFuture, ProviderId,
-    ProviderMetadata, ProviderSelection, ProviderSelectionTargetRef,
+    AsyncServiceProvider,
+    FallbackPolicy,
+    ProviderDescriptor,
+    ProviderFuture,
+    ProviderId,
+    ProviderMetadata,
+    ProviderSelection,
+    ProviderSelectionTargetRef,
 };
 
 #[derive(Debug)]
@@ -39,7 +77,8 @@ impl AsyncOnlyFs {
         Self {
             info: FileSystemInfo::new(
                 FileSystemId::new(id).expect("filesystem id should parse"),
-                ProviderId::new("async-capture").expect("provider id should parse"),
+                ProviderId::new("async-capture")
+                    .expect("provider id should parse"),
                 PathSemantics::Hierarchical,
             ),
         }
@@ -56,13 +95,17 @@ impl FileSystemProperties for AsyncOnlyFs {
     }
 
     fn limits(&self) -> &qubit_fs::FileSystemLimits {
-        static LIMITS: qubit_fs::FileSystemLimits = qubit_fs::FileSystemLimits::unknown();
+        static LIMITS: qubit_fs::FileSystemLimits =
+            qubit_fs::FileSystemLimits::unknown();
         &LIMITS
     }
 }
 
 impl AsyncFileSystem for AsyncOnlyFs {
-    fn stat_async<'a>(&'a self, _path: &'a FsPath) -> FsFuture<'a, FileMetadata> {
+    fn stat_async<'a>(
+        &'a self,
+        _path: &'a FsPath,
+    ) -> FsFuture<'a, FileMetadata> {
         Box::pin(async { Ok(FileMetadata::new(FileKind::File)) })
     }
 
@@ -115,11 +158,17 @@ impl AsyncServiceProvider<FileSystemSpec> for CapturingAsyncProvider {
         config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
+        Result<
+            FileSystemResolution<dyn AsyncFileSystem>,
+            ProviderFailure<FsError>,
+        >,
     > {
-        *self.captured.lock().expect("lock should succeed") = Some(config.clone());
-        let fs: Arc<dyn AsyncFileSystem> = Arc::new(AsyncOnlyFs::new("async-only"));
-        let path = FsPath::parse_literal(self.path).expect("provider path should parse");
+        *self.captured.lock().expect("lock should succeed") =
+            Some(config.clone());
+        let fs: Arc<dyn AsyncFileSystem> =
+            Arc::new(AsyncOnlyFs::new("async-only"));
+        let path = FsPath::parse_literal(self.path)
+            .expect("provider path should parse");
         let uri = config.uri().clone();
         Box::pin(async move { Ok(FileSystemResolution::new(fs, path, uri)) })
     }
@@ -146,10 +195,15 @@ impl AsyncServiceProvider<FileSystemSpec> for ErrorAsyncProvider {
         _config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
+        Result<
+            FileSystemResolution<dyn AsyncFileSystem>,
+            ProviderFailure<FsError>,
+        >,
     > {
         let kind = self.kind;
-        Box::pin(async move { Err(provider_failure(kind, "provider creation failed")) })
+        Box::pin(async move {
+            Err(provider_failure(kind, "provider creation failed"))
+        })
     }
 }
 
@@ -165,7 +219,10 @@ impl AsyncServiceProvider<FileSystemSpec> for UnavailableAsyncProvider {
         _config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
+        Result<
+            FileSystemResolution<dyn AsyncFileSystem>,
+            ProviderFailure<FsError>,
+        >,
     > {
         Box::pin(async {
             Err(provider_failure(
@@ -177,14 +234,19 @@ impl AsyncServiceProvider<FileSystemSpec> for UnavailableAsyncProvider {
 }
 
 /// Creates a typed provider failure that retains the original filesystem error.
-fn provider_failure(kind: FsErrorKind, message: &'static str) -> ProviderFailure<FsError> {
+fn provider_failure(
+    kind: FsErrorKind,
+    message: &'static str,
+) -> ProviderFailure<FsError> {
     let error = FsError::new(kind, FsOperation::Provider, message);
     match kind {
         FsErrorKind::ProviderUnavailable => ProviderFailure::unavailable(error),
         FsErrorKind::UnsupportedOperation
         | FsErrorKind::UnsupportedCapability
         | FsErrorKind::RequirementNotMet => ProviderFailure::unsupported(error),
-        FsErrorKind::InvalidUri | FsErrorKind::InvalidPath | FsErrorKind::InvalidOptions => {
+        FsErrorKind::InvalidUri
+        | FsErrorKind::InvalidPath
+        | FsErrorKind::InvalidOptions => {
             ProviderFailure::invalid_configuration(error)
         }
         _ => ProviderFailure::initialization_failed(error),
@@ -206,9 +268,11 @@ where
 /// Verifies configuration futures retain only the configuration borrow.
 #[test]
 fn test_config_resolution_futures_outlive_registry() {
-    let config =
-        FileSystemConfig::new(FsUri::parse("missing:///resource").expect("URI should parse"));
-    let selection = ProviderSelection::named("missing").expect("selection should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("missing:///resource").expect("URI should parse"),
+    );
+    let selection =
+        ProviderSelection::named("missing").expect("selection should parse");
     let (configured, selected, default) = {
         let registry = AsyncFileSystemRegistry::default();
         (
@@ -239,7 +303,8 @@ fn test_uri_resolution_futures_outlive_registry_and_uri() {
                 path: "resolved-after-drop",
             })
             .expect("provider should register");
-        let uri = FsUri::parse("async-capture:///resource").expect("URI should parse");
+        let uri = FsUri::parse("async-capture:///resource")
+            .expect("URI should parse");
 
         (
             registry.file_system_uri_async(&uri),
@@ -269,7 +334,8 @@ fn test_uri_resolution_futures_outlive_registry_and_uri() {
 #[test]
 fn test_async_registry_exposes_empty_catalog_and_resolution_errors() {
     let registry = AsyncFileSystemRegistry::default();
-    let selection = ProviderSelection::named("missing").expect("selection should parse");
+    let selection =
+        ProviderSelection::named("missing").expect("selection should parse");
 
     assert!(registry.is_empty());
     assert_eq!(0, registry.len());
@@ -287,7 +353,8 @@ fn test_async_registry_implements_debug() {
 }
 
 #[test]
-fn test_async_registry_accepts_async_only_provider_and_passes_complete_config() {
+fn test_async_registry_accepts_async_only_provider_and_passes_complete_config()
+{
     let captured = Arc::new(Mutex::new(None));
     let registry = AsyncFileSystemRegistry::default();
     registry
@@ -297,19 +364,21 @@ fn test_async_registry_accepts_async_only_provider_and_passes_complete_config() 
             path: "provider-decoded/%252F",
         })
         .expect("async provider should register");
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///raw%2Fkey").expect("URI should parse"))
-            .with_selection(
-                ProviderSelection::named("async-capture").expect("selection should parse"),
-            )
-            .with_options(
-                UserMetadata::new()
-                    .with("region", "test-1")
-                    .expect("options should be valid"),
-            )
-            .with_credentials(CredentialRef::Profile {
-                name: "integration".to_owned(),
-            });
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///raw%2Fkey").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("async-capture")
+            .expect("selection should parse"),
+    )
+    .with_options(
+        UserMetadata::new()
+            .with("region", "test-1")
+            .expect("options should be valid"),
+    )
+    .with_credentials(CredentialRef::Profile {
+        name: "integration".to_owned(),
+    });
 
     let resource = ready(registry.resource_async(&config))
         .expect("complete config should resolve asynchronously");
@@ -319,8 +388,8 @@ fn test_async_registry_accepts_async_only_provider_and_passes_complete_config() 
         Some(config),
         captured.lock().expect("lock should succeed").clone()
     );
-    let reader =
-        ready(resource.open_reader_async(ReadOptions::default())).expect("reader should open");
+    let reader = ready(resource.open_reader_async(ReadOptions::default()))
+        .expect("reader should open");
     assert_eq!(
         resource.location().uri(),
         reader.info().location().uri(),
@@ -346,9 +415,10 @@ fn test_async_registry_applies_absence_fallback_after_awaiting_creation() {
     let selection = ProviderSelection::chain(["offline", "async-capture"])
         .expect("selection should parse")
         .with_fallback_policy(FallbackPolicy::OnAbsence);
-    let config =
-        FileSystemConfig::new(FsUri::parse("async-capture:///resource").expect("URI should parse"))
-            .with_selection(selection);
+    let config = FileSystemConfig::new(
+        FsUri::parse("async-capture:///resource").expect("URI should parse"),
+    )
+    .with_selection(selection);
 
     let resolution = ready(registry.resolve_config_async(&config))
         .expect("absence fallback should reach the second provider");
@@ -366,13 +436,15 @@ fn test_async_registry_rejects_partially_unknown_strict_chain_before_await() {
             path: "known",
         })
         .expect("known provider should register");
-    let selection =
-        ProviderSelection::chain(["missing", "known"]).expect("strict chain should parse");
-    let config =
-        FileSystemConfig::new(FsUri::parse("known:///resource").expect("URI should parse"));
+    let selection = ProviderSelection::chain(["missing", "known"])
+        .expect("strict chain should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("known:///resource").expect("URI should parse"),
+    );
 
-    let error = ready(registry.resolve_selected_config_async(&selection, &config))
-        .expect_err("strict chain should fail before provider creation");
+    let error =
+        ready(registry.resolve_selected_config_async(&selection, &config))
+            .expect_err("strict chain should fail before provider creation");
 
     assert!(
         error
@@ -392,10 +464,12 @@ fn test_async_registry_allows_explicit_missing_chain_entries() {
             path: "known",
         })
         .expect("known provider should register");
-    let selection = ProviderSelection::chain_allowing_missing(["missing", "known"])
-        .expect("lenient chain should parse");
-    let config =
-        FileSystemConfig::new(FsUri::parse("known:///resource").expect("URI should parse"));
+    let selection =
+        ProviderSelection::chain_allowing_missing(["missing", "known"])
+            .expect("lenient chain should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("known:///resource").expect("URI should parse"),
+    );
 
     assert_eq!(
         "known",
@@ -443,20 +517,24 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
         registry.default_selection().target(),
         ProviderSelectionTargetRef::Auto,
     ));
-    let provider: Arc<AsyncFileSystemProvider> = Arc::new(CapturingAsyncProvider {
-        descriptor: descriptor("async-capture"),
-        captured: Arc::new(Mutex::new(None)),
-        path: "resolved",
-    });
+    let provider: Arc<AsyncFileSystemProvider> =
+        Arc::new(CapturingAsyncProvider {
+            descriptor: descriptor("async-capture"),
+            captured: Arc::new(Mutex::new(None)),
+            path: "resolved",
+        });
     registry
         .register_shared(provider)
         .expect("shared provider should register");
-    let selection = ProviderSelection::named("async-capture").expect("selection should parse");
+    let selection = ProviderSelection::named("async-capture")
+        .expect("selection should parse");
     registry.set_default_selection(selection.clone());
     assert_eq!(selection.target(), registry.default_selection().target());
 
-    let uri = FsUri::parse("async-capture:///resource").expect("URI should parse");
-    let config = FileSystemConfig::new(uri.clone()).with_selection(selection.clone());
+    let uri =
+        FsUri::parse("async-capture:///resource").expect("URI should parse");
+    let config =
+        FileSystemConfig::new(uri.clone()).with_selection(selection.clone());
     assert_eq!(
         "resolved",
         ready(registry.resolve_default_config_async(&config))
@@ -498,15 +576,21 @@ fn test_async_registry_exposes_default_and_uri_convenience_paths() {
 
 /// Verifies explicit selection rejects a conflicting configuration selection.
 #[test]
-fn test_async_registry_selected_configuration_rejects_conflicting_embedded_selection() {
+fn test_async_registry_selected_configuration_rejects_conflicting_embedded_selection()
+ {
     let registry = AsyncFileSystemRegistry::default();
-    let selection = ProviderSelection::named("requested").expect("selection should parse");
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"))
-            .with_selection(ProviderSelection::named("embedded").expect("selection should parse"));
+    let selection =
+        ProviderSelection::named("requested").expect("selection should parse");
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("embedded").expect("selection should parse"),
+    );
 
-    let error = ready(registry.resolve_selected_config_async(&selection, &config))
-        .expect_err("conflicting provider selections should be rejected");
+    let error =
+        ready(registry.resolve_selected_config_async(&selection, &config))
+            .expect_err("conflicting provider selections should be rejected");
 
     assert!(matches!(
         error,
@@ -516,14 +600,18 @@ fn test_async_registry_selected_configuration_rejects_conflicting_embedded_selec
 
 /// Verifies default selection rejects a conflicting configuration selection.
 #[test]
-fn test_async_registry_default_configuration_rejects_conflicting_embedded_selection() {
+fn test_async_registry_default_configuration_rejects_conflicting_embedded_selection()
+ {
     let registry = AsyncFileSystemRegistry::default();
     registry.set_default_selection(
         ProviderSelection::named("default").expect("selection should parse"),
     );
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"))
-            .with_selection(ProviderSelection::named("embedded").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("embedded").expect("selection should parse"),
+    );
 
     let error = ready(registry.resolve_default_config_async(&config))
         .expect_err("conflicting provider selections should be rejected");
@@ -535,11 +623,13 @@ fn test_async_registry_default_configuration_rejects_conflicting_embedded_select
 }
 
 #[test]
-fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point() {
+fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point()
+ {
     let registry = AsyncFileSystemRegistry::default();
     let uri = FsUri::parse("missing:///resource").expect("URI should parse");
     let config = FileSystemConfig::new(uri.clone());
-    let selection = ProviderSelection::named("missing").expect("selection should parse");
+    let selection =
+        ProviderSelection::named("missing").expect("selection should parse");
 
     let errors = [
         ready(registry.resolve_default_config_async(&config))
@@ -551,11 +641,13 @@ fn test_empty_async_registry_reports_provider_unavailable_from_every_entry_point
         ready(registry.file_system_async(&config))
             .err()
             .expect("filesystem creation should fail"),
-        ready(registry.resource_async(&config)).expect_err("resource resolution should fail"),
+        ready(registry.resource_async(&config))
+            .expect_err("resource resolution should fail"),
         ready(registry.file_system_uri_async(&uri))
             .err()
             .expect("URI filesystem creation should fail"),
-        ready(registry.resource_uri_async(&uri)).expect_err("URI resource resolution should fail"),
+        ready(registry.resource_uri_async(&uri))
+            .expect_err("URI resource resolution should fail"),
     ];
     for error in errors {
         assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
@@ -591,8 +683,9 @@ fn test_async_registry_applies_each_creation_fallback_policy() {
             path: "fallback",
         })
         .unwrap();
-    let config =
-        FileSystemConfig::new(FsUri::parse("async-capture:///resource").expect("URI should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("async-capture:///resource").expect("URI should parse"),
+    );
 
     let never = ProviderSelection::chain(["broken", "async-capture"])
         .unwrap()
@@ -608,13 +701,15 @@ fn test_async_registry_applies_each_creation_fallback_policy() {
         .unwrap()
         .with_fallback_policy(FallbackPolicy::OnAbsence);
     assert!(matches!(
-        ready(registry.resolve_selected_config_async(&absence, &config)).unwrap_err(),
+        ready(registry.resolve_selected_config_async(&absence, &config))
+            .unwrap_err(),
         FileSystemRegistryError::Creation(_)
     ));
 
-    let unsupported = ProviderSelection::chain(["unsupported", "async-capture"])
-        .unwrap()
-        .with_fallback_policy(FallbackPolicy::OnAbsence);
+    let unsupported =
+        ProviderSelection::chain(["unsupported", "async-capture"])
+            .unwrap()
+            .with_fallback_policy(FallbackPolicy::OnAbsence);
     assert_eq!(
         "fallback",
         ready(registry.resolve_selected_config_async(&unsupported, &config))
@@ -649,14 +744,17 @@ fn test_async_registry_retains_ordered_failures_when_fallback_is_exhausted() {
             kind: FsErrorKind::UnsupportedOperation,
         })
         .unwrap();
-    let selection = ProviderSelection::chain(["first-offline", "second-unsupported"])
-        .unwrap()
-        .with_fallback_policy(FallbackPolicy::OnAbsence);
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"));
+    let selection =
+        ProviderSelection::chain(["first-offline", "second-unsupported"])
+            .unwrap()
+            .with_fallback_policy(FallbackPolicy::OnAbsence);
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    );
 
-    let error = ready(registry.resolve_selected_config_async(&selection, &config))
-        .expect_err("every admitted provider should fail");
+    let error =
+        ready(registry.resolve_selected_config_async(&selection, &config))
+            .expect_err("every admitted provider should fail");
 
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("creation should preserve its typed aggregate");
@@ -693,14 +791,20 @@ fn test_async_registry_aggregates_failures_before_policy_stops_fallback() {
             path: "unreached",
         })
         .unwrap();
-    let selection = ProviderSelection::chain(["first-offline", "second-broken", "unreached"])
-        .unwrap()
-        .with_fallback_policy(FallbackPolicy::OnAbsence);
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"));
+    let selection = ProviderSelection::chain([
+        "first-offline",
+        "second-broken",
+        "unreached",
+    ])
+    .unwrap()
+    .with_fallback_policy(FallbackPolicy::OnAbsence);
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    );
 
-    let error = ready(registry.resolve_selected_config_async(&selection, &config))
-        .expect_err("non-absence failure should stop fallback");
+    let error =
+        ready(registry.resolve_selected_config_async(&selection, &config))
+            .expect_err("non-absence failure should stop fallback");
 
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("creation should preserve its typed aggregate");
@@ -713,7 +817,8 @@ fn test_async_registry_aggregates_failures_before_policy_stops_fallback() {
 }
 
 #[test]
-fn test_async_registry_automatic_priority_aliases_and_deduplication_are_stable() {
+fn test_async_registry_automatic_priority_aliases_and_deduplication_are_stable()
+{
     let registry = AsyncFileSystemRegistry::default();
     registry
         .register(CapturingAsyncProvider {
@@ -733,8 +838,9 @@ fn test_async_registry_automatic_priority_aliases_and_deduplication_are_stable()
             path: "high",
         })
         .unwrap();
-    let config =
-        FileSystemConfig::new(FsUri::parse("unrelated:///resource").expect("URI should parse"));
+    let config = FileSystemConfig::new(
+        FsUri::parse("unrelated:///resource").expect("URI should parse"),
+    );
 
     assert_eq!(
         "high",
@@ -793,7 +899,10 @@ impl AsyncServiceProvider<FileSystemSpec> for PendingAsyncProvider {
         config: &'a FileSystemConfig,
     ) -> ProviderFuture<
         'a,
-        Result<FileSystemResolution<dyn AsyncFileSystem>, ProviderFailure<FsError>>,
+        Result<
+            FileSystemResolution<dyn AsyncFileSystem>,
+            ProviderFailure<FsError>,
+        >,
     > {
         let entered = self.entered.clone();
         let release = self
@@ -808,10 +917,12 @@ impl AsyncServiceProvider<FileSystemSpec> for PendingAsyncProvider {
                 .send(())
                 .expect("entry receiver should remain alive");
             release.recv().expect("release sender should remain alive");
-            let fs: Arc<dyn AsyncFileSystem> = Arc::new(AsyncOnlyFs::new("pending"));
+            let fs: Arc<dyn AsyncFileSystem> =
+                Arc::new(AsyncOnlyFs::new("pending"));
             Ok(FileSystemResolution::new(
                 fs,
-                FsPath::parse_literal("released").expect("provider path should parse"),
+                FsPath::parse_literal("released")
+                    .expect("provider path should parse"),
                 uri,
             ))
         })
@@ -832,8 +943,9 @@ fn test_async_provider_pending_does_not_hold_registry_lock() {
         .expect("pending provider should register");
     let creation_registry = registry.clone();
     let creation = std::thread::spawn(move || {
-        let config =
-            FileSystemConfig::new(FsUri::parse("pending:///resource").expect("URI should parse"));
+        let config = FileSystemConfig::new(
+            FsUri::parse("pending:///resource").expect("URI should parse"),
+        );
         ready(creation_registry.resolve_default_config_async(&config))
     });
 
@@ -869,5 +981,7 @@ fn test_async_provider_pending_does_not_hold_registry_lock() {
 }
 
 fn descriptor(id: &str) -> ProviderDescriptor {
-    ProviderDescriptor::new(ProviderId::new(id).expect("provider id should parse"))
+    ProviderDescriptor::new(
+        ProviderId::new(id).expect("provider id should parse"),
+    )
 }

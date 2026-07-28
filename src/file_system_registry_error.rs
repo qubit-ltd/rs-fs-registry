@@ -7,12 +7,22 @@
 // =============================================================================
 //! Error model for filesystem provider registry operations.
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
-use qubit_fs::{FsError, FsErrorKind, FsOperation};
+use qubit_fs::{
+    FsError,
+    FsErrorKind,
+    FsOperation,
+};
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
-    ProviderCreationError, ProviderResolutionError, ProviderSelectionBuildError, RegistrationError,
+    ProviderCreationError,
+    ProviderResolutionError,
+    ProviderSelectionBuildError,
+    RegistrationError,
 };
 
 /// Error returned by filesystem-provider registration, selection, and creation.
@@ -40,8 +50,12 @@ impl fmt::Display for FileSystemRegistryError {
     /// Formats the registry failure with its preserved SPI context.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Registration(error) => write!(formatter, "provider registration failed: {error}"),
-            Self::Selection(error) => write!(formatter, "provider selection is invalid: {error}"),
+            Self::Registration(error) => {
+                write!(formatter, "provider registration failed: {error}")
+            }
+            Self::Selection(error) => {
+                write!(formatter, "provider selection is invalid: {error}")
+            }
             Self::SelectionConflict {
                 requested,
                 configured,
@@ -49,9 +63,14 @@ impl fmt::Display for FileSystemRegistryError {
                 formatter,
                 "configured provider selection {configured:?} conflicts with requested selection {requested:?}",
             ),
-            Self::Resolution(error) => write!(formatter, "provider resolution failed: {error}"),
+            Self::Resolution(error) => {
+                write!(formatter, "provider resolution failed: {error}")
+            }
             Self::Creation(error) => {
-                write!(formatter, "filesystem provider creation failed: {error}")
+                write!(
+                    formatter,
+                    "filesystem provider creation failed: {error}"
+                )
             }
         }
     }
@@ -135,7 +154,8 @@ impl From<FileSystemRegistryError> for FsError {
                 )
             }
         };
-        let error = FsError::with_source(kind, FsOperation::Provider, message, error);
+        let error =
+            FsError::with_source(kind, FsOperation::Provider, message, error);
         match provider {
             Some(provider) => error.with_provider(provider),
             None => error,
