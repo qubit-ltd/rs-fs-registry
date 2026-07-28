@@ -7,28 +7,25 @@
 // =============================================================================
 //! Error model for filesystem provider registry operations.
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::{error::Error, fmt};
 
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
+use qubit_fs::{FsError, FsErrorKind, FsOperation};
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
-    ProviderCreationError,
-    ProviderResolutionError,
-    ProviderSelectionBuildError,
-    RegistrationError,
+    ProviderCreationError, ProviderResolutionError, ProviderSelectionBuildError, RegistrationError,
 };
 
+/// Result returned by filesystem registry operations.
+pub type FileSystemRegistryResult<T> = Result<T, FileSystemRegistryError>;
+
 /// Error returned by filesystem-provider registration, selection, and creation.
-#[derive(Debug)]
 #[non_exhaustive]
 pub enum FileSystemRegistryError {
+    /// Configuration violates a registry-level safety invariant.
+    InvalidConfiguration {
+        /// Safe description that never contains connection or credential data.
+        message: &'static str,
+    },
     /// A provider descriptor could not be registered.
     Registration(RegistrationError),
     /// A provider selection could not be constructed from configuration.
@@ -50,29 +47,30 @@ impl fmt::Display for FileSystemRegistryError {
     /// Formats the registry failure with its preserved SPI context.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Registration(error) => {
-                write!(formatter, "provider registration failed: {error}")
+            Self::InvalidConfiguration { message } => {
+                write!(formatter, "invalid filesystem configuration: {message}")
             }
-            Self::Selection(error) => {
-                write!(formatter, "provider selection is invalid: {error}")
-            }
-            Self::SelectionConflict {
-                requested,
-                configured,
-            } => write!(
-                formatter,
-                "configured provider selection {configured:?} conflicts with requested selection {requested:?}",
-            ),
-            Self::Resolution(error) => {
-                write!(formatter, "provider resolution failed: {error}")
-            }
-            Self::Creation(error) => {
-                write!(
-                    formatter,
-                    "filesystem provider creation failed: {error}"
-                )
-            }
+            Self::Registration(_) => formatter.write_str("provider registration failed"),
+            Self::Selection(_) => formatter.write_str("provider selection is invalid"),
+            Self::SelectionConflict { .. } => formatter
+                .write_str("configured provider selection conflicts with requested selection"),
+            Self::Resolution(_) => formatter.write_str("provider resolution failed"),
+            Self::Creation(_) => formatter.write_str("filesystem provider creation failed"),
         }
+    }
+}
+
+impl fmt::Debug for FileSystemRegistryError {
+    /// Formats only an error category; payloads can contain provider identities.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidConfiguration { .. } => "InvalidConfiguration",
+            Self::Registration(_) => "Registration",
+            Self::Selection(_) => "Selection",
+            Self::SelectionConflict { .. } => "SelectionConflict",
+            Self::Resolution(_) => "Resolution",
+            Self::Creation(_) => "Creation",
+        })
     }
 }
 
@@ -80,6 +78,7 @@ impl Error for FileSystemRegistryError {
     /// Returns the underlying SPI error when one exists.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidConfiguration { .. } => None,
             Self::Registration(error) => Some(error),
             Self::Selection(error) => Some(error),
             Self::SelectionConflict { .. } => None,
@@ -125,6 +124,11 @@ impl From<FileSystemRegistryError> for FsError {
     /// ID; other registry failures use the closest provider-neutral category.
     fn from(error: FileSystemRegistryError) -> Self {
         let (kind, message, provider) = match &error {
+            FileSystemRegistryError::InvalidConfiguration { .. } => (
+                FsErrorKind::InvalidOptions,
+                "filesystem configuration is invalid",
+                None,
+            ),
             FileSystemRegistryError::Registration(_) => (
                 FsErrorKind::Conflict,
                 "filesystem provider registration failed",
@@ -154,8 +158,7 @@ impl From<FileSystemRegistryError> for FsError {
                 )
             }
         };
-        let error =
-            FsError::with_source(kind, FsOperation::Provider, message, error);
+        let error = FsError::with_source(kind, FsOperation::Provider, message, error);
         match provider {
             Some(provider) => error.with_provider(provider),
             None => error,

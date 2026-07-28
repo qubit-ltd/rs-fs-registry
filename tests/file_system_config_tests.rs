@@ -6,63 +6,69 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FsUri,
-    UserMetadata,
-};
-use qubit_fs_registry::{
-    CredentialRef,
-    FileSystemConfig,
-};
+use qubit_fs::{ConnectionUri, FsErrorKind, NonSensitiveMetadata, UserMetadata};
+use qubit_fs_registry::{CredentialRef, FileSystemConfig};
 use qubit_spi::ProviderSelection;
 
 #[test]
 fn test_config_builder_preserves_validated_options_without_a_fallible_step() {
-    let selection =
-        ProviderSelection::named("mock").expect("selection should parse");
+    let selection = ProviderSelection::named("mock").expect("selection should parse");
     let options = UserMetadata::new()
         .with("region", "test-1")
         .expect("metadata should accept a non-sensitive key");
-    let config = FileSystemConfig::new(
-        FsUri::parse("mock:///file.txt").expect("URI should parse"),
-    )
-    .with_selection(selection.clone())
-    .with_options(options.clone());
+    let options = NonSensitiveMetadata::from(options);
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("mock:///file.txt").expect("URI should parse"))
+            .with_selection(selection.clone())
+            .with_options(options.clone());
 
     assert_eq!(Some(&selection), config.selection());
     assert_eq!(&options, config.options());
-    assert!(config.credentials().is_none());
+    assert!(config.credential().is_none());
 }
 
 /// Verifies sensitive options fail before reaching the configuration builder.
 #[test]
 fn test_sensitive_options_are_rejected_while_building_user_metadata() {
-    assert!(
-        UserMetadata::new()
-            .with("access_token", "plaintext")
-            .is_err()
-    );
+    let error = UserMetadata::new()
+        .with("access_token", "secret")
+        .expect_err("credential-like key must be rejected");
+
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
 }
 
 /// Verifies configuration debugging exposes neither option values nor
 /// credential reference contents.
 #[test]
 fn test_config_debug_redacts_values_and_credential_references() {
-    let config = FileSystemConfig::new(
-        FsUri::parse("mock:///resource").expect("URI should parse"),
-    )
-    .with_options(
-        UserMetadata::new()
-            .with("endpoint", "storage.internal")
-            .expect("metadata should accept a non-sensitive key"),
-    )
-    .with_credentials(CredentialRef::Profile {
-        name: "production".to_owned(),
-    });
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("mock:///resource").expect("URI should parse"))
+            .with_options(NonSensitiveMetadata::from(
+                UserMetadata::new()
+                    .with("endpoint", "storage.internal")
+                    .expect("metadata should accept a non-sensitive key"),
+            ))
+            .with_credential(CredentialRef::Profile {
+                name: "production".to_owned(),
+            });
 
     let debug = format!("{config:?}");
 
     assert!(debug.contains("endpoint"));
     assert!(!debug.contains("storage.internal"));
     assert!(!debug.contains("production"));
+}
+
+/// Verifies ordinary formatting delegates URI secret masking to `ConnectionUri`.
+#[test]
+fn test_config_display_and_debug_never_expose_connection_secret() {
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user:password@bucket/key?token=secret")
+            .expect("connection URI should parse"),
+    );
+
+    for rendered in [format!("{config}"), format!("{config:?}")] {
+        assert!(!rendered.contains("password"));
+        assert!(!rendered.contains("secret"));
+    }
 }

@@ -10,6 +10,5 @@
 mod registry_support;
 
 pub(super) use registry_support::{
-    ensure_selection_matches_config,
-    selection_for_config,
+    ensure_selection_matches_config, selection_for_config, validate_credentials,
 };

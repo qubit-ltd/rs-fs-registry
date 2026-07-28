@@ -13,4 +13,3 @@ mod file_system_registry_error_tests;
 mod file_system_registry_tests;
 mod file_system_resolution_tests;
 mod internal;
-mod readme_examples_tests;

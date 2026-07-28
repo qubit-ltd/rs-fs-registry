@@ -1,170 +1,100 @@
-// =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
-//
-//    SPDX-License-Identifier: Apache-2.0
-//
-//    Licensed under the Apache License, Version 2.0.
-// =============================================================================
-//! Complete provider configuration used by filesystem registries.
+//! Complete secret-safe provider configuration.
 
-use std::fmt::{
-    Debug,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
+use qubit_fs::{ConnectionUri, NonSensitiveMetadata};
 use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;
-use qubit_fs::{
-    FsUri,
-    UserMetadata,
-};
 
-/// Complete non-secret configuration passed through registry and provider SPI.
-#[derive(Clone, Eq, PartialEq)]
+/// Complete configuration passed to a filesystem provider factory.
+#[derive(Clone, PartialEq)]
 pub struct FileSystemConfig {
-    /// Resource URI used for provider selection and path decoding.
-    uri: FsUri,
-    /// Optional provider selection overriding URI-scheme selection.
+    uri: ConnectionUri,
     selection: Option<ProviderSelection>,
-    /// Validated non-sensitive options passed to provider creation.
-    options: UserMetadata,
-    /// Optional reference identifying an external credential source.
-    credentials: Option<CredentialRef>,
+    options: NonSensitiveMetadata,
+    credential: Option<CredentialRef>,
+    metadata: NonSensitiveMetadata,
 }
 
 impl FileSystemConfig {
-    /// Creates provider configuration from a resource URI.
-    ///
-    /// # Parameters
-    ///
-    /// * `uri` - Secret-free resource URI used for provider resolution.
-    ///
-    /// # Returns
-    ///
-    /// A configuration with no explicit selection, options, or credentials.
-    #[inline(always)]
+    /// Creates an empty configuration for `uri`.
     #[must_use]
-    pub fn new(uri: FsUri) -> Self {
+    pub fn new(uri: ConnectionUri) -> Self {
         Self {
             uri,
             selection: None,
-            options: UserMetadata::new(),
-            credentials: None,
+            options: NonSensitiveMetadata::new(),
+            credential: None,
+            metadata: NonSensitiveMetadata::new(),
         }
     }
-
-    /// Sets an explicit provider selection and fallback policy.
-    ///
-    /// # Parameters
-    ///
-    /// * `selection` - Provider target and creation fallback policy.
-    ///
-    /// # Returns
-    ///
-    /// The updated configuration.
-    #[inline(always)]
+    /// Returns the redacting connection URI.
+    #[must_use]
+    pub const fn uri(&self) -> &ConnectionUri {
+        &self.uri
+    }
+    /// Returns the explicit provider selection, when present.
+    #[must_use]
+    pub const fn selection(&self) -> Option<&ProviderSelection> {
+        self.selection.as_ref()
+    }
+    /// Returns validated non-sensitive factory options.
+    #[must_use]
+    pub const fn options(&self) -> &NonSensitiveMetadata {
+        &self.options
+    }
+    /// Returns the external credential reference, when configured.
+    #[must_use]
+    pub const fn credential(&self) -> Option<&CredentialRef> {
+        self.credential.as_ref()
+    }
+    /// Returns validated non-sensitive provider metadata.
+    #[must_use]
+    pub const fn metadata(&self) -> &NonSensitiveMetadata {
+        &self.metadata
+    }
+    /// Replaces the provider selection.
     #[must_use]
     pub fn with_selection(mut self, selection: ProviderSelection) -> Self {
         self.selection = Some(selection);
         self
     }
-
-    /// Sets validated non-sensitive provider options.
-    ///
-    /// [`UserMetadata`] rejects sensitive option keys when it is built.
-    /// Secrets must be referenced through [`CredentialRef`].
-    ///
-    /// # Parameters
-    ///
-    /// * `options` - Validated non-sensitive provider options.
-    ///
-    /// # Returns
-    ///
-    /// The updated configuration.
-    #[inline(always)]
+    /// Replaces validated factory options.
     #[must_use]
-    pub fn with_options(mut self, options: UserMetadata) -> Self {
+    pub fn with_options(mut self, options: NonSensitiveMetadata) -> Self {
         self.options = options;
         self
     }
-
-    /// Sets a credential source reference without embedding secret material.
-    ///
-    /// # Parameters
-    ///
-    /// * `credentials` - Reference identifying an external credential source.
-    ///
-    /// # Returns
-    ///
-    /// The updated configuration.
-    #[inline(always)]
+    /// Sets an external credential reference.
     #[must_use]
-    pub fn with_credentials(mut self, credentials: CredentialRef) -> Self {
-        self.credentials = Some(credentials);
+    pub fn with_credential(mut self, credential: CredentialRef) -> Self {
+        self.credential = Some(credential);
         self
     }
-
-    /// Returns the resource URI used for provider resolution.
-    ///
-    /// # Returns
-    ///
-    /// The configured secret-free resource URI.
-    #[inline(always)]
+    /// Replaces validated provider metadata.
     #[must_use]
-    pub const fn uri(&self) -> &FsUri {
-        &self.uri
-    }
-
-    /// Returns the optional explicit provider selection.
-    ///
-    /// # Returns
-    ///
-    /// `Some` when provider selection is explicit; otherwise `None`.
-    #[inline(always)]
-    #[must_use]
-    pub const fn selection(&self) -> Option<&ProviderSelection> {
-        self.selection.as_ref()
-    }
-
-    /// Returns validated non-sensitive provider options.
-    ///
-    /// # Returns
-    ///
-    /// The provider options, which may be empty.
-    #[inline(always)]
-    #[must_use]
-    pub const fn options(&self) -> &UserMetadata {
-        &self.options
-    }
-
-    /// Returns the optional credential source reference.
-    ///
-    /// # Returns
-    ///
-    /// `Some` when an external credential source is configured; otherwise
-    /// `None`.
-    #[inline(always)]
-    #[must_use]
-    pub const fn credentials(&self) -> Option<&CredentialRef> {
-        self.credentials.as_ref()
+    pub fn with_metadata(mut self, metadata: NonSensitiveMetadata) -> Self {
+        self.metadata = metadata;
+        self
     }
 }
 
+impl Display for FileSystemConfig {
+    /// Formats only safe configuration structure and the redacted URI.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "FileSystemConfig({})", self.uri)
+    }
+}
 impl Debug for FileSystemConfig {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        let option_keys: Vec<_> =
-            self.options.iter().map(|(key, _)| key).collect();
-        formatter
-            .debug_struct("FileSystemConfig")
+    /// Formats safe configuration structure without metadata values or reference payloads.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("FileSystemConfig")
             .field("uri", &self.uri)
             .field("selection", &self.selection)
-            .field("option_keys", &option_keys)
-            .field(
-                "credentials",
-                &self.credentials.as_ref().map(|_| "<credential-ref>"),
-            )
+            .field("options", &self.options)
+            .field("credential", &self.credential)
+            .field("metadata", &self.metadata)
             .finish()
     }
 }
