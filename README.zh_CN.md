@@ -1,4 +1,4 @@
-# Qubit FS Registry
+# qubit-fs-registry
 
 [![Rust CI](https://github.com/qubit-ltd/rs-fs-registry/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-fs-registry/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-fs-registry/coverage-badge.json)](https://qubit-ltd.github.io/rs-fs-registry/coverage/)
@@ -7,108 +7,64 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-`qubit-fs-registry` 为 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供运行时
-provider 注册与解析、完整文件系统配置与 SPI 集成。只使用文件系统 trait 和值类型的程序
-应仅依赖 `qubit-fs`。
-
-registry 边界与解析契约见[设计文档](doc/file_system_registry_design.zh_CN.md)。
+`qubit-fs-registry` 是 `qubit-fs` 应用与 provider crate 之间的运行时边界。在应用组装阶段
+注册同步或异步 provider，解析完整的文件系统配置，并取得文件系统、已解码路径和 canonical URI。
 
 ## 安装
 
 ```bash
 cargo add qubit-fs qubit-fs-registry
+```
+
+本地 provider 由独立 crate 提供：
+
+```bash
 cargo add qubit-fs-local --features registry
 ```
 
-## 使用方法
+## 快速开始
 
-在应用组装阶段注册后端 crate。没有显式 selection 时，provider 按 URI scheme 选择。
+打开本地报表的应用可注册一次 provider，并在边界处解析 `file:` 配置：
 
 ```rust
 use qubit_fs::{ConnectionUri, FsResult};
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
-fn open_local_file() -> FsResult<()> {
+fn open_local_report() -> FsResult<()> {
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::default())?;
+    registry.register(LocalFileSystemProvider::new())?;
 
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
     let resolution = registry.resolve_config(&config)?;
-    println!("{}", resolution.path());
+    let _metadata = resolution.file_system().stat(resolution.path())?;
+    println!("{}", resolution.canonical_uri());
     Ok(())
 }
 ```
 
-`FileSystemConfig` 包含 URI、可选 `ProviderSelection`、已校验的 `NonSensitiveMetadata` 和可选
-`CredentialRef`。先构造 `UserMetadata`，再传给 `with_options`；构造时会拒绝
-credential-like option key。`CredentialRef` 的值必须只包含 provider 能识别的引用，例如
-profile 名称、环境变量名称或外部凭据 provider ID；不得包含 credential、token、password、
-private key 或其他 secret 材料。
+## 提供的能力
 
-### Selection 优先级
+- `FileSystemRegistry` 与 `AsyncFileSystemRegistry` 注册 provider，并解析同步或异步配置。
+- `FileSystemConfig` 包含 URI、可选 selection、非敏感 options 与 metadata，以及可选的
+  `CredentialRef`。
+- 每个 resolution 将文件系统与 provider 解码路径、无 secret 的 canonical URI 配对。
 
-下列规则对同步方法和带 `_async` 后缀的异步方法完全一致：
+selection 以配置为先：`resolve_config` 先使用显式 selection，再使用 URI scheme；它不会回退到
+registry 默认 selection。`resolve_selected_config` 和 `resolve_default_config` 会拒绝配置中与其
+冲突的内嵌 selection。
 
-| 方法族 | 使用的 selection（按优先级） |
-| --- | --- |
-| `resolve_config` | config 内显式的 `ProviderSelection`；否则由 URI scheme 构造 `ProviderSelection::named`。 |
-| `resolve_uri` | 由 URI scheme 构造 `ProviderSelection::named`。 |
-| `resolve_selected_config` | 调用者提供的 selection；如果 config 内嵌不同的 selection，则返回错误。 |
-| `resolve_default_config` | registry 当前的默认 selection；如果 config 内嵌不同的 selection，则返回错误。 |
+`CredentialRef` 标识凭据来源，例如 profile、环境变量名称或外部 provider ID；它不用于存储
+token、password、private key 或其他 secret。`ProviderSelection`、`ProviderId` 与
+`ProviderDescriptor` 由 `qubit-spi` 所有，本 crate 有意不重新导出它们。使用这些类型时需直接
+添加 `qubit-spi` 依赖。
 
-请使用 selector 兼容的 URI scheme（例如 `file` 或 `s3`）；无法派生时，请提供显式
-`ProviderSelection`。特别是，`resolve_config` 不会回退到 registry 的默认 selection。
+## 延伸阅读
 
-`ProviderSelection`、`ProviderId` 和 `ProviderDescriptor` 是 SPI 所有的类型，本 crate
-有意不重新导出它们。需要构造显式 selection 或使用底层 provider catalog API 的应用程序，
-还必须直接依赖 `qubit-spi`。
-
-同步和异步 registry 都公开 provider descriptor、catalog 大小与 URI/config 便捷方法。
-`resolve_selected_config` 与 `resolve_default_config` 分别通过显式或默认
-selection 创建 concrete resolution；异步配置方法消费 owned config。Catalog ID 保留
-`ProviderId` 强类型。当 config 内嵌的 selection 与显式 selection 或当前默认 selection
-冲突时，这两个方法会返回错误；由 config 自身决定 selection 时请使用 `resolve_config`。
-
-### 异步使用
-
-在应用程序组装阶段注册异步 provider 后，可以等待同样的 URI 便捷流程。URI 便捷方法返回的
-future 自行持有 URI 配置和 provider snapshot，因此可以在传入的 registry handle 与 URI 离开
-作用域后继续使用。
-
-```rust,no_run
-use qubit_fs::{ConnectionUri, FsResult};
-use qubit_fs_registry::{AsyncFileSystemRegistry, FileSystemConfig};
-
-async fn open_async(
-    registry: &AsyncFileSystemRegistry,
-) -> FsResult<()> {
-    let config = FileSystemConfig::new(ConnectionUri::parse("memory:///example.txt")?);
-    let resolution = registry.resolve_config(config).await?;
-    let _file_system = resolution.file_system().clone();
-    Ok(())
-}
-```
-
-registry 方法返回 `FileSystemRegistryResult`，其
-`FileSystemRegistryError` 会保留注册、selection、解析及 provider 创建诊断信息。
-对于使用 `FsResult` 的应用程序，`FileSystemRegistryError` 可转换为 `FsError`；转换后会将
-typed registry error 保留为 source。
-
-## 编写 provider
-
-Provider crate 需要直接依赖 SPI：
-
-```bash
-cargo add qubit-spi
-```
-
-实现 `ProviderMetadata` 和 `ServiceProvider<FileSystemSpec>`，并从 provider 的配置化
-创建路径返回 `FileSystemResolution`。应用程序通过 `qubit-fs-registry` 使用 provider；
-provider 则使用 SPI 契约公开 metadata、selection identity 与 resolution。
-异步 provider 需要实现 `ProviderMetadata` 和 `AsyncServiceProvider<FileSystemSpec>`。
-`AsyncFileSystemProvider` 是用于共享注册的 trait object alias，例如
-`Arc<AsyncFileSystemProvider>`。
+- [English user guide](doc/user_guide.md)
+- [中文用户手册](doc/user_guide.zh_CN.md)
+- [API 文档](https://docs.rs/qubit-fs-registry)
+- [English README](README.md)
 
 ## 测试
 
