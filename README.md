@@ -34,7 +34,7 @@ use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
 fn open_local_file() -> FsResult<()> {
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider)?;
+    registry.register(LocalFileSystemProvider::default())?;
 
     let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
     let resolution = registry.resolve_config(&config)?;
@@ -95,7 +95,7 @@ async fn open_async(
     registry: &AsyncFileSystemRegistry,
 ) -> FsResult<()> {
     let config = FileSystemConfig::new(ConnectionUri::parse("memory:///example.txt")?);
-    let resolution = registry.resolve_config(config).await.map_err(Into::into)?;
+    let resolution = registry.resolve_config(config).await?;
     let _file_system = resolution.file_system().clone();
     Ok(())
 }
@@ -139,6 +139,9 @@ cargo test --all-features
 # Check code coverage
 ./coverage.sh
 ```
+
+Coverage is reported by default while the suite is being expanded. Set
+`COVERAGE_ENFORCE_THRESHOLDS=1` to enforce the shared per-source thresholds.
 
 ## License
 
