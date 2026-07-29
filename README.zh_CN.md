@@ -126,9 +126,6 @@ cargo test --all-features
 ./coverage.sh
 ```
 
-测试套件逐步完善期间，覆盖率默认只生成报告。设置
-`COVERAGE_ENFORCE_THRESHOLDS=1` 可启用共享的逐源覆盖率阈值检查。
-
 ## 许可证
 
 Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.

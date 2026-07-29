@@ -140,9 +140,6 @@ cargo test --all-features
 ./coverage.sh
 ```
 
-Coverage is reported by default while the suite is being expanded. Set
-`COVERAGE_ENFORCE_THRESHOLDS=1` to enforce the shared per-source thresholds.
-
 ## License
 
 Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
