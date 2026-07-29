@@ -11,6 +11,8 @@
 provider 注册与解析、完整文件系统配置与 SPI 集成。只使用文件系统 trait 和值类型的程序
 应仅依赖 `qubit-fs`。
 
+registry 边界与解析契约见[设计文档](doc/file_system_registry_design.zh_CN.md)。
+
 ## 安装
 
 ```bash

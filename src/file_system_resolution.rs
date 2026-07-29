@@ -1,7 +1,18 @@
 //! Provider-decoded synchronous filesystem resolution.
 
-use qubit_fs::{FileSystem, FsError, FsErrorKind, FsOperation, Path, Uri};
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use qubit_fs::{
+    FileSystem,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    Path,
+    Uri,
+};
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as FmtResult,
+};
 
 /// A configured synchronous facade paired with its decoded location.
 #[derive(Clone)]
@@ -11,7 +22,8 @@ pub struct FileSystemResolution {
     canonical_uri: Uri,
 }
 impl FileSystemResolution {
-    /// Validates and creates a resolution. The path must match facade constraints and URI scheme.
+    /// Validates and creates a resolution. The path must match facade
+    /// constraints and URI scheme.
     pub fn try_new(
         file_system: FileSystem,
         path: Path,

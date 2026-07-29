@@ -8,9 +8,17 @@
 // qubit-style: allow source-test-pair
 //! SPI service specification for filesystems.
 
-use qubit_spi::{AsyncServiceSpec, ServiceSpec, SyncServiceSpec};
+use qubit_spi::{
+    AsyncServiceSpec,
+    ServiceSpec,
+    SyncServiceSpec,
+};
 
-use crate::{AsyncFileSystemResolution, FileSystemConfig, FileSystemResolution};
+use crate::{
+    AsyncFileSystemResolution,
+    FileSystemConfig,
+    FileSystemResolution,
+};
 use qubit_fs::FsError;
 
 /// Service specification for filesystem providers.

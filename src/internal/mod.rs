@@ -7,8 +7,15 @@
 // =============================================================================
 //! Private helpers shared by synchronous and asynchronous registries.
 
+mod provider_adapter;
 mod registry_support;
 
+pub(super) use provider_adapter::{
+    ValidatingAsyncFileSystemProvider,
+    ValidatingFileSystemProvider,
+};
 pub(super) use registry_support::{
-    ensure_selection_matches_config, selection_for_config, validate_credentials,
+    ensure_selection_matches_config,
+    selection_for_config,
+    validate_credentials,
 };

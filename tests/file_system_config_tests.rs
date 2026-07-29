@@ -6,21 +6,31 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{ConnectionUri, FsErrorKind, NonSensitiveMetadata, UserMetadata};
-use qubit_fs_registry::{CredentialRef, FileSystemConfig};
+use qubit_fs::{
+    ConnectionUri,
+    FsErrorKind,
+    NonSensitiveMetadata,
+    UserMetadata,
+};
+use qubit_fs_registry::{
+    CredentialRef,
+    FileSystemConfig,
+};
 use qubit_spi::ProviderSelection;
 
 #[test]
 fn test_config_builder_preserves_validated_options_without_a_fallible_step() {
-    let selection = ProviderSelection::named("mock").expect("selection should parse");
+    let selection =
+        ProviderSelection::named("mock").expect("selection should parse");
     let options = UserMetadata::new()
         .with("region", "test-1")
         .expect("metadata should accept a non-sensitive key");
     let options = NonSensitiveMetadata::from(options);
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("mock:///file.txt").expect("URI should parse"))
-            .with_selection(selection.clone())
-            .with_options(options.clone());
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("mock:///file.txt").expect("URI should parse"),
+    )
+    .with_selection(selection.clone())
+    .with_options(options.clone());
 
     assert_eq!(Some(&selection), config.selection());
     assert_eq!(&options, config.options());
@@ -41,16 +51,17 @@ fn test_sensitive_options_are_rejected_while_building_user_metadata() {
 /// credential reference contents.
 #[test]
 fn test_config_debug_redacts_values_and_credential_references() {
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("mock:///resource").expect("URI should parse"))
-            .with_options(NonSensitiveMetadata::from(
-                UserMetadata::new()
-                    .with("endpoint", "storage.internal")
-                    .expect("metadata should accept a non-sensitive key"),
-            ))
-            .with_credential(CredentialRef::Profile {
-                name: "production".to_owned(),
-            });
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("mock:///resource").expect("URI should parse"),
+    )
+    .with_options(NonSensitiveMetadata::from(
+        UserMetadata::new()
+            .with("endpoint", "storage.internal")
+            .expect("metadata should accept a non-sensitive key"),
+    ))
+    .with_credential(CredentialRef::Profile {
+        name: "production".to_owned(),
+    });
 
     let debug = format!("{config:?}");
 
@@ -59,7 +70,8 @@ fn test_config_debug_redacts_values_and_credential_references() {
     assert!(!debug.contains("production"));
 }
 
-/// Verifies ordinary formatting delegates URI secret masking to `ConnectionUri`.
+/// Verifies ordinary formatting delegates URI secret masking to
+/// `ConnectionUri`.
 #[test]
 fn test_config_display_and_debug_never_expose_connection_secret() {
     let config = FileSystemConfig::new(

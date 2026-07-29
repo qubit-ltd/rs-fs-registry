@@ -1,19 +1,28 @@
 //! Runtime facade for synchronous filesystem provider factories.
 use crate::internal::{
-    ensure_selection_matches_config, selection_for_config, validate_credentials,
+    ValidatingFileSystemProvider,
+    ensure_selection_matches_config,
+    selection_for_config,
+    validate_credentials,
 };
 use crate::{
-    FileSystemConfig, FileSystemProvider, FileSystemRegistryResult, FileSystemResolution,
+    FileSystemConfig,
+    FileSystemProvider,
+    FileSystemRegistryResult,
+    FileSystemResolution,
     FileSystemSpec,
 };
 use qubit_fs::ConnectionUri;
 use qubit_spi::{
-    ProviderDefinition, ProviderDescriptor, ProviderRegistry, ProviderSelection,
+    ProviderDefinition,
+    ProviderDescriptor,
+    ProviderRegistry,
+    ProviderSelection,
     ResolvingServiceProvider,
 };
 use std::sync::Arc;
 /// Shared registry of self-described synchronous filesystem providers.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct FileSystemRegistry {
     providers: ProviderRegistry<FileSystemSpec>,
 }
@@ -23,14 +32,17 @@ impl FileSystemRegistry {
     where
         P: ProviderDefinition<FileSystemSpec>,
     {
-        self.providers.register(provider).map_err(Into::into)
+        let provider: Arc<FileSystemProvider> = Arc::new(provider);
+        self.register_shared(provider)
     }
     /// Registers a shared provider factory.
     pub fn register_shared(
         &self,
         provider: Arc<FileSystemProvider>,
     ) -> FileSystemRegistryResult<()> {
-        self.providers.register_shared(provider).map_err(Into::into)
+        self.providers
+            .register(ValidatingFileSystemProvider::new(provider))
+            .map_err(Into::into)
     }
     /// Returns the current default selection.
     #[must_use]
@@ -45,7 +57,8 @@ impl FileSystemRegistry {
     pub(crate) fn resolve_selected(
         &self,
         selection: &ProviderSelection,
-    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
+    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
+    {
         self.providers
             .resolve_selected(selection)
             .map_err(Into::into)
@@ -65,7 +78,8 @@ impl FileSystemRegistry {
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
-    /// Resolves `config`, preferring its explicit selection over URI scheme selection.
+    /// Resolves `config`, preferring its explicit selection over URI scheme
+    /// selection.
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
@@ -83,7 +97,8 @@ impl FileSystemRegistry {
     ) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))
     }
-    /// Resolves config through `selection`, rejecting a conflicting embedded selection.
+    /// Resolves config through `selection`, rejecting a conflicting embedded
+    /// selection.
     pub fn resolve_selected_config(
         &self,
         selection: &ProviderSelection,

@@ -7,12 +7,22 @@
 // =============================================================================
 //! Error model for filesystem provider registry operations.
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
-use qubit_fs::{FsError, FsErrorKind, FsOperation};
+use qubit_fs::{
+    FsError,
+    FsErrorKind,
+    FsOperation,
+};
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
-    ProviderCreationError, ProviderResolutionError, ProviderSelectionBuildError, RegistrationError,
+    ProviderCreationError,
+    ProviderResolutionError,
+    ProviderSelectionBuildError,
+    RegistrationError,
 };
 
 /// Result returned by filesystem registry operations.
@@ -61,7 +71,8 @@ impl fmt::Display for FileSystemRegistryError {
 }
 
 impl fmt::Debug for FileSystemRegistryError {
-    /// Formats only an error category; payloads can contain provider identities.
+    /// Formats only an error category; payloads can contain provider
+    /// identities.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::InvalidConfiguration { .. } => "InvalidConfiguration",
@@ -158,7 +169,8 @@ impl From<FileSystemRegistryError> for FsError {
                 )
             }
         };
-        let error = FsError::with_source(kind, FsOperation::Provider, message, error);
+        let error =
+            FsError::with_source(kind, FsOperation::Provider, message, error);
         match provider {
             Some(provider) => error.with_provider(provider),
             None => error,

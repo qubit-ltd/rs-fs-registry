@@ -12,6 +12,9 @@ complete filesystem configuration, and SPI integration for [`qubit-fs`](https://
 Applications that only need filesystem traits and value types should depend on
 `qubit-fs` alone.
 
+The registry boundary and resolution contract are documented in the
+[Chinese design document](doc/file_system_registry_design.zh_CN.md).
+
 ## Installation
 
 ```bash

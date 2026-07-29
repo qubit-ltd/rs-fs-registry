@@ -1,8 +1,16 @@
 //! Complete secret-safe provider configuration.
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+    Result as FmtResult,
+};
 
-use qubit_fs::{ConnectionUri, NonSensitiveMetadata};
+use qubit_fs::{
+    ConnectionUri,
+    NonSensitiveMetadata,
+};
 use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;
@@ -87,7 +95,8 @@ impl Display for FileSystemConfig {
     }
 }
 impl Debug for FileSystemConfig {
-    /// Formats safe configuration structure without metadata values or reference payloads.
+    /// Formats safe configuration structure without metadata values or
+    /// reference payloads.
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("FileSystemConfig")
             .field("uri", &self.uri)

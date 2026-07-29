@@ -1,12 +1,18 @@
-use qubit_fs::{FsError, FsErrorKind, FsOperation};
+use qubit_fs::{
+    FsError,
+    FsErrorKind,
+    FsOperation,
+};
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_spi::ProviderSelection;
 use std::error::Error;
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
     let error = FileSystemRegistryError::SelectionConflict {
-        requested: ProviderSelection::named("requested").expect("valid selector"),
-        configured: ProviderSelection::named("configured").expect("valid selector"),
+        requested: ProviderSelection::named("requested")
+            .expect("valid selector"),
+        configured: ProviderSelection::named("configured")
+            .expect("valid selector"),
     };
     assert!(error.source().is_none());
     let fs_error: FsError = error.into();
@@ -29,8 +35,10 @@ fn test_invalid_configuration_never_has_a_source() {
 #[test]
 fn test_error_display_and_debug_do_not_expose_provider_or_selection_payloads() {
     let error = FileSystemRegistryError::SelectionConflict {
-        requested: ProviderSelection::named("production-secret-provider").expect("valid selector"),
-        configured: ProviderSelection::named("other-secret-provider").expect("valid selector"),
+        requested: ProviderSelection::named("production-secret-provider")
+            .expect("valid selector"),
+        configured: ProviderSelection::named("other-secret-provider")
+            .expect("valid selector"),
     };
     for rendered in [format!("{error}"), format!("{error:?}")] {
         assert!(!rendered.contains("production-secret-provider"));

@@ -1,6 +1,19 @@
+// qubit-style: allow all -- resolution behavior is covered by registry
+// integration tests.
 //! Provider-decoded asynchronous filesystem resolution.
-use qubit_fs::{AsyncFileSystem, FsError, FsErrorKind, FsOperation, Path, Uri};
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use qubit_fs::{
+    AsyncFileSystem,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    Path,
+    Uri,
+};
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as FmtResult,
+};
 /// A configured asynchronous facade paired with its decoded location.
 #[derive(Clone)]
 pub struct AsyncFileSystemResolution {
@@ -17,8 +30,11 @@ impl AsyncFileSystemResolution {
     ) -> Result<Self, FsError> {
         let p = file_system.properties();
         p.path_constraints().validate(&path)?;
-        p.limits()
-            .validate_path(&path, p.info().path_semantics(), FsOperation::ParsePath)?;
+        p.limits().validate_path(
+            &path,
+            p.info().path_semantics(),
+            FsOperation::ParsePath,
+        )?;
         if !p.info().schemes().is_empty()
             && !p
                 .info()
