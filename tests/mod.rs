@@ -7,6 +7,7 @@
 // =============================================================================
 
 mod async_file_system_registry_tests;
+mod async_file_system_resolution_tests;
 mod common;
 mod credential_ref_tests;
 mod file_system_config_tests;

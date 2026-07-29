@@ -37,6 +37,26 @@ fn test_config_builder_preserves_validated_options_without_a_fallible_step() {
     assert!(config.credential().is_none());
 }
 
+/// Builder methods retain every public configuration component for provider
+/// factories without exposing sensitive values.
+#[test]
+fn test_config_builder_exposes_metadata_uri_and_credential_reference() {
+    let uri =
+        ConnectionUri::parse("mock:///metadata").expect("URI should parse");
+    let metadata = NonSensitiveMetadata::from(
+        UserMetadata::new()
+            .with("zone", "test-zone")
+            .expect("metadata should accept a non-sensitive key"),
+    );
+    let config = FileSystemConfig::new(uri.clone())
+        .with_metadata(metadata.clone())
+        .with_credential(CredentialRef::DefaultChain);
+
+    assert_eq!(config.uri(), &uri);
+    assert_eq!(config.metadata(), &metadata);
+    assert_eq!(config.credential(), Some(&CredentialRef::DefaultChain));
+}
+
 /// Verifies sensitive options fail before reaching the configuration builder.
 #[test]
 fn test_sensitive_options_are_rejected_while_building_user_metadata() {

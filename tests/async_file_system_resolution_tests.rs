@@ -1,34 +1,26 @@
 // =============================================================================
-//    Copyright (c) 2025 - 2026 Haixing Hu.
+//    Copyright (c) 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FsErrorKind,
-    Uri,
-};
+use qubit_fs::FsErrorKind;
 
 use crate::common::{
-    sync_resolution,
-    sync_resolution_with_scheme,
+    async_resolution,
+    async_resolution_with_scheme,
 };
-#[test]
-fn test_resolution_boundary_uses_secret_free_uri() {
-    assert!(Uri::parse("s3://bucket/key").is_ok());
-    assert!(Uri::parse("s3://user:password@bucket/key").is_err());
-}
 
-/// A synchronous resolution retains its facade, decoded path, and canonical
+/// An asynchronous resolution retains its facade, decoded path, and canonical
 /// URI across access and ownership transfer.
 #[test]
-fn test_resolution_exposes_and_transfers_components() {
-    let resolution = sync_resolution("resolution-provider");
+fn test_async_resolution_exposes_and_transfers_components() {
+    let resolution = async_resolution("async-resolution-provider");
     assert_eq!(
         resolution.file_system().properties().info().provider_id(),
-        "resolution-provider"
+        "async-resolution-provider"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
     assert_eq!(
@@ -40,18 +32,18 @@ fn test_resolution_exposes_and_transfers_components() {
     let (file_system, path, uri) = resolution.into_parts();
     assert_eq!(
         file_system.properties().info().provider_id(),
-        "resolution-provider"
+        "async-resolution-provider"
     );
     assert_eq!(path.as_str(), "/resource");
     assert_eq!(uri.as_str(), "registry-test:///resource");
 }
 
-/// A facade that advertises URI schemes rejects a provider canonical URI from
-/// another scheme before the resolution is published.
+/// Async resolutions reject canonical URI schemes the facade does not
+/// advertise.
 #[test]
-fn test_resolution_rejects_unadvertised_canonical_uri_scheme() {
-    let error = sync_resolution_with_scheme(
-        "resolution-provider",
+fn test_async_resolution_rejects_unadvertised_canonical_uri_scheme() {
+    let error = async_resolution_with_scheme(
+        "async-resolution-provider",
         "accepted",
         "rejected:///resource",
     )

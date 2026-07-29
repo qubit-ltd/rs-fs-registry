@@ -103,6 +103,58 @@ fn test_async_registry_future_is_static_and_polls_after_registry_is_dropped() {
     assert!(matches!(error, FileSystemRegistryError::Creation(_)));
 }
 
+/// Async registry inspection and every owned resolution entry point preserve
+/// the provider snapshot until the returned future completes.
+#[test]
+fn test_async_registry_inspection_and_resolution_entry_points() {
+    let registry = AsyncFileSystemRegistry::default();
+    assert!(registry.is_empty());
+    registry
+        .register(AsyncFailingProvider)
+        .expect("register provider");
+    assert!(!registry.is_empty());
+    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.descriptors()[0].id().as_str(), "async-failing");
+
+    let uri = ConnectionUri::parse("async-failing:///resource")
+        .expect("URI should parse");
+    let selection = ProviderSelection::named("async-failing")
+        .expect("selection should parse");
+    for result in [
+        block_on(registry.resolve_uri(uri.clone())),
+        block_on(registry.resolve_selected_config(
+            selection.clone(),
+            FileSystemConfig::new(uri.clone()),
+        )),
+    ] {
+        assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
+    }
+    registry.set_default_selection(selection);
+    assert!(matches!(
+        block_on(registry.resolve_default_config(FileSystemConfig::new(uri))),
+        Err(FileSystemRegistryError::Creation(_))
+    ));
+}
+
+/// Async explicit selections conflict when configuration embeds another one.
+#[test]
+fn test_async_registry_selected_config_rejects_conflicting_selection() {
+    let registry = AsyncFileSystemRegistry::default();
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured:///resource")
+            .expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("configured").expect("selection should parse"),
+    );
+    let requested =
+        ProviderSelection::named("requested").expect("selection should parse");
+    assert!(matches!(
+        block_on(registry.resolve_selected_config(requested, config)),
+        Err(FileSystemRegistryError::SelectionConflict { .. })
+    ));
+}
+
 struct AsyncFailingProvider;
 impl ProviderMetadata for AsyncFailingProvider {
     fn descriptor(&self) -> ProviderDescriptor {

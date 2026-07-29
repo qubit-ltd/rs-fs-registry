@@ -14,6 +14,13 @@ use qubit_fs::{
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_spi::ProviderSelection;
 use std::error::Error;
+
+use crate::file_system_registry_tests::FailingProvider;
+use qubit_fs::ConnectionUri;
+use qubit_fs_registry::{
+    FileSystemConfig,
+    FileSystemRegistry,
+};
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
     let error = FileSystemRegistryError::SelectionConflict {
@@ -38,6 +45,9 @@ fn test_invalid_configuration_never_has_a_source() {
             .contains("invalid filesystem configuration")
     );
     assert!(error.source().is_none());
+    let fs_error: FsError = error.into();
+    assert_eq!(fs_error.kind(), FsErrorKind::InvalidOptions);
+    assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
 
 #[test]
@@ -51,5 +61,53 @@ fn test_error_display_and_debug_do_not_expose_provider_or_selection_payloads() {
     for rendered in [format!("{error}"), format!("{error:?}")] {
         assert!(!rendered.contains("production-secret-provider"));
         assert!(!rendered.contains("other-secret-provider"));
+    }
+}
+
+/// Registration, resolution, and selection failures retain sources while
+/// converting to provider-neutral filesystem errors.
+#[test]
+fn test_registry_error_variants_format_and_convert_safely() {
+    let registration = {
+        let registry = FileSystemRegistry::default();
+        registry
+            .register(FailingProvider::new("duplicate"))
+            .expect("register first provider");
+        registry
+            .register(FailingProvider::new("duplicate"))
+            .expect_err("duplicate provider must fail")
+    };
+    let resolution = FileSystemRegistry::default()
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("missing:///resource")
+                .expect("URI should parse"),
+        ))
+        .expect_err("missing provider must fail resolution");
+    let selection = FileSystemRegistry::default()
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("invalid-:///resource")
+                .expect("URI should parse"),
+        ))
+        .expect_err("invalid scheme must fail selection");
+    let creation = {
+        let registry = FileSystemRegistry::default();
+        registry
+            .register(FailingProvider::new("creation"))
+            .expect("register provider");
+        registry
+            .resolve_config(&FileSystemConfig::new(
+                ConnectionUri::parse("creation:///resource")
+                    .expect("URI should parse"),
+            ))
+            .expect_err("unavailable provider must fail creation")
+    };
+
+    for error in [registration, resolution, selection, creation] {
+        assert!(error.source().is_some());
+        assert!(!format!("{error}").is_empty());
+        assert!(!format!("{error:?}").is_empty());
+        let fs_error: FsError = error.into();
+        assert_eq!(fs_error.operation(), FsOperation::Provider);
+        assert!(std::error::Error::source(&fs_error).is_some());
     }
 }
