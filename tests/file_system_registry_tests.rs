@@ -197,6 +197,28 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
     ));
 }
 
+/// An explicit configuration selection takes precedence over the URI scheme.
+#[test]
+fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(FailingProvider::new("selected-provider"))
+        .expect("register provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("unregistered-scheme:///resource")
+            .expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("selected-provider")
+            .expect("selection should parse"),
+    );
+
+    assert!(matches!(
+        registry.resolve_config(&config),
+        Err(FileSystemRegistryError::Creation(_))
+    ));
+}
+
 pub(crate) struct FailingProvider {
     id: &'static str,
 }
