@@ -6,10 +6,16 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::FsErrorKind;
+use qubit_fs::{
+    FileSystemLimit,
+    FileSystemLimits,
+    FsErrorKind,
+    PathConstraints,
+};
 
 use crate::common::{
     async_resolution,
+    async_resolution_with_path_properties,
     async_resolution_with_scheme,
 };
 
@@ -36,6 +42,35 @@ fn test_async_resolution_exposes_and_transfers_components() {
     );
     assert_eq!(path.as_str(), "/resource");
     assert_eq!(uri.as_str(), "registry-test:///resource");
+}
+
+/// Async resolution construction enforces the configured path form before
+/// exposing provider results to registry callers.
+#[test]
+fn test_async_resolution_rejects_path_outside_constraints() {
+    let error = async_resolution_with_path_properties(
+        "async-resolution-provider",
+        "relative",
+        FileSystemLimits::unknown(),
+        PathConstraints::absolute(),
+    )
+    .expect_err("relative path must violate absolute constraints");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+}
+
+/// Async resolution construction enforces finite provider path-size limits.
+#[test]
+fn test_async_resolution_rejects_path_exceeding_limits() {
+    let limits = FileSystemLimits::unknown()
+        .with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let error = async_resolution_with_path_properties(
+        "async-resolution-provider",
+        "/large",
+        limits,
+        PathConstraints::absolute(),
+    )
+    .expect_err("oversized path must violate the provider limit");
+    assert_eq!(error.kind(), FsErrorKind::ResourceLimitExceeded);
 }
 
 /// Async resolutions reject canonical URI schemes the facade does not

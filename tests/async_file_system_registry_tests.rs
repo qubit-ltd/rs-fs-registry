@@ -15,6 +15,7 @@ use qubit_fs::{
 use qubit_fs_registry::{
     AsyncFileSystemRegistry,
     AsyncFileSystemResolution,
+    CredentialRef,
     FileSystemConfig,
     FileSystemRegistryError,
     FileSystemSpec,
@@ -74,6 +75,47 @@ fn test_async_registry_rejects_resolution_with_mismatched_provider_identity() {
         creation.decisive_attempt().failure().error().kind(),
         FsErrorKind::ProviderContractViolation
     );
+}
+
+/// An async provider result whose identity matches its descriptor remains
+/// available with its path and canonical URI intact.
+#[test]
+fn test_async_registry_returns_resolution_with_matching_provider_identity() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry
+        .register(AsyncMatchingProvider)
+        .expect("register matching provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("registered-async:///resource")
+            .expect("valid URI"),
+    );
+
+    let resolution = block_on(registry.resolve_config(config))
+        .expect("matching provider identity must resolve");
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "registered-async"
+    );
+    assert_eq!(resolution.path().as_str(), "/resource");
+    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
+}
+
+/// Async resolution rejects conflicting embedded and referenced credentials
+/// before provider invocation.
+#[test]
+fn test_async_registry_rejects_embedded_and_referenced_credentials() {
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user:password@bucket/key")
+            .expect("URI should parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+
+    let error = block_on(AsyncFileSystemRegistry::default().resolve_config(config))
+        .expect_err("credential sources conflict");
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::InvalidConfiguration { .. }
+    ));
 }
 #[test]
 fn test_async_registry_accepts_owned_config_without_borrowing_the_registry() {
@@ -188,6 +230,28 @@ impl ProviderMetadata for AsyncMismatchedProvider {
         ProviderDescriptor::new(
             ProviderId::new("registered-async").expect("provider id"),
         )
+    }
+}
+
+struct AsyncMatchingProvider;
+
+impl ProviderMetadata for AsyncMatchingProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(
+            ProviderId::new("registered-async").expect("provider id"),
+        )
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for AsyncMatchingProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<
+        'a,
+        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
+    > {
+        Box::pin(async { Ok(common::async_resolution("registered-async")) })
     }
 }
 

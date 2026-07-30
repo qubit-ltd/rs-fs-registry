@@ -55,6 +55,8 @@ pub(crate) fn sync_resolution(
     let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
         provider_id,
         scheme: None,
+        limits: FileSystemLimits::unknown(),
+        path_constraints: PathConstraints::absolute(),
     })
     .expect("valid test facade");
     FileSystemResolution::try_new(
@@ -73,6 +75,8 @@ pub(crate) fn sync_resolution_with_scheme(
     let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
         provider_id,
         scheme: Some(scheme),
+        limits: FileSystemLimits::unknown(),
+        path_constraints: PathConstraints::absolute(),
     })
     .expect("valid test facade");
     FileSystemResolution::try_new(
@@ -82,12 +86,36 @@ pub(crate) fn sync_resolution_with_scheme(
     )
 }
 
+/// Creates a synchronous resolution with the supplied path validation
+/// properties.
+pub(crate) fn sync_resolution_with_path_properties(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+) -> Result<FileSystemResolution, FsError> {
+    let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
+        provider_id,
+        scheme: None,
+        limits,
+        path_constraints,
+    })
+    .expect("valid test facade");
+    FileSystemResolution::try_new(
+        file_system,
+        Path::parse(path).expect("valid test path"),
+        Uri::parse("registry-test:///resource").expect("valid canonical URI"),
+    )
+}
+
 pub(crate) fn async_resolution(
     provider_id: &'static str,
 ) -> AsyncFileSystemResolution {
     let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
         provider_id,
         scheme: None,
+        limits: FileSystemLimits::unknown(),
+        path_constraints: PathConstraints::absolute(),
     })
     .expect("valid test facade");
     AsyncFileSystemResolution::try_new(
@@ -106,6 +134,8 @@ pub(crate) fn async_resolution_with_scheme(
     let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
         provider_id,
         scheme: Some(scheme),
+        limits: FileSystemLimits::unknown(),
+        path_constraints: PathConstraints::absolute(),
     })
     .expect("valid test facade");
     AsyncFileSystemResolution::try_new(
@@ -115,9 +145,33 @@ pub(crate) fn async_resolution_with_scheme(
     )
 }
 
+/// Creates an asynchronous resolution with the supplied path validation
+/// properties.
+pub(crate) fn async_resolution_with_path_properties(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+) -> Result<AsyncFileSystemResolution, FsError> {
+    let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
+        provider_id,
+        scheme: None,
+        limits,
+        path_constraints,
+    })
+    .expect("valid test facade");
+    AsyncFileSystemResolution::try_new(
+        file_system,
+        Path::parse(path).expect("valid test path"),
+        Uri::parse("registry-test:///resource").expect("valid canonical URI"),
+    )
+}
+
 fn properties(
     provider_id: &'static str,
     scheme: Option<&str>,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
 ) -> FileSystemProperties {
     let mut info = FileSystemInfo::new(
         FileSystemId::new("registry-test-fs").expect("valid filesystem ID"),
@@ -130,8 +184,8 @@ fn properties(
     FileSystemProperties::new(
         info,
         FileSystemCapabilities::new(),
-        FileSystemLimits::unknown(),
-        PathConstraints::absolute(),
+        limits,
+        path_constraints,
     )
     .expect("valid test properties")
 }
@@ -147,11 +201,18 @@ fn unused() -> FsError {
 struct SyncPropertiesOnlySpi {
     provider_id: &'static str,
     scheme: Option<&'static str>,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
 }
 
 impl FileSystemSpi for SyncPropertiesOnlySpi {
     fn properties(&self) -> FileSystemProperties {
-        properties(self.provider_id, self.scheme)
+        properties(
+            self.provider_id,
+            self.scheme,
+            self.limits,
+            self.path_constraints.clone(),
+        )
     }
 
     fn stat(
@@ -228,11 +289,18 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
 struct AsyncPropertiesOnlySpi {
     provider_id: &'static str,
     scheme: Option<&'static str>,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
 }
 
 impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
     fn properties(&self) -> FileSystemProperties {
-        properties(self.provider_id, self.scheme)
+        properties(
+            self.provider_id,
+            self.scheme,
+            self.limits,
+            self.path_constraints.clone(),
+        )
     }
 
     fn stat<'a>(

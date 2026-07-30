@@ -102,12 +102,23 @@ fn test_registry_error_variants_format_and_convert_safely() {
             .expect_err("unavailable provider must fail creation")
     };
 
-    for error in [registration, resolution, selection, creation] {
+    for (error, expected_kind, expected_provider) in [
+        (registration, FsErrorKind::Conflict, None),
+        (resolution, FsErrorKind::ProviderUnavailable, None),
+        (selection, FsErrorKind::InvalidUri, None),
+        (
+            creation,
+            FsErrorKind::ProviderUnavailable,
+            Some("creation"),
+        ),
+    ] {
         assert!(error.source().is_some());
         assert!(!format!("{error}").is_empty());
         assert!(!format!("{error:?}").is_empty());
         let fs_error: FsError = error.into();
+        assert_eq!(fs_error.kind(), expected_kind);
         assert_eq!(fs_error.operation(), FsOperation::Provider);
+        assert_eq!(fs_error.provider(), expected_provider);
         assert!(std::error::Error::source(&fs_error).is_some());
     }
 }
