@@ -152,7 +152,7 @@ fn test_async_registry_selected_config_rejects_conflicting_selection() {
 
 /// An explicit configuration selection takes precedence over the URI scheme.
 #[test]
-fn test_async_resolve_config_prefers_explicit_selection_over_uri_scheme() {
+fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
     let registry = AsyncFileSystemRegistry::default();
     registry
         .register(AsyncFailingProvider)
@@ -174,7 +174,7 @@ fn test_async_resolve_config_prefers_explicit_selection_over_uri_scheme() {
 
 /// Async resolution snapshots a missing provider before later registrations.
 #[test]
-fn test_async_resolve_config_snapshots_missing_provider_before_registration() {
+fn test_resolve_config_snapshots_missing_provider_before_registration() {
     let registry = AsyncFileSystemRegistry::default();
     let future = registry.resolve_config(FileSystemConfig::new(
         ConnectionUri::parse("async-failing:///resource")
