@@ -37,8 +37,5 @@ path = "tests/mod.rs"
 qubit-fs = { path = "../rs-fs", version = "0.2" }
 qubit-spi = { path = "../rs-spi", version = "0.11" }
 
-[dev-dependencies]
-qubit-io = { path = "../rs-io", version = "0.14" }
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
