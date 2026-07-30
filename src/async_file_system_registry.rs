@@ -32,12 +32,20 @@ use std::{
     sync::Arc,
 };
 /// Shared registry of self-described asynchronous filesystem providers.
+///
+/// Clones share the same provider catalog and default selection. Each
+/// resolution captures a provider snapshot before returning its future.
 #[derive(Clone, Debug, Default)]
 pub struct AsyncFileSystemRegistry {
     providers: AsyncProviderRegistry<FileSystemSpec>,
 }
 impl AsyncFileSystemRegistry {
-    /// Registers an asynchronous provider factory.
+    /// Registers an asynchronous provider factory owned by this registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
+    /// when its descriptor conflicts with an existing provider.
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
         P: AsyncProviderDefinition<FileSystemSpec>,
@@ -46,6 +54,11 @@ impl AsyncFileSystemRegistry {
         self.register_shared(provider)
     }
     /// Registers a shared asynchronous provider factory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
+    /// when its descriptor conflicts with an existing provider.
     pub fn register_shared(
         &self,
         provider: Arc<AsyncFileSystemProvider>,
@@ -59,7 +72,7 @@ impl AsyncFileSystemRegistry {
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
     }
-    /// Replaces the default selection.
+    /// Replaces the selection used by [`Self::resolve_default_config`].
     pub fn set_default_selection(&self, selection: ProviderSelection) {
         self.providers.set_default_selection(selection);
     }
@@ -90,6 +103,14 @@ impl AsyncFileSystemRegistry {
     }
     /// Resolves owned config without borrowing the registry while awaiting
     /// creation.
+    ///
+    /// Validation and provider snapshotting occur before this method returns;
+    /// the resulting future owns both the configuration and snapshot.
+    ///
+    /// # Errors
+    ///
+    /// The returned future yields a structured error when credential sources
+    /// conflict, the selection is invalid or unavailable, or creation fails.
     pub fn resolve_config(
         &self,
         config: FileSystemConfig,
@@ -107,7 +128,12 @@ impl AsyncFileSystemRegistry {
                 .map_err(Into::into)
         }
     }
-    /// Resolves an owned URI-only configuration.
+    /// Resolves an owned URI-only configuration through its scheme-derived
+    /// selection.
+    ///
+    /// # Errors
+    ///
+    /// The returned future yields the same errors as [`Self::resolve_config`].
     pub fn resolve_uri(
         &self,
         uri: ConnectionUri,
@@ -118,6 +144,12 @@ impl AsyncFileSystemRegistry {
         self.resolve_config(FileSystemConfig::new(uri))
     }
     /// Resolves owned config through an explicit selection.
+    ///
+    /// # Errors
+    ///
+    /// The returned future yields a structured error when credential sources
+    /// or selections conflict, the selection is unavailable, or creation
+    /// fails.
     pub fn resolve_selected_config(
         &self,
         selection: ProviderSelection,
@@ -136,7 +168,12 @@ impl AsyncFileSystemRegistry {
                 .map_err(Into::into)
         }
     }
-    /// Resolves owned config through the default selection.
+    /// Resolves owned config through the current default selection.
+    ///
+    /// # Errors
+    ///
+    /// The returned future yields the same errors as
+    /// [`Self::resolve_selected_config`].
     pub fn resolve_default_config(
         &self,
         config: FileSystemConfig,

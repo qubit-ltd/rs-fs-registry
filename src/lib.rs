@@ -5,7 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Provider discovery and registry integration for [`qubit_fs`].
+//! Provider registration and registry integration for [`qubit_fs`].
 //!
 //! # Quick start
 //!

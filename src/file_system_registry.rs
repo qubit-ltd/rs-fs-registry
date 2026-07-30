@@ -29,12 +29,20 @@ use qubit_spi::{
 };
 use std::sync::Arc;
 /// Shared registry of self-described synchronous filesystem providers.
+///
+/// Clones share the same provider catalog and default selection. Each
+/// resolution captures a provider snapshot before creation begins.
 #[derive(Clone, Debug, Default)]
 pub struct FileSystemRegistry {
     providers: ProviderRegistry<FileSystemSpec>,
 }
 impl FileSystemRegistry {
-    /// Registers a provider factory.
+    /// Registers a provider factory owned by this registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
+    /// when its descriptor conflicts with an existing provider.
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
         P: ProviderDefinition<FileSystemSpec>,
@@ -43,6 +51,11 @@ impl FileSystemRegistry {
         self.register_shared(provider)
     }
     /// Registers a shared provider factory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
+    /// when its descriptor conflicts with an existing provider.
     pub fn register_shared(
         &self,
         provider: Arc<FileSystemProvider>,
@@ -56,7 +69,7 @@ impl FileSystemRegistry {
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
     }
-    /// Replaces the default selection.
+    /// Replaces the selection used by [`Self::resolve_default_config`].
     pub fn set_default_selection(&self, selection: ProviderSelection) {
         self.providers.set_default_selection(selection);
     }
@@ -85,8 +98,15 @@ impl FileSystemRegistry {
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
-    /// Resolves `config`, preferring its explicit selection over URI scheme
-    /// selection.
+    /// Resolves `config`, preferring its explicit selection over its URI
+    /// scheme.
+    ///
+    /// This method never falls back to the registry default selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error when credential sources conflict, the
+    /// selection is invalid or unavailable, or provider creation fails.
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
@@ -97,15 +117,24 @@ impl FileSystemRegistry {
             .create_configured(config)
             .map_err(Into::into)
     }
-    /// Resolves a URI-only configuration.
+    /// Resolves a URI-only configuration through its scheme-derived selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::resolve_config`].
     pub fn resolve_uri(
         &self,
         uri: &ConnectionUri,
     ) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))
     }
-    /// Resolves config through `selection`, rejecting a conflicting embedded
+    /// Resolves `config` through `selection`, rejecting a conflicting embedded
     /// selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error when credential sources or selections
+    /// conflict, the selection is unavailable, or provider creation fails.
     pub fn resolve_selected_config(
         &self,
         selection: &ProviderSelection,
@@ -117,7 +146,11 @@ impl FileSystemRegistry {
             .create_configured(config)
             .map_err(Into::into)
     }
-    /// Resolves config through the default selection.
+    /// Resolves `config` through the current default selection.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::resolve_selected_config`].
     pub fn resolve_default_config(
         &self,
         config: &FileSystemConfig,
