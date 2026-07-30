@@ -124,11 +124,11 @@ Provider 构造 resolution 时必须同时满足：
 同步和异步 resolution 都使用 `try_new`，不能以 infallible `new` 接受互相矛盾的三个
 值。
 
-`try_new` 可以通用复核 filesystem identity、provider identity、path
-semantics/limits/constraints 与 canonical URI 的 secret-free 结构，但不能仅凭三个
-值重新推导所有 provider-specific URI ↔ Path 关系。该关系由选中的 provider 在
-construction boundary 建立；registry 负责保证 resolution 来自该 provider 且没有在
-之后替换其中任一部分。
+`try_new` 可以通用复核 path semantics/limits/constraints 与 canonical URI 的
+secret-free 结构，但不能仅凭三个值复核 provider identity 或重新推导所有
+provider-specific URI ↔ Path 关系。provider identity 由 registry 的 adapter 在
+construction boundary 复核；URI ↔ Path 关系由选中的 provider 建立。registry 还负责
+保证 resolution 来自该 provider 且没有在之后替换其中任一部分。
 
 Registry 不提供 `resource()` convenience。若调用者只需要 filesystem，可以显式使用
 resolution 的 clone getter；需要 URI 定位结果时保留完整 resolution，避免再次引入

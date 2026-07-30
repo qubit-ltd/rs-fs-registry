@@ -14,10 +14,10 @@ use std::path::{
 };
 use std::process::Command;
 
-/// Verifies every Rust README example compiles with its documented
-/// dependencies.
+/// Verifies every shipped Markdown guide's Rust example compiles with its
+/// documented dependencies.
 #[test]
-fn test_readme_rust_examples_compile() {
+fn test_shipped_markdown_rust_examples_compile() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output_dir = markdown_doctest_output_dir(&manifest_dir);
     recreate_dir(&output_dir);
@@ -25,6 +25,11 @@ fn test_readme_rust_examples_compile() {
     for (name, path) in [
         ("readme_en", manifest_dir.join("README.md")),
         ("readme_zh_cn", manifest_dir.join("README.zh_CN.md")),
+        ("user_guide_en", manifest_dir.join("doc/user_guide.md")),
+        (
+            "user_guide_zh_cn",
+            manifest_dir.join("doc/user_guide.zh_CN.md"),
+        ),
     ] {
         let snippets = extract_rust_snippets(&path);
         assert!(
