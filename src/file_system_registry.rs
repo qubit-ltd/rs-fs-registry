@@ -34,15 +34,31 @@ use std::sync::Arc;
 /// resolution captures a provider snapshot before creation begins.
 #[derive(Clone, Debug, Default)]
 pub struct FileSystemRegistry {
+    /// Shared SPI registry storing synchronous providers and default
+    /// selection.
     providers: ProviderRegistry<FileSystemSpec>,
 }
 impl FileSystemRegistry {
     /// Registers a provider factory owned by this registry.
     ///
+    /// # Type Parameters
+    ///
+    /// - `P`: Concrete synchronous provider definition to register.
+    ///
+    /// # Parameters
+    ///
+    /// - `provider`: Provider definition whose ownership moves into the
+    ///   registry.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when registration succeeds.
+    ///
     /// # Errors
     ///
     /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
     /// when its descriptor conflicts with an existing provider.
+    #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
         P: ProviderDefinition<FileSystemSpec>,
@@ -52,10 +68,19 @@ impl FileSystemRegistry {
     }
     /// Registers a shared provider factory.
     ///
+    /// # Parameters
+    ///
+    /// - `provider`: Shared provider definition to register.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when registration succeeds.
+    ///
     /// # Errors
     ///
     /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
     /// when its descriptor conflicts with an existing provider.
+    #[inline(always)]
     pub fn register_shared(
         &self,
         provider: Arc<FileSystemProvider>,
@@ -65,35 +90,50 @@ impl FileSystemRegistry {
             .map_err(Into::into)
     }
     /// Returns the current default selection.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot of the current default provider selection.
+    #[inline(always)]
     #[must_use]
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
     }
     /// Replaces the selection used by [`Self::resolve_default_config`].
+    ///
+    /// # Parameters
+    ///
+    /// - `selection`: Provider selection to install as the default.
+    #[inline(always)]
     pub fn set_default_selection(&self, selection: ProviderSelection) {
         self.providers.set_default_selection(selection);
     }
-    /// Resolves a provider selection without creating it.
-    pub(crate) fn resolve_selected(
-        &self,
-        selection: &ProviderSelection,
-    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
-    {
-        self.providers
-            .resolve_selected(selection)
-            .map_err(Into::into)
-    }
     /// Returns descriptors in registration order.
+    ///
+    /// # Returns
+    ///
+    /// Snapshots of all registered descriptors in registration order.
+    #[inline(always)]
     #[must_use]
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
         self.providers.descriptors()
     }
     /// Returns the registered provider count.
+    ///
+    /// # Returns
+    ///
+    /// The number of registered providers.
+    #[inline(always)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.providers.len()
     }
     /// Returns whether no provider is registered.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the registry contains no providers.
+    #[inline(always)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
@@ -103,10 +143,19 @@ impl FileSystemRegistry {
     ///
     /// This method never falls back to the registry default selection.
     ///
+    /// # Parameters
+    ///
+    /// - `config`: Complete provider configuration to resolve.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem, decoded path, and canonical URI.
+    ///
     /// # Errors
     ///
     /// Returns a structured error when credential sources conflict, the
     /// selection is invalid or unavailable, or provider creation fails.
+    #[inline]
     pub fn resolve_config(
         &self,
         config: &FileSystemConfig,
@@ -119,9 +168,18 @@ impl FileSystemRegistry {
     }
     /// Resolves a URI-only configuration through its scheme-derived selection.
     ///
+    /// # Parameters
+    ///
+    /// - `uri`: Connection URI used to create the configuration.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem, decoded path, and canonical URI.
+    ///
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_config`].
+    #[inline(always)]
     pub fn resolve_uri(
         &self,
         uri: &ConnectionUri,
@@ -131,10 +189,20 @@ impl FileSystemRegistry {
     /// Resolves `config` through `selection`, rejecting a conflicting embedded
     /// selection.
     ///
+    /// # Parameters
+    ///
+    /// - `selection`: Explicit provider selection to resolve.
+    /// - `config`: Complete provider configuration to resolve.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem, decoded path, and canonical URI.
+    ///
     /// # Errors
     ///
     /// Returns a structured error when credential sources or selections
     /// conflict, the selection is unavailable, or provider creation fails.
+    #[inline]
     pub fn resolve_selected_config(
         &self,
         selection: &ProviderSelection,
@@ -148,14 +216,48 @@ impl FileSystemRegistry {
     }
     /// Resolves `config` through the current default selection.
     ///
+    /// # Parameters
+    ///
+    /// - `config`: Complete provider configuration to resolve.
+    ///
+    /// # Returns
+    ///
+    /// The configured filesystem, decoded path, and canonical URI.
+    ///
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_selected_config`].
+    #[inline(always)]
     pub fn resolve_default_config(
         &self,
         config: &FileSystemConfig,
     ) -> FileSystemRegistryResult<FileSystemResolution> {
         let selection = self.default_selection();
         self.resolve_selected_config(&selection, config)
+    }
+
+    /// Resolves a provider selection without creating it.
+    ///
+    /// # Parameters
+    ///
+    /// - `selection`: Provider selection to resolve.
+    ///
+    /// # Returns
+    ///
+    /// An owned snapshot of the selected provider chain.
+    ///
+    /// # Errors
+    ///
+    /// Returns a resolution error when the selection matches no registered
+    /// provider.
+    #[inline(always)]
+    pub(crate) fn resolve_selected(
+        &self,
+        selection: &ProviderSelection,
+    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
+    {
+        self.providers
+            .resolve_selected(selection)
+            .map_err(Into::into)
     }
 }

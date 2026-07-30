@@ -42,6 +42,14 @@ fn test_shipped_markdown_rust_examples_compile() {
 }
 
 /// Returns the current process's isolated Markdown example output directory.
+///
+/// # Parameters
+///
+/// - `manifest_dir`: Registry crate manifest directory.
+///
+/// # Returns
+///
+/// A process-scoped directory below the crate's `target` directory.
 fn markdown_doctest_output_dir(manifest_dir: &Path) -> PathBuf {
     manifest_dir.join(format!("target/markdown-doctest-{}", std::process::id()))
 }
@@ -60,6 +68,15 @@ fn test_markdown_doctest_output_dir_scopes_to_current_process() {
 }
 
 /// Recreates a test-owned output directory.
+///
+/// # Parameters
+///
+/// - `path`: Test-owned directory to replace.
+///
+/// # Panics
+///
+/// Panics when the existing directory cannot be removed or the new directory
+/// cannot be created.
 fn recreate_dir(path: &Path) {
     if path.exists() {
         fs::remove_dir_all(path)
@@ -70,6 +87,18 @@ fn recreate_dir(path: &Path) {
 }
 
 /// Extracts fenced Rust snippets from one Markdown document.
+///
+/// # Parameters
+///
+/// - `path`: Markdown document to read.
+///
+/// # Returns
+///
+/// Rust code blocks in document order.
+///
+/// # Panics
+///
+/// Panics when the Markdown document cannot be read.
 fn extract_rust_snippets(path: &Path) -> Vec<String> {
     let content =
         fs::read_to_string(path).expect("failed to read Markdown file");
@@ -99,6 +128,14 @@ fn extract_rust_snippets(path: &Path) -> Vec<String> {
 }
 
 /// Returns whether a Markdown fence declares Rust source code.
+///
+/// # Parameters
+///
+/// - `language`: Fence info string following the opening backticks.
+///
+/// # Returns
+///
+/// `true` when the first fence tag is `rust` or `rs`.
 fn is_rust_fence(language: &str) -> bool {
     let tag = language
         .trim()
@@ -109,6 +146,18 @@ fn is_rust_fence(language: &str) -> bool {
 }
 
 /// Compiles every extracted snippet as an independent binary crate.
+///
+/// # Parameters
+///
+/// - `manifest_dir`: Registry crate manifest directory.
+/// - `output_dir`: Test-owned root for generated crates and Cargo output.
+/// - `name`: Stable generated crate name suffix.
+/// - `snippets`: Rust snippets to compile.
+///
+/// # Panics
+///
+/// Panics when fixture files cannot be written, Cargo cannot run, or any
+/// snippet fails to compile.
 fn compile_snippets(
     manifest_dir: &Path,
     output_dir: &Path,
@@ -146,6 +195,16 @@ fn compile_snippets(
 }
 
 /// Builds a temporary manifest with the dependencies used by README examples.
+///
+/// # Parameters
+///
+/// - `name`: Stable generated crate name suffix.
+/// - `manifest_dir`: Registry crate manifest directory.
+///
+/// # Returns
+///
+/// A Cargo manifest referencing the local registry, filesystem, and provider
+/// crates.
 fn build_markdown_doctest_manifest(name: &str, manifest_dir: &Path) -> String {
     let registry = toml_basic_string(&manifest_dir.display().to_string());
     let filesystem =
@@ -170,6 +229,14 @@ qubit-fs-registry = {{ path = "{registry}" }}
 }
 
 /// Escapes a filesystem path for a TOML basic string.
+///
+/// # Parameters
+///
+/// - `value`: Unescaped path text.
+///
+/// # Returns
+///
+/// Text escaped according to TOML basic-string rules.
 fn toml_basic_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
@@ -192,6 +259,15 @@ fn toml_basic_string(value: &str) -> String {
 }
 
 /// Wraps item-only snippets in a minimal binary entry point.
+///
+/// # Parameters
+///
+/// - `snippet`: Extracted Rust source.
+///
+/// # Returns
+///
+/// A compilable binary source file preserving snippets that already define
+/// `main`.
 fn normalize_snippet(snippet: &str) -> String {
     let allow_example_noise =
         "#![allow(dead_code, unused_imports, unused_variables)]\n";

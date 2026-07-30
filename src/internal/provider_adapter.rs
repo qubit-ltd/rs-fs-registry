@@ -5,111 +5,37 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow all -- sync and async validating adapters are one internal
-// invariant boundary.
 //! Provider adapters enforcing filesystem-specific creation invariants.
-
-use std::sync::Arc;
 
 use qubit_fs::{
     FsError,
     FsErrorKind,
     FsOperation,
 };
+use qubit_spi::ProviderDescriptor;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderDescriptor,
-    ProviderFuture,
-    ProviderMetadata,
-    ServiceProvider,
-};
 
 use crate::{
-    AsyncFileSystemProvider,
     AsyncFileSystemResolution,
-    FileSystemConfig,
-    FileSystemProvider,
     FileSystemResolution,
-    FileSystemSpec,
 };
 
-/// Synchronous provider wrapper that binds successful output to its descriptor.
-pub(crate) struct ValidatingFileSystemProvider {
-    descriptor: ProviderDescriptor,
-    provider: Arc<FileSystemProvider>,
-}
-
-impl ValidatingFileSystemProvider {
-    /// Captures the descriptor used for registration and later validation.
-    pub(crate) fn new(provider: Arc<FileSystemProvider>) -> Self {
-        let descriptor = provider.descriptor();
-        Self {
-            descriptor,
-            provider,
-        }
-    }
-}
-
-impl ProviderMetadata for ValidatingFileSystemProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        self.descriptor.clone()
-    }
-}
-
-impl ServiceProvider<FileSystemSpec> for ValidatingFileSystemProvider {
-    fn create_configured(
-        &self,
-        config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
-        let resolution = self.provider.create_configured(config)?;
-        validate_sync_resolution(&self.descriptor, resolution)
-    }
-}
-
-/// Asynchronous provider wrapper that binds successful output to its
-/// descriptor.
-pub(crate) struct ValidatingAsyncFileSystemProvider {
-    descriptor: ProviderDescriptor,
-    provider: Arc<AsyncFileSystemProvider>,
-}
-
-impl ValidatingAsyncFileSystemProvider {
-    /// Captures the descriptor used for registration and later validation.
-    pub(crate) fn new(provider: Arc<AsyncFileSystemProvider>) -> Self {
-        let descriptor = provider.descriptor();
-        Self {
-            descriptor,
-            provider,
-        }
-    }
-}
-
-impl ProviderMetadata for ValidatingAsyncFileSystemProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        self.descriptor.clone()
-    }
-}
-
-impl AsyncServiceProvider<FileSystemSpec>
-    for ValidatingAsyncFileSystemProvider
-{
-    fn create_configured<'a>(
-        &'a self,
-        config: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
-        Box::pin(async move {
-            let resolution = self.provider.create_configured(config).await?;
-            validate_async_resolution(&self.descriptor, resolution)
-        })
-    }
-}
-
 /// Checks the provider identity returned by one synchronous provider.
-fn validate_sync_resolution(
+///
+/// # Parameters
+///
+/// - `descriptor`: Descriptor captured when the provider was registered.
+/// - `resolution`: Resolution returned by the provider.
+///
+/// # Returns
+///
+/// The unchanged resolution when its provider identity matches `descriptor`.
+///
+/// # Errors
+///
+/// Returns a provider contract failure when the identities differ.
+#[inline]
+pub(super) fn validate_sync_resolution(
     descriptor: &ProviderDescriptor,
     resolution: FileSystemResolution,
 ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
@@ -123,7 +49,21 @@ fn validate_sync_resolution(
 }
 
 /// Checks the provider identity returned by one asynchronous provider.
-fn validate_async_resolution(
+///
+/// # Parameters
+///
+/// - `descriptor`: Descriptor captured when the provider was registered.
+/// - `resolution`: Resolution returned by the provider.
+///
+/// # Returns
+///
+/// The unchanged resolution when its provider identity matches `descriptor`.
+///
+/// # Errors
+///
+/// Returns a provider contract failure when the identities differ.
+#[inline]
+pub(super) fn validate_async_resolution(
     descriptor: &ProviderDescriptor,
     resolution: AsyncFileSystemResolution,
 ) -> Result<AsyncFileSystemResolution, ProviderFailure<FsError>> {
@@ -137,6 +77,15 @@ fn validate_async_resolution(
 }
 
 /// Creates a provider-construction contract failure.
+///
+/// # Parameters
+///
+/// - `descriptor`: Descriptor whose identity the provider contradicted.
+///
+/// # Returns
+///
+/// A failure containing a safe contract-violation error and provider ID.
+#[inline]
 fn provider_identity_mismatch(
     descriptor: &ProviderDescriptor,
 ) -> ProviderFailure<FsError> {

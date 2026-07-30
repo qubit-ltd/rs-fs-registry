@@ -26,6 +26,10 @@ use qubit_spi::error::{
 };
 
 /// Result returned by filesystem registry operations.
+///
+/// # Type Parameters
+///
+/// - `T`: Successful registry operation output.
 pub type FileSystemRegistryResult<T> = Result<T, FileSystemRegistryError>;
 
 /// Error returned by filesystem-provider registration, selection, and creation.
@@ -37,9 +41,15 @@ pub enum FileSystemRegistryError {
         message: &'static str,
     },
     /// A provider descriptor could not be registered.
-    Registration(RegistrationError),
+    Registration(
+        /// Typed SPI registration failure.
+        RegistrationError,
+    ),
     /// A provider selection could not be constructed from configuration.
-    Selection(ProviderSelectionBuildError),
+    Selection(
+        /// Typed SPI selection-construction failure.
+        ProviderSelectionBuildError,
+    ),
     /// A caller-supplied selection conflicts with the configuration selection.
     SelectionConflict {
         /// Selection requested by the caller or registry default.
@@ -48,13 +58,27 @@ pub enum FileSystemRegistryError {
         configured: ProviderSelection,
     },
     /// A selection did not resolve to registered providers.
-    Resolution(ProviderResolutionError),
+    Resolution(
+        /// Typed SPI provider-resolution failure.
+        ProviderResolutionError,
+    ),
     /// Provider creation terminated without producing a filesystem.
-    Creation(ProviderCreationError<FsError>),
+    Creation(
+        /// Typed aggregate preserving provider creation attempts and failures.
+        ProviderCreationError<FsError>,
+    ),
 }
 
 impl fmt::Display for FileSystemRegistryError {
     /// Formats the registry failure with its preserved SPI context.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidConfiguration { message } => {
@@ -73,6 +97,14 @@ impl fmt::Display for FileSystemRegistryError {
 impl fmt::Debug for FileSystemRegistryError {
     /// Formats only an error category; payloads can contain provider
     /// identities.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::InvalidConfiguration { .. } => "InvalidConfiguration",
@@ -87,6 +119,11 @@ impl fmt::Debug for FileSystemRegistryError {
 
 impl Error for FileSystemRegistryError {
     /// Returns the underlying SPI error when one exists.
+    ///
+    /// # Returns
+    ///
+    /// `Some` with the underlying registration, selection, resolution, or
+    /// creation error; `None` for configuration and selection-conflict errors.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidConfiguration { .. } => None,
@@ -101,6 +138,15 @@ impl Error for FileSystemRegistryError {
 
 impl From<RegistrationError> for FileSystemRegistryError {
     /// Wraps an SPI registration failure without losing its type.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: SPI registration error to wrap.
+    ///
+    /// # Returns
+    ///
+    /// The registry registration error.
+    #[inline(always)]
     fn from(error: RegistrationError) -> Self {
         Self::Registration(error)
     }
@@ -108,6 +154,15 @@ impl From<RegistrationError> for FileSystemRegistryError {
 
 impl From<ProviderSelectionBuildError> for FileSystemRegistryError {
     /// Wraps an SPI selection-construction failure without losing its type.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: SPI selection-construction error to wrap.
+    ///
+    /// # Returns
+    ///
+    /// The registry selection error.
+    #[inline(always)]
     fn from(error: ProviderSelectionBuildError) -> Self {
         Self::Selection(error)
     }
@@ -115,6 +170,15 @@ impl From<ProviderSelectionBuildError> for FileSystemRegistryError {
 
 impl From<ProviderResolutionError> for FileSystemRegistryError {
     /// Wraps an SPI resolution failure without losing its type.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: SPI provider-resolution error to wrap.
+    ///
+    /// # Returns
+    ///
+    /// The registry resolution error.
+    #[inline(always)]
     fn from(error: ProviderResolutionError) -> Self {
         Self::Resolution(error)
     }
@@ -122,6 +186,15 @@ impl From<ProviderResolutionError> for FileSystemRegistryError {
 
 impl From<ProviderCreationError<FsError>> for FileSystemRegistryError {
     /// Wraps the typed provider-creation aggregate without losing leaf errors.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: Typed provider-creation aggregate to wrap.
+    ///
+    /// # Returns
+    ///
+    /// The registry creation error.
+    #[inline(always)]
     fn from(error: ProviderCreationError<FsError>) -> Self {
         Self::Creation(error)
     }
@@ -133,6 +206,14 @@ impl From<FileSystemRegistryError> for FsError {
     /// The returned error retains the typed registry error as its source. A
     /// creation failure uses the decisive provider error's kind and provider
     /// ID; other registry failures use the closest provider-neutral category.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: Registry error to convert.
+    ///
+    /// # Returns
+    ///
+    /// A filesystem provider-operation error retaining `error` as its source.
     fn from(error: FileSystemRegistryError) -> Self {
         let (kind, message, provider) = match &error {
             FileSystemRegistryError::InvalidConfiguration { .. } => (

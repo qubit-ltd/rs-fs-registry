@@ -9,13 +9,13 @@
 
 mod provider_adapter;
 mod registry_support;
+mod validating_async_file_system_provider;
+mod validating_file_system_provider;
 
-pub(super) use provider_adapter::{
-    ValidatingAsyncFileSystemProvider,
-    ValidatingFileSystemProvider,
-};
 pub(super) use registry_support::{
     ensure_selection_matches_config,
     selection_for_config,
     validate_credentials,
 };
+pub(super) use validating_async_file_system_provider::ValidatingAsyncFileSystemProvider;
+pub(super) use validating_file_system_provider::ValidatingFileSystemProvider;

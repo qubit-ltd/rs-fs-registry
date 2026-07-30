@@ -12,6 +12,7 @@ use qubit_fs_registry::{
     FileSystemRegistry,
     FileSystemRegistryError,
 };
+/// Invalid URI schemes fail instead of falling back to the default provider.
 #[test]
 fn test_invalid_uri_scheme_is_rejected_without_default_fallback() {
     let config = FileSystemConfig::new(

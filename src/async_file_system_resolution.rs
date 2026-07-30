@@ -5,8 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow all -- resolution behavior is covered by registry
-// integration tests.
 //! Provider-decoded asynchronous filesystem resolution.
 use qubit_fs::{
     AsyncFileSystem,
@@ -23,9 +21,13 @@ use std::fmt::{
 };
 /// A configured asynchronous facade paired with its decoded location.
 #[derive(Clone)]
+#[must_use]
 pub struct AsyncFileSystemResolution {
+    /// Configured asynchronous filesystem facade.
     file_system: AsyncFileSystem,
+    /// Provider-decoded path within the filesystem.
     path: Path,
+    /// Secret-free URI describing the canonical resolved location.
     canonical_uri: Uri,
 }
 impl AsyncFileSystemResolution {
@@ -34,6 +36,16 @@ impl AsyncFileSystemResolution {
     /// The path must satisfy the facade constraints and limits. When the
     /// facade advertises schemes, the canonical URI scheme must be one of
     /// them.
+    ///
+    /// # Parameters
+    ///
+    /// - `file_system`: Configured asynchronous filesystem from the provider.
+    /// - `path`: Provider-decoded path to validate.
+    /// - `canonical_uri`: Secret-free canonical URI to validate.
+    ///
+    /// # Returns
+    ///
+    /// A validated resolution containing all three components.
     ///
     /// # Errors
     ///
@@ -71,27 +83,58 @@ impl AsyncFileSystemResolution {
         })
     }
     /// Returns the configured facade.
+    ///
+    /// # Returns
+    ///
+    /// The configured asynchronous filesystem.
+    #[inline(always)]
     #[must_use]
     pub const fn file_system(&self) -> &AsyncFileSystem {
         &self.file_system
     }
     /// Returns the provider-decoded path.
+    ///
+    /// # Returns
+    ///
+    /// The validated provider-decoded path.
+    #[inline(always)]
     #[must_use]
     pub const fn path(&self) -> &Path {
         &self.path
     }
     /// Returns the secret-free canonical URI.
+    ///
+    /// # Returns
+    ///
+    /// The validated canonical URI.
+    #[inline(always)]
     #[must_use]
     pub const fn canonical_uri(&self) -> &Uri {
         &self.canonical_uri
     }
     /// Splits this resolution into owned components.
+    ///
+    /// # Returns
+    ///
+    /// The asynchronous filesystem, decoded path, and canonical URI in that
+    /// order.
+    #[inline(always)]
     #[must_use]
     pub fn into_parts(self) -> (AsyncFileSystem, Path, Uri) {
         (self.file_system, self.path, self.canonical_uri)
     }
 }
 impl Debug for AsyncFileSystemResolution {
+    /// Formats the safe location fields without exposing filesystem internals.
+    ///
+    /// # Parameters
+    ///
+    /// - `f`: Destination formatter.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result.
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("AsyncFileSystemResolution")
             .field("path", &self.path)

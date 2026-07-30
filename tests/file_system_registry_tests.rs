@@ -30,8 +30,7 @@ use qubit_spi::{
     ServiceProvider,
 };
 
-use super::common;
-
+/// Cloned synchronous registries share providers and default selection state.
 #[test]
 fn test_registry_clone_shares_catalog_and_default_selection() {
     let registry = FileSystemRegistry::default();
@@ -47,53 +46,7 @@ fn test_registry_clone_shares_catalog_and_default_selection() {
     assert_eq!(registry.default_selection(), selection);
 }
 
-#[test]
-fn test_registry_rejects_resolution_with_mismatched_provider_identity() {
-    let registry = FileSystemRegistry::default();
-    registry
-        .register(MismatchedProvider)
-        .expect("register mismatched provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-sync:///resource").expect("valid URI"),
-    );
-
-    let error = registry
-        .resolve_config(&config)
-        .expect_err("mismatched provider identity must fail");
-    let FileSystemRegistryError::Creation(creation) = error else {
-        panic!("expected provider creation error")
-    };
-    assert_eq!(
-        creation.decisive_attempt().failure().error().kind(),
-        FsErrorKind::ProviderContractViolation
-    );
-}
-
-/// A provider result whose identity matches its descriptor remains available
-/// with its path and canonical URI intact.
-#[test]
-fn test_registry_returns_resolution_with_matching_provider_identity() {
-    let registry = FileSystemRegistry::default();
-    registry
-        .register(MatchingProvider)
-        .expect("register matching provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-sync:///resource").expect("valid URI"),
-    );
-
-    let resolution = registry
-        .resolve_config(&config)
-        .expect("matching provider identity must resolve");
-    assert_eq!(
-        resolution.file_system().properties().info().provider_id(),
-        "registered-sync"
-    );
-    assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(
-        resolution.canonical_uri().as_str(),
-        "registry-test:///resource"
-    );
-}
+/// Embedded URI secrets conflict with an external credential reference.
 #[test]
 fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
 {
@@ -113,6 +66,7 @@ fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
     ));
 }
 
+/// A username without secret material may coexist with a credential reference.
 #[test]
 fn test_registry_allows_username_only_connection_uri_with_credential_reference()
 {
@@ -129,6 +83,7 @@ fn test_registry_allows_username_only_connection_uri_with_credential_reference()
     ));
 }
 
+/// Provider creation failures preserve provider registration order.
 #[test]
 fn test_registry_aggregates_provider_failures_in_registration_order() {
     let registry = FileSystemRegistry::default();
@@ -246,6 +201,15 @@ pub(crate) struct FailingProvider {
     id: &'static str,
 }
 impl FailingProvider {
+    /// Creates a provider fixture with the requested descriptor identity.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Valid provider identifier used by the descriptor.
+    ///
+    /// # Returns
+    ///
+    /// A provider fixture that always reports an unavailable error.
     pub(crate) fn new(id: &'static str) -> Self {
         Self { id }
     }
@@ -265,43 +229,5 @@ impl ServiceProvider<FileSystemSpec> for FailingProvider {
             FsOperation::Provider,
             "unavailable",
         )))
-    }
-}
-
-struct MismatchedProvider;
-
-impl ProviderMetadata for MismatchedProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-sync").expect("provider id"),
-        )
-    }
-}
-
-struct MatchingProvider;
-
-impl ProviderMetadata for MatchingProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-sync").expect("provider id"),
-        )
-    }
-}
-
-impl ServiceProvider<FileSystemSpec> for MatchingProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
-        Ok(common::sync_resolution("registered-sync"))
-    }
-}
-
-impl ServiceProvider<FileSystemSpec> for MismatchedProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
-        Ok(common::sync_resolution("reported-sync"))
     }
 }

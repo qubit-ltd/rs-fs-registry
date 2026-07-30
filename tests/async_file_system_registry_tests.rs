@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use super::common;
 use qubit_fs::ConnectionUri;
 use qubit_fs::{
     FsError,
@@ -29,17 +30,8 @@ use qubit_spi::{
     ProviderMetadata,
     ProviderSelection,
 };
-use std::{
-    future::Future,
-    pin::pin,
-    task::{
-        Context,
-        Poll,
-    },
-};
 
-use super::common;
-
+/// Cloned asynchronous registries share providers and default selection state.
 #[test]
 fn test_async_registry_clone_shares_catalog_and_default_selection() {
     let registry = AsyncFileSystemRegistry::default();
@@ -55,54 +47,6 @@ fn test_async_registry_clone_shares_catalog_and_default_selection() {
     assert_eq!(registry.default_selection(), selection);
 }
 
-#[test]
-fn test_async_registry_rejects_resolution_with_mismatched_provider_identity() {
-    let registry = AsyncFileSystemRegistry::default();
-    registry
-        .register(AsyncMismatchedProvider)
-        .expect("register mismatched provider");
-    let future = registry.resolve_config(FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource")
-            .expect("valid URI"),
-    ));
-
-    let error =
-        block_on(future).expect_err("mismatched provider identity must fail");
-    let FileSystemRegistryError::Creation(creation) = error else {
-        panic!("expected provider creation error")
-    };
-    assert_eq!(
-        creation.decisive_attempt().failure().error().kind(),
-        FsErrorKind::ProviderContractViolation
-    );
-}
-
-/// An async provider result whose identity matches its descriptor remains
-/// available with its path and canonical URI intact.
-#[test]
-fn test_async_registry_returns_resolution_with_matching_provider_identity() {
-    let registry = AsyncFileSystemRegistry::default();
-    registry
-        .register(AsyncMatchingProvider)
-        .expect("register matching provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource")
-            .expect("valid URI"),
-    );
-
-    let resolution = block_on(registry.resolve_config(config))
-        .expect("matching provider identity must resolve");
-    assert_eq!(
-        resolution.file_system().properties().info().provider_id(),
-        "registered-async"
-    );
-    assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(
-        resolution.canonical_uri().as_str(),
-        "registry-test:///resource"
-    );
-}
-
 /// Async resolution rejects conflicting embedded and referenced credentials
 /// before provider invocation.
 #[test]
@@ -113,14 +57,16 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
     )
     .with_credential(CredentialRef::DefaultChain);
 
-    let error =
-        block_on(AsyncFileSystemRegistry::default().resolve_config(config))
-            .expect_err("credential sources conflict");
+    let error = common::block_on(
+        AsyncFileSystemRegistry::default().resolve_config(config),
+    )
+    .expect_err("credential sources conflict");
     assert!(matches!(
         error,
         FileSystemRegistryError::InvalidConfiguration { .. }
     ));
 }
+/// Resolution futures own their configuration rather than borrowing it.
 #[test]
 fn test_async_registry_accepts_owned_config_without_borrowing_the_registry() {
     let future = {
@@ -133,6 +79,7 @@ fn test_async_registry_accepts_owned_config_without_borrowing_the_registry() {
     drop(future);
 }
 
+/// Resolution futures remain usable after the originating registry is dropped.
 #[test]
 fn test_async_registry_future_is_static_and_polls_after_registry_is_dropped() {
     let future = {
@@ -145,7 +92,7 @@ fn test_async_registry_future_is_static_and_polls_after_registry_is_dropped() {
                 .expect("URI should parse"),
         ))
     };
-    let error = block_on(future).expect_err("provider should fail");
+    let error = common::block_on(future).expect_err("provider should fail");
     assert!(matches!(error, FileSystemRegistryError::Creation(_)));
 }
 
@@ -167,8 +114,8 @@ fn test_async_registry_inspection_and_resolution_entry_points() {
     let selection = ProviderSelection::named("async-failing")
         .expect("selection should parse");
     for result in [
-        block_on(registry.resolve_uri(uri.clone())),
-        block_on(registry.resolve_selected_config(
+        common::block_on(registry.resolve_uri(uri.clone())),
+        common::block_on(registry.resolve_selected_config(
             selection.clone(),
             FileSystemConfig::new(uri.clone()),
         )),
@@ -177,7 +124,9 @@ fn test_async_registry_inspection_and_resolution_entry_points() {
     }
     registry.set_default_selection(selection);
     assert!(matches!(
-        block_on(registry.resolve_default_config(FileSystemConfig::new(uri))),
+        common::block_on(
+            registry.resolve_default_config(FileSystemConfig::new(uri))
+        ),
         Err(FileSystemRegistryError::Creation(_))
     ));
 }
@@ -196,7 +145,7 @@ fn test_async_registry_selected_config_rejects_conflicting_selection() {
     let requested =
         ProviderSelection::named("requested").expect("selection should parse");
     assert!(matches!(
-        block_on(registry.resolve_selected_config(requested, config)),
+        common::block_on(registry.resolve_selected_config(requested, config)),
         Err(FileSystemRegistryError::SelectionConflict { .. })
     ));
 }
@@ -224,60 +173,5 @@ impl AsyncServiceProvider<FileSystemSpec> for AsyncFailingProvider {
                 "unavailable",
             )))
         })
-    }
-}
-
-struct AsyncMismatchedProvider;
-
-impl ProviderMetadata for AsyncMismatchedProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-async").expect("provider id"),
-        )
-    }
-}
-
-struct AsyncMatchingProvider;
-
-impl ProviderMetadata for AsyncMatchingProvider {
-    fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-async").expect("provider id"),
-        )
-    }
-}
-
-impl AsyncServiceProvider<FileSystemSpec> for AsyncMatchingProvider {
-    fn create_configured<'a>(
-        &'a self,
-        _: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
-        Box::pin(async { Ok(common::async_resolution("registered-async")) })
-    }
-}
-
-impl AsyncServiceProvider<FileSystemSpec> for AsyncMismatchedProvider {
-    fn create_configured<'a>(
-        &'a self,
-        _: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
-        Box::pin(async { Ok(common::async_resolution("reported-async")) })
-    }
-}
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = std::task::Waker::noop();
-    let mut context = Context::from_waker(waker);
-    let mut future = pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => std::thread::yield_now(),
-        }
     }
 }

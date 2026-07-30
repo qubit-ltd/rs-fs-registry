@@ -13,6 +13,7 @@
 /// profile name, environment-variable name, or external provider ID. It must
 /// not contain a credential, token, password, private key, or other secret.
 #[derive(Clone, Eq, PartialEq)]
+#[must_use]
 #[non_exhaustive]
 pub enum CredentialRef {
     /// Use the provider's default credential chain.
@@ -37,6 +38,15 @@ pub enum CredentialRef {
 }
 
 impl std::fmt::Debug for CredentialRef {
+    /// Formats only the credential source kind and redacts every payload.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result.
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DefaultChain => formatter.write_str("CredentialRef::DefaultChain"),
