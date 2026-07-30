@@ -150,6 +150,46 @@ fn test_async_registry_selected_config_rejects_conflicting_selection() {
     ));
 }
 
+/// An explicit configuration selection takes precedence over the URI scheme.
+#[test]
+fn test_async_resolve_config_prefers_explicit_selection_over_uri_scheme() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry
+        .register(AsyncFailingProvider)
+        .expect("register provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("unregistered-scheme:///resource")
+            .expect("URI should parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("async-failing")
+            .expect("selection should parse"),
+    );
+
+    assert!(matches!(
+        common::block_on(registry.resolve_config(config)),
+        Err(FileSystemRegistryError::Creation(_))
+    ));
+}
+
+/// Async resolution snapshots a missing provider before later registrations.
+#[test]
+fn test_async_resolve_config_snapshots_missing_provider_before_registration() {
+    let registry = AsyncFileSystemRegistry::default();
+    let future = registry.resolve_config(FileSystemConfig::new(
+        ConnectionUri::parse("async-failing:///resource")
+            .expect("URI should parse"),
+    ));
+    registry
+        .register(AsyncFailingProvider)
+        .expect("register provider after creating future");
+
+    assert!(matches!(
+        common::block_on(future),
+        Err(FileSystemRegistryError::Resolution(_))
+    ));
+}
+
 struct AsyncFailingProvider;
 impl ProviderMetadata for AsyncFailingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
