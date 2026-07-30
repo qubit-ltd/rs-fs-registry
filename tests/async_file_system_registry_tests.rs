@@ -97,7 +97,10 @@ fn test_async_registry_returns_resolution_with_matching_provider_identity() {
         "registered-async"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
+    assert_eq!(
+        resolution.canonical_uri().as_str(),
+        "registry-test:///resource"
+    );
 }
 
 /// Async resolution rejects conflicting embedded and referenced credentials
@@ -110,8 +113,9 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
     )
     .with_credential(CredentialRef::DefaultChain);
 
-    let error = block_on(AsyncFileSystemRegistry::default().resolve_config(config))
-        .expect_err("credential sources conflict");
+    let error =
+        block_on(AsyncFileSystemRegistry::default().resolve_config(config))
+            .expect_err("credential sources conflict");
     assert!(matches!(
         error,
         FileSystemRegistryError::InvalidConfiguration { .. }

@@ -89,7 +89,10 @@ fn test_registry_returns_resolution_with_matching_provider_identity() {
         "registered-sync"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
+    assert_eq!(
+        resolution.canonical_uri().as_str(),
+        "registry-test:///resource"
+    );
 }
 #[test]
 fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()

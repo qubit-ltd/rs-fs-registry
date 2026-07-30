@@ -106,11 +106,7 @@ fn test_registry_error_variants_format_and_convert_safely() {
         (registration, FsErrorKind::Conflict, None),
         (resolution, FsErrorKind::ProviderUnavailable, None),
         (selection, FsErrorKind::InvalidUri, None),
-        (
-            creation,
-            FsErrorKind::ProviderUnavailable,
-            Some("creation"),
-        ),
+        (creation, FsErrorKind::ProviderUnavailable, Some("creation")),
     ] {
         assert!(error.source().is_some());
         assert!(!format!("{error}").is_empty());
