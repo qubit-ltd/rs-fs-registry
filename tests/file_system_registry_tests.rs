@@ -68,6 +68,29 @@ fn test_registry_rejects_resolution_with_mismatched_provider_identity() {
         FsErrorKind::ProviderContractViolation
     );
 }
+
+/// A provider result whose identity matches its descriptor remains available
+/// with its path and canonical URI intact.
+#[test]
+fn test_registry_returns_resolution_with_matching_provider_identity() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(MatchingProvider)
+        .expect("register matching provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("registered-sync:///resource").expect("valid URI"),
+    );
+
+    let resolution = registry
+        .resolve_config(&config)
+        .expect("matching provider identity must resolve");
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "registered-sync"
+    );
+    assert_eq!(resolution.path().as_str(), "/resource");
+    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
+}
 #[test]
 fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
 {
@@ -249,6 +272,25 @@ impl ProviderMetadata for MismatchedProvider {
         ProviderDescriptor::new(
             ProviderId::new("registered-sync").expect("provider id"),
         )
+    }
+}
+
+struct MatchingProvider;
+
+impl ProviderMetadata for MatchingProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(
+            ProviderId::new("registered-sync").expect("provider id"),
+        )
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for MatchingProvider {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+        Ok(common::sync_resolution("registered-sync"))
     }
 }
 

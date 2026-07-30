@@ -7,18 +7,51 @@
 // =============================================================================
 
 use qubit_fs::{
+    FileSystemLimit,
+    FileSystemLimits,
     FsErrorKind,
+    PathConstraints,
     Uri,
 };
 
 use crate::common::{
     sync_resolution,
+    sync_resolution_with_path_properties,
     sync_resolution_with_scheme,
 };
 #[test]
 fn test_resolution_boundary_uses_secret_free_uri() {
     assert!(Uri::parse("s3://bucket/key").is_ok());
     assert!(Uri::parse("s3://user:password@bucket/key").is_err());
+}
+
+/// Resolution construction enforces the configured path form before exposing
+/// provider results to registry callers.
+#[test]
+fn test_resolution_rejects_path_outside_constraints() {
+    let error = sync_resolution_with_path_properties(
+        "resolution-provider",
+        "relative",
+        FileSystemLimits::unknown(),
+        PathConstraints::absolute(),
+    )
+    .expect_err("relative path must violate absolute constraints");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+}
+
+/// Resolution construction enforces finite provider path-size limits.
+#[test]
+fn test_resolution_rejects_path_exceeding_limits() {
+    let limits = FileSystemLimits::unknown()
+        .with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let error = sync_resolution_with_path_properties(
+        "resolution-provider",
+        "/large",
+        limits,
+        PathConstraints::absolute(),
+    )
+    .expect_err("oversized path must violate the provider limit");
+    assert_eq!(error.kind(), FsErrorKind::ResourceLimitExceeded);
 }
 
 /// A synchronous resolution retains its facade, decoded path, and canonical
