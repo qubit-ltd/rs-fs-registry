@@ -7,6 +7,7 @@
 // =============================================================================
 //! SPI service specification for filesystems.
 
+use qubit_fs::FsError;
 use qubit_spi::{
     AsyncServiceSpec,
     ServiceSpec,
@@ -18,7 +19,6 @@ use crate::{
     FileSystemConfig,
     FileSystemResolution,
 };
-use qubit_fs::FsError;
 
 /// Service specification for filesystem providers.
 #[derive(Debug)]

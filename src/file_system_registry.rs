@@ -6,6 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Runtime facade for synchronous filesystem provider factories.
+
+use std::sync::Arc;
+
+use qubit_fs::ConnectionUri;
+use qubit_spi::{
+    ProviderDefinition,
+    ProviderDescriptor,
+    ProviderRegistry,
+    ProviderSelection,
+    ResolvingServiceProvider,
+};
+
 use crate::internal::{
     ValidatingFileSystemProvider,
     ensure_selection_matches_config,
@@ -19,15 +31,7 @@ use crate::{
     FileSystemResolution,
     FileSystemSpec,
 };
-use qubit_fs::ConnectionUri;
-use qubit_spi::{
-    ProviderDefinition,
-    ProviderDescriptor,
-    ProviderRegistry,
-    ProviderSelection,
-    ResolvingServiceProvider,
-};
-use std::sync::Arc;
+
 /// Shared registry of self-described synchronous filesystem providers.
 ///
 /// Clones share the same provider catalog and default selection. Each
@@ -38,6 +42,7 @@ pub struct FileSystemRegistry {
     /// selection.
     providers: ProviderRegistry<FileSystemSpec>,
 }
+
 impl FileSystemRegistry {
     /// Registers a provider factory owned by this registry.
     ///
