@@ -1,13 +1,13 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准的目标设计，已按最终版 `qubit-fs` 的 URI、Path 与门面边界复核。
-> 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界；当前实现
-> 迁移前可能与本文不同。
+> 状态：已批准并已实现，已按最终版 `qubit-fs` 的 URI、Path 与门面边界复核。
+> 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
 
-`qubit-fs-registry` 负责运行时 provider discovery、selection、完整配置和 URI
-resolution。它是应用组装层，不是 filesystem operation 实现层。
+`qubit-fs-registry` 负责运行时 provider 注册、selection、完整配置和 URI
+resolution。它是应用组装层，不是 filesystem operation 实现层，也不执行自动
+provider discovery 或 credential value resolution。
 
 ```text
 FileSystemConfig / ConnectionUri
@@ -15,7 +15,7 @@ FileSystemConfig / ConnectionUri
           ▼
 FileSystemRegistry
   ├─ provider selection/fallback
-  ├─ credential reference resolution
+  ├─ credential source conflict validation
   ├─ provider-specific URI decode
   └─ configured filesystem creation
           │
@@ -93,7 +93,7 @@ impl FileSystemResolution {
         file_system: FileSystem,
         path: Path,
         canonical_uri: Uri,
-    ) -> FileSystemRegistryResult<Self>;
+    ) -> Result<Self, FsError>;
 
     pub fn file_system(&self) -> &FileSystem;
     pub fn path(&self) -> &Path;
@@ -198,9 +198,9 @@ Selection precedence 保持确定：
 
 冲突的显式 selection 必须在 provider creation 前失败。
 
-从 URI 派生 selection 时只读取已经解析并校验的 scheme component，不把原始
-`ConnectionUri` 格式化成字符串再解析，也不把 authority、userinfo 或 query 放入
-selection diagnostics。
+从 URI 派生 selection 时只读取 `ConnectionUri` 已解析并校验的 scheme component，
+不暴露或重新解析原始 URI 文本，也不把 authority、userinfo 或 query 放入 selection
+diagnostics。
 
 Fallback policy 必须区分：
 

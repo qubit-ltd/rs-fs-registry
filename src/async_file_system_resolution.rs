@@ -29,7 +29,16 @@ pub struct AsyncFileSystemResolution {
     canonical_uri: Uri,
 }
 impl AsyncFileSystemResolution {
-    /// Validates and creates a resolution.
+    /// Validates and creates a resolution from one provider result.
+    ///
+    /// The path must satisfy the facade constraints and limits. When the
+    /// facade advertises schemes, the canonical URI scheme must be one of
+    /// them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`FsError`] when the path violates facade constraints or
+    /// limits, or when the canonical URI scheme is unsupported.
     pub fn try_new(
         file_system: AsyncFileSystem,
         path: Path,
