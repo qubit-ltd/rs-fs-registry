@@ -18,6 +18,7 @@ use qubit_fs_registry::{
 };
 use qubit_spi::ProviderSelection;
 
+/// Builder methods accept already validated metadata without a fallible step.
 #[test]
 fn test_config_builder_preserves_validated_options_without_a_fallible_step() {
     let selection =

@@ -19,6 +19,7 @@ use crate::common::{
     sync_resolution_with_path_properties,
     sync_resolution_with_scheme,
 };
+/// Canonical resolution URIs accept no embedded credential material.
 #[test]
 fn test_resolution_boundary_uses_secret_free_uri() {
     assert!(Uri::parse("s3://bucket/key").is_ok());

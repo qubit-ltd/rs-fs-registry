@@ -6,4 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+mod provider_adapter_tests;
 mod registry_support_tests;
+mod validating_async_file_system_provider_tests;
+mod validating_file_system_provider_tests;

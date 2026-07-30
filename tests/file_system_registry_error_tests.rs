@@ -21,6 +21,7 @@ use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemRegistry,
 };
+/// Selection conflicts convert to filesystem invalid-options errors.
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
     let error = FileSystemRegistryError::SelectionConflict {
@@ -34,6 +35,7 @@ fn test_selection_conflict_converts_to_invalid_options() {
     assert_eq!(fs_error.kind(), FsErrorKind::InvalidOptions);
     assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
+/// Invalid registry configurations do not expose an underlying source error.
 #[test]
 fn test_invalid_configuration_never_has_a_source() {
     let error = FileSystemRegistryError::InvalidConfiguration {
@@ -50,6 +52,7 @@ fn test_invalid_configuration_never_has_a_source() {
     assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
 
+/// Registry error formatting redacts provider and selection payloads.
 #[test]
 fn test_error_display_and_debug_do_not_expose_provider_or_selection_payloads() {
     let error = FileSystemRegistryError::SelectionConflict {

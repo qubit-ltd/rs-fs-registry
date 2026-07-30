@@ -19,6 +19,20 @@ use crate::{
 ///
 /// The unredacted text is inspected only inside `ConnectionUri`'s closure and
 /// is never returned, stored, or formatted.
+///
+/// # Parameters
+///
+/// - `config`: Filesystem configuration whose credential sources are checked.
+///
+/// # Returns
+///
+/// `Ok(())` when at most one credential source is configured.
+///
+/// # Errors
+///
+/// Returns [`FileSystemRegistryError::InvalidConfiguration`] when the URI
+/// embeds a secret while an external credential reference is also configured.
+#[inline]
 pub(crate) fn validate_credentials(
     config: &FileSystemConfig,
 ) -> FileSystemRegistryResult<()> {
@@ -31,6 +45,14 @@ pub(crate) fn validate_credentials(
 }
 
 /// Returns the provider selection owned or implied by a configuration.
+///
+/// # Parameters
+///
+/// - `config`: Filesystem configuration to inspect.
+///
+/// # Returns
+///
+/// The explicit selection, or a selection derived from the URI scheme.
 ///
 /// # Errors
 ///
@@ -48,6 +70,15 @@ pub(crate) fn selection_for_config(
 }
 
 /// Ensures an external selection agrees with a configuration selection.
+///
+/// # Parameters
+///
+/// - `selection`: Selection requested by the caller or registry default.
+/// - `config`: Configuration whose optional selection is checked.
+///
+/// # Returns
+///
+/// `Ok(())` when the configuration has no selection or the selections match.
 ///
 /// # Errors
 ///

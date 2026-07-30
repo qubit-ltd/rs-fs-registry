@@ -7,6 +7,15 @@
 // =============================================================================
 // qubit-style: allow test-file-name -- shared integration-test fixture module.
 
+use std::{
+    future::Future,
+    pin::pin,
+    task::{
+        Context,
+        Poll,
+    },
+};
+
 use qubit_fs::spi::{
     AsyncFileSystemSpi,
     CreateDirectoryRequest,
@@ -49,6 +58,44 @@ use qubit_fs_registry::{
     FileSystemResolution,
 };
 
+/// Polls a test future to completion without an asynchronous runtime.
+///
+/// This helper is intended only for deterministic registry futures that do
+/// not depend on an external reactor.
+///
+/// # Parameters
+///
+/// - `future`: Future to poll on the current test thread.
+///
+/// # Returns
+///
+/// The future's completed output.
+pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
+    let waker = std::task::Waker::noop();
+    let mut context = Context::from_waker(waker);
+    let mut future = pin!(future);
+    loop {
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(value) => return value,
+            Poll::Pending => std::thread::yield_now(),
+        }
+    }
+}
+
+/// Creates a synchronous resolution fixture for `provider_id`.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+///
+/// # Returns
+///
+/// A validated synchronous resolution fixture.
+///
+/// # Panics
+///
+/// Panics when the fixed fixture path, URI, or filesystem properties violate
+/// their constructors' contracts.
 pub(crate) fn sync_resolution(
     provider_id: &'static str,
 ) -> FileSystemResolution {
@@ -67,6 +114,22 @@ pub(crate) fn sync_resolution(
     .expect("valid test resolution")
 }
 
+/// Creates a synchronous resolution with explicit URI schemes.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `scheme`: URI scheme advertised by the filesystem.
+/// - `canonical_uri`: Canonical URI returned by the provider.
+///
+/// # Returns
+///
+/// A validated resolution, or the path/URI validation error.
+///
+/// # Panics
+///
+/// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
+/// test fixture.
 pub(crate) fn sync_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -88,6 +151,21 @@ pub(crate) fn sync_resolution_with_scheme(
 
 /// Creates a synchronous resolution with the supplied path validation
 /// properties.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `path`: Provider-decoded path to validate.
+/// - `limits`: Filesystem limits applied to the path.
+/// - `path_constraints`: Structural path constraints to enforce.
+///
+/// # Returns
+///
+/// A validated resolution, or the path validation error.
+///
+/// # Panics
+///
+/// Panics when `provider_id` or `path` cannot construct the test fixture.
 pub(crate) fn sync_resolution_with_path_properties(
     provider_id: &'static str,
     path: &str,
@@ -108,6 +186,20 @@ pub(crate) fn sync_resolution_with_path_properties(
     )
 }
 
+/// Creates an asynchronous resolution fixture for `provider_id`.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+///
+/// # Returns
+///
+/// A validated asynchronous resolution fixture.
+///
+/// # Panics
+///
+/// Panics when the fixed fixture path, URI, or filesystem properties violate
+/// their constructors' contracts.
 pub(crate) fn async_resolution(
     provider_id: &'static str,
 ) -> AsyncFileSystemResolution {
@@ -126,6 +218,22 @@ pub(crate) fn async_resolution(
     .expect("valid test resolution")
 }
 
+/// Creates an asynchronous resolution with explicit URI schemes.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `scheme`: URI scheme advertised by the filesystem.
+/// - `canonical_uri`: Canonical URI returned by the provider.
+///
+/// # Returns
+///
+/// A validated resolution, or the path/URI validation error.
+///
+/// # Panics
+///
+/// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
+/// test fixture.
 pub(crate) fn async_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -147,6 +255,21 @@ pub(crate) fn async_resolution_with_scheme(
 
 /// Creates an asynchronous resolution with the supplied path validation
 /// properties.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `path`: Provider-decoded path to validate.
+/// - `limits`: Filesystem limits applied to the path.
+/// - `path_constraints`: Structural path constraints to enforce.
+///
+/// # Returns
+///
+/// A validated resolution, or the path validation error.
+///
+/// # Panics
+///
+/// Panics when `provider_id` or `path` cannot construct the test fixture.
 pub(crate) fn async_resolution_with_path_properties(
     provider_id: &'static str,
     path: &str,
@@ -167,6 +290,22 @@ pub(crate) fn async_resolution_with_path_properties(
     )
 }
 
+/// Builds filesystem properties for a test-only SPI implementation.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity exposed by the filesystem.
+/// - `scheme`: Optional URI scheme exposed by the filesystem.
+/// - `limits`: Limits exposed by the filesystem.
+/// - `path_constraints`: Path constraints exposed by the filesystem.
+///
+/// # Returns
+///
+/// Valid filesystem properties for the requested fixture values.
+///
+/// # Panics
+///
+/// Panics when the requested identifiers, scheme, or properties are invalid.
 fn properties(
     provider_id: &'static str,
     scheme: Option<&str>,
@@ -190,6 +329,11 @@ fn properties(
     .expect("valid test properties")
 }
 
+/// Creates the sentinel error returned by unsupported fixture operations.
+///
+/// # Returns
+///
+/// An unsupported-operation error for test-only filesystem calls.
 fn unused() -> FsError {
     FsError::new(
         FsErrorKind::UnsupportedOperation,
