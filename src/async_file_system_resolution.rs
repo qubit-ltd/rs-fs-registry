@@ -6,6 +6,13 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Provider-decoded asynchronous filesystem resolution.
+
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as FmtResult,
+};
+
 use qubit_fs::{
     AsyncFileSystem,
     FsError,
@@ -14,11 +21,7 @@ use qubit_fs::{
     Path,
     Uri,
 };
-use std::fmt::{
-    Debug,
-    Formatter,
-    Result as FmtResult,
-};
+
 /// A configured asynchronous facade paired with its decoded location.
 #[derive(Clone)]
 #[must_use]
@@ -30,6 +33,7 @@ pub struct AsyncFileSystemResolution {
     /// Secret-free URI describing the canonical resolved location.
     canonical_uri: Uri,
 }
+
 impl AsyncFileSystemResolution {
     /// Validates and creates a resolution from one provider result.
     ///
@@ -124,6 +128,7 @@ impl AsyncFileSystemResolution {
         (self.file_system, self.path, self.canonical_uri)
     }
 }
+
 impl Debug for AsyncFileSystemResolution {
     /// Formats the safe location fields without exposing filesystem internals.
     ///

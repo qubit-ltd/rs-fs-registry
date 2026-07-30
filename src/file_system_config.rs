@@ -184,6 +184,7 @@ impl Display for FileSystemConfig {
         write!(f, "FileSystemConfig({})", self.uri)
     }
 }
+
 impl Debug for FileSystemConfig {
     /// Formats safe configuration structure without metadata values or
     /// reference payloads.

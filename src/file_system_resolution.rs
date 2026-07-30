@@ -7,6 +7,12 @@
 // =============================================================================
 //! Provider-decoded synchronous filesystem resolution.
 
+use std::fmt::{
+    Debug,
+    Formatter,
+    Result as FmtResult,
+};
+
 use qubit_fs::{
     FileSystem,
     FsError,
@@ -14,11 +20,6 @@ use qubit_fs::{
     FsOperation,
     Path,
     Uri,
-};
-use std::fmt::{
-    Debug,
-    Formatter,
-    Result as FmtResult,
 };
 
 /// A configured synchronous facade paired with its decoded location.
@@ -32,6 +33,7 @@ pub struct FileSystemResolution {
     /// Secret-free URI describing the canonical resolved location.
     canonical_uri: Uri,
 }
+
 impl FileSystemResolution {
     /// Validates and creates a resolution from one provider result.
     ///
@@ -125,6 +127,7 @@ impl FileSystemResolution {
         (self.file_system, self.path, self.canonical_uri)
     }
 }
+
 impl Debug for FileSystemResolution {
     /// Formats the safe location fields without exposing filesystem internals.
     ///

@@ -6,6 +6,21 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Runtime facade for asynchronous filesystem provider factories.
+
+use std::{
+    future::Future,
+    sync::Arc,
+};
+
+use qubit_fs::ConnectionUri;
+use qubit_spi::{
+    AsyncProviderDefinition,
+    AsyncProviderRegistry,
+    AsyncResolvingServiceProvider,
+    ProviderDescriptor,
+    ProviderSelection,
+};
+
 use crate::internal::{
     ValidatingAsyncFileSystemProvider,
     ensure_selection_matches_config,
@@ -19,18 +34,7 @@ use crate::{
     FileSystemRegistryResult,
     FileSystemSpec,
 };
-use qubit_fs::ConnectionUri;
-use qubit_spi::{
-    AsyncProviderDefinition,
-    AsyncProviderRegistry,
-    AsyncResolvingServiceProvider,
-    ProviderDescriptor,
-    ProviderSelection,
-};
-use std::{
-    future::Future,
-    sync::Arc,
-};
+
 /// Shared registry of self-described asynchronous filesystem providers.
 ///
 /// Clones share the same provider catalog and default selection. Each
@@ -41,6 +45,7 @@ pub struct AsyncFileSystemRegistry {
     /// selection.
     providers: AsyncProviderRegistry<FileSystemSpec>,
 }
+
 impl AsyncFileSystemRegistry {
     /// Registers an asynchronous provider factory owned by this registry.
     ///
