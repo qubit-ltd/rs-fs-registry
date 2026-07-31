@@ -50,6 +50,10 @@ fn open_local_report() -> FsResult<()> {
   `CredentialRef`。
 - 每个 resolution 将文件系统与 provider 解码路径、无 secret 的 canonical URI 配对。
 
+格式化 registry error 会包含安全的 selector 和 provider 上下文；这些字段会经过进程级
+`qubit_redact::RedactionPolicy`。如果 provider identity 或 selection 也应视为敏感字段，可在格式化前
+将 `provider_id` 或 `selection` 提升为敏感级别。
+
 selection 以配置为先：`resolve_config` 先使用显式 selection，再使用 URI scheme；它不会回退到
 registry 默认 selection。`resolve_selected_config` 和 `resolve_default_config` 会拒绝配置中与其
 冲突的内嵌 selection。

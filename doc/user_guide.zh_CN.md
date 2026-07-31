@@ -94,6 +94,9 @@ credential 配置。
 registry 操作返回 `FileSystemRegistryResult`，并在 `FileSystemRegistryError` 中保留结构化的注册、
 selection、resolution 和 provider 创建诊断。provider 被选中后创建仍可能失败；应检查 typed error，
 而非将其替换为笼统消息。registry error 可转换为 `FsError`，同时保留 typed registry error 作为 source。
+格式化 registry error 会包含安全的 selector 和 provider 上下文；这些字段会经过进程级
+`qubit_redact::RedactionPolicy`。如果 provider identity 或 selection 也应视为敏感字段，可在格式化前
+将 `provider_id` 或 `selection` 提升为敏感级别。
 
 ## 排障
 
