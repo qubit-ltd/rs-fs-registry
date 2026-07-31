@@ -52,19 +52,21 @@ fn test_invalid_configuration_never_has_a_source() {
     assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
 
-/// Registry error formatting redacts provider and selection payloads.
+/// Registry error formatting retains safe provider and selection context.
 #[test]
-fn test_error_display_and_debug_do_not_expose_provider_or_selection_payloads() {
+fn test_error_display_and_debug_include_safe_provider_and_selection_context() {
     let error = FileSystemRegistryError::SelectionConflict {
         requested: ProviderSelection::named("production-secret-provider")
             .expect("valid selector"),
         configured: ProviderSelection::named("other-secret-provider")
             .expect("valid selector"),
     };
-    for rendered in [format!("{error}"), format!("{error:?}")] {
-        assert!(!rendered.contains("production-secret-provider"));
-        assert!(!rendered.contains("other-secret-provider"));
-    }
+    let display = format!("{error}");
+    assert!(display.contains("production-secret-provider"));
+    assert!(display.contains("other-secret-provider"));
+    let debug = format!("{error:?}");
+    assert!(debug.contains("production-secret-provider"));
+    assert!(debug.contains("other-secret-provider"));
 }
 
 /// Registration, resolution, and selection failures retain sources while

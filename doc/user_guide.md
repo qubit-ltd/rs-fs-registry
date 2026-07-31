@@ -106,6 +106,10 @@ registration, selection, resolution, and provider-creation diagnostics in
 been selected; inspect the typed error rather than replacing it with a generic
 message. A registry error can convert to `FsError` while retaining the typed
 registry error as its source.
+Formatted registry errors include safe selector and provider context. Their
+fields are passed through the process-wide `qubit_redact::RedactionPolicy`, so
+applications can raise `provider_id` or `selection` to a sensitive level before
+formatting diagnostics.
 
 ## Troubleshooting
 

@@ -55,6 +55,11 @@ fn open_local_report() -> FsResult<()> {
 - Each resolution pairs a filesystem with its provider-decoded path and a
   secret-free canonical URI.
 
+Formatted registry errors include safe selector and provider context. These
+fields are classified through the process-wide `qubit_redact::RedactionPolicy`;
+applications can raise `provider_id` or `selection` to a sensitive level before
+formatting diagnostics.
+
 Selection is configuration-first: `resolve_config` uses an explicit selection,
 then the URI scheme; it does not fall back to the registry default.
 `resolve_selected_config` and `resolve_default_config` reject a conflicting

@@ -17,6 +17,10 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
 };
+use qubit_redact::{
+    RedactionPolicy,
+    Redactor,
+};
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
     ProviderCreationError,
@@ -80,23 +84,106 @@ impl fmt::Display for FileSystemRegistryError {
     ///
     /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let redactor = Redactor::new(RedactionPolicy::global_default());
         match self {
             Self::InvalidConfiguration { message } => {
-                write!(formatter, "invalid filesystem configuration: {message}")
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "message",
+                    &format!("invalid filesystem configuration: {message}"),
+                )
             }
-            Self::Registration(_) => formatter.write_str("provider registration failed"),
-            Self::Selection(_) => formatter.write_str("provider selection is invalid"),
-            Self::SelectionConflict { .. } => formatter
-                .write_str("configured provider selection conflicts with requested selection"),
-            Self::Resolution(_) => formatter.write_str("provider resolution failed"),
-            Self::Creation(_) => formatter.write_str("filesystem provider creation failed"),
+            Self::Registration(error) => {
+                write!(formatter, "provider registration failed")?;
+                write!(formatter, ": selector=")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "selector",
+                    error.selector(),
+                )?;
+                write!(formatter, ", existing_provider=")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "provider_id",
+                    error.existing_provider(),
+                )?;
+                write!(formatter, ", provider=")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "provider_id",
+                    error.provider(),
+                )
+            }
+            Self::Selection(error) => {
+                write!(formatter, "provider selection is invalid: ")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "selection",
+                    &error.to_string(),
+                )
+            }
+            Self::SelectionConflict {
+                requested,
+                configured,
+            } => {
+                write!(
+                    formatter,
+                    "configured provider selection conflicts with requested selection: requested=",
+                )?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "selection",
+                    &format!("{requested:?}"),
+                )?;
+                write!(formatter, ", configured=")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "selection",
+                    &format!("{configured:?}"),
+                )
+            }
+            Self::Resolution(error) => {
+                write!(formatter, "provider resolution failed: ")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "resolution",
+                    &error.to_string(),
+                )
+            }
+            Self::Creation(error) => {
+                write!(formatter, "filesystem provider creation failed: ")?;
+                write_redacted(
+                    formatter,
+                    &redactor,
+                    "creation",
+                    &error.to_string(),
+                )
+            }
         }
     }
 }
 
+/// Writes a policy-redacted value after escaping it for a plain-text log.
+fn write_redacted(
+    formatter: &mut fmt::Formatter<'_>,
+    redactor: &Redactor,
+    field: &str,
+    value: &str,
+) -> fmt::Result {
+    let escaped = redactor.redact(field, value).escape_for_log();
+    formatter.write_str(escaped.as_str())
+}
+
 impl fmt::Debug for FileSystemRegistryError {
-    /// Formats only an error category; payloads can contain provider
-    /// identities.
+    /// Formats the policy-redacted diagnostic with a type label.
     ///
     /// # Parameters
     ///
@@ -106,14 +193,7 @@ impl fmt::Debug for FileSystemRegistryError {
     ///
     /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::InvalidConfiguration { .. } => "InvalidConfiguration",
-            Self::Registration(_) => "Registration",
-            Self::Selection(_) => "Selection",
-            Self::SelectionConflict { .. } => "SelectionConflict",
-            Self::Resolution(_) => "Resolution",
-            Self::Creation(_) => "Creation",
-        })
+        write!(formatter, "FileSystemRegistryError({self})")
     }
 }
 

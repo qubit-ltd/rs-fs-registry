@@ -107,6 +107,7 @@ name = "qubit-fs-registry"
 version = "0.1.0"
 dependencies = [
  "qubit-fs",
+ "qubit-redact",
  "qubit-spi",
 ]
 
