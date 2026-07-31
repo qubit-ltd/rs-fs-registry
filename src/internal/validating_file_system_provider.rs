@@ -43,6 +43,10 @@ impl ValidatingFileSystemProvider {
     /// # Returns
     ///
     /// A validating wrapper bound to the provider's current descriptor.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline]
     pub(crate) fn new(provider: Arc<FileSystemProvider>) -> Self {
         let descriptor = provider.descriptor();
