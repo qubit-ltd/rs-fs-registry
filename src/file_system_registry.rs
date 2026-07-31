@@ -131,6 +131,12 @@ impl FileSystemRegistry {
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
         self.providers.descriptors()
     }
+    /// Returns canonical provider IDs in registration order.
+    #[inline(always)]
+    #[must_use]
+    pub fn provider_ids(&self) -> Vec<qubit_spi::ProviderId> {
+        self.providers.provider_ids()
+    }
     /// Returns the registered provider count.
     ///
     /// # Returns

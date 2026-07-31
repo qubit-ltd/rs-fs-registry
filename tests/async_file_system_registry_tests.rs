@@ -108,6 +108,7 @@ fn test_async_registry_inspection_and_resolution_entry_points() {
     assert!(!registry.is_empty());
     assert_eq!(registry.len(), 1);
     assert_eq!(registry.descriptors()[0].id().as_str(), "async-failing");
+    assert_eq!(registry.provider_ids()[0].as_str(), "async-failing");
 
     let uri = ConnectionUri::parse("async-failing:///resource")
         .expect("URI should parse");

@@ -92,3 +92,16 @@ fn test_resolution_rejects_unadvertised_canonical_uri_scheme() {
     .expect_err("unadvertised scheme must fail");
     assert_eq!(error.kind(), FsErrorKind::InvalidUri);
 }
+
+/// A resolution must come from a filesystem that declares its URI scheme.
+#[test]
+fn test_resolution_rejects_canonical_uri_when_no_scheme_is_advertised() {
+    let error = sync_resolution_with_path_properties(
+        "resolution-provider",
+        "/resource",
+        FileSystemLimits::unknown(),
+        PathConstraints::absolute(),
+    )
+    .expect_err("a scheme-less filesystem cannot publish a URI resolution");
+    assert_eq!(error.kind(), FsErrorKind::InvalidUri);
+}

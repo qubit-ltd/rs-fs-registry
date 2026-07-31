@@ -101,7 +101,7 @@ pub(crate) fn sync_resolution(
 ) -> FileSystemResolution {
     let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
         provider_id,
-        scheme: None,
+        scheme: Some("registry-test"),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
     })
@@ -205,7 +205,7 @@ pub(crate) fn async_resolution(
 ) -> AsyncFileSystemResolution {
     let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
         provider_id,
-        scheme: None,
+        scheme: Some("registry-test"),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
     })
