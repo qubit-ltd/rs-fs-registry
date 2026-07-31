@@ -67,12 +67,11 @@ impl AsyncFileSystemResolution {
             p.info().path_semantics(),
             FsOperation::ParsePath,
         )?;
-        if !p.info().schemes().is_empty()
-            && !p
-                .info()
-                .schemes()
-                .iter()
-                .any(|s| s == canonical_uri.scheme())
+        if !p
+            .info()
+            .schemes()
+            .iter()
+            .any(|s| s == canonical_uri.scheme())
         {
             return Err(FsError::new(
                 FsErrorKind::InvalidUri,

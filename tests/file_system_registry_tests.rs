@@ -127,6 +127,7 @@ fn test_registry_inspection_and_resolution_entry_points() {
     assert!(!registry.is_empty());
     assert_eq!(registry.len(), 1);
     assert_eq!(registry.descriptors()[0].id().as_str(), "entry-points");
+    assert_eq!(registry.provider_ids()[0].as_str(), "entry-points");
 
     let uri = ConnectionUri::parse("entry-points:///resource")
         .expect("URI should parse");

@@ -67,12 +67,11 @@ impl FileSystemResolution {
             properties.info().path_semantics(),
             FsOperation::ParsePath,
         )?;
-        if !properties.info().schemes().is_empty()
-            && !properties
-                .info()
-                .schemes()
-                .iter()
-                .any(|scheme| scheme == canonical_uri.scheme())
+        if !properties
+            .info()
+            .schemes()
+            .iter()
+            .any(|scheme| scheme == canonical_uri.scheme())
         {
             return Err(FsError::new(
                 FsErrorKind::InvalidUri,
