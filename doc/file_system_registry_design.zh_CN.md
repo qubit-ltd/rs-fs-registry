@@ -271,8 +271,9 @@ cache eligibility/key；registry 不能只排除 credential value 后自行猜�
 字符串 map 后绕过 redaction 与 cache policy。
 
 同一个 credential slot 同时由 embedded URI secret 与 `CredentialRef` 提供时必须在
-provider creation 前报 configuration conflict，不能静默选择优先级。Provider 只有在
-明确声明两者承担不同、可组合的 credential role 时才可同时接受。
+provider creation 前报 configuration conflict，不能静默选择优先级。当前 registry
+不提供 provider-specific 例外；如果未来需要组合不同 credential role，应先定义并
+验证显式的 credential policy，再放宽这一不变量。
 
 `CredentialRef` 只描述外部 secret 的引用，不承载 token、password、private key 等
 secret value。`ConnectionUri` 可以在受控入口承载 userinfo password 或敏感 query，

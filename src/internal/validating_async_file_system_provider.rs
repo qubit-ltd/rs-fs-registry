@@ -45,6 +45,10 @@ impl ValidatingAsyncFileSystemProvider {
     /// # Returns
     ///
     /// A validating wrapper bound to the provider's current descriptor.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline]
     pub(crate) fn new(provider: Arc<AsyncFileSystemProvider>) -> Self {
         let descriptor = provider.descriptor();

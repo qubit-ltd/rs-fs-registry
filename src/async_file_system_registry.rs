@@ -66,6 +66,10 @@ impl AsyncFileSystemRegistry {
     ///
     /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
     /// when its descriptor conflicts with an existing provider.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline(always)]
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
@@ -88,6 +92,10 @@ impl AsyncFileSystemRegistry {
     ///
     /// Returns [`FileSystemRegistryError::Registration`](crate::FileSystemRegistryError::Registration)
     /// when its descriptor conflicts with an existing provider.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline(always)]
     pub fn register_shared(
         &self,
