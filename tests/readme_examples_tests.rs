@@ -19,8 +19,7 @@ use std::process::Command;
 #[test]
 fn test_shipped_markdown_rust_examples_compile() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output_dir = markdown_doctest_output_dir(&manifest_dir);
-    recreate_dir(&output_dir);
+    let workspace = MarkdownDoctestWorkspace::new(&manifest_dir);
 
     for (name, path) in [
         ("readme_en", manifest_dir.join("README.md")),
@@ -37,7 +36,48 @@ fn test_shipped_markdown_rust_examples_compile() {
             "{} should contain Rust snippets",
             path.display(),
         );
-        compile_snippets(&manifest_dir, &output_dir, name, &snippets);
+        compile_snippets(
+            &manifest_dir,
+            &workspace.output_dir,
+            &workspace.target_dir,
+            name,
+            &snippets,
+        );
+    }
+}
+
+/// Owns generated Markdown example sources and their shared Cargo cache.
+struct MarkdownDoctestWorkspace {
+    /// Process-scoped source directory removed when the test finishes.
+    output_dir: PathBuf,
+    /// Shared Cargo target directory reused across test processes.
+    target_dir: PathBuf,
+}
+
+impl MarkdownDoctestWorkspace {
+    /// Creates a clean process-scoped source directory.
+    ///
+    /// # Parameters
+    ///
+    /// - `manifest_dir`: Registry crate manifest directory.
+    ///
+    /// # Returns
+    ///
+    /// A workspace whose generated sources are removed on drop.
+    fn new(manifest_dir: &Path) -> Self {
+        let output_dir = markdown_doctest_output_dir(manifest_dir);
+        recreate_dir(&output_dir);
+        Self {
+            output_dir,
+            target_dir: manifest_dir.join("target/markdown-doctest-target"),
+        }
+    }
+}
+
+impl Drop for MarkdownDoctestWorkspace {
+    /// Removes generated process-scoped Markdown example sources.
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.output_dir);
     }
 }
 
@@ -65,6 +105,21 @@ fn test_markdown_doctest_output_dir_scopes_to_current_process() {
             .ends_with(format!("markdown-doctest-{}", std::process::id())),
         "the output directory should be isolated to the current test process",
     );
+}
+
+/// Verifies packaged crates fall back to published dependency versions.
+#[test]
+fn test_markdown_doctest_manifest_uses_published_dependencies_without_siblings()
+{
+    let manifest_dir = Path::new("/nonexistent/qubit-fs-registry");
+    let manifest = build_markdown_doctest_manifest("packaged", manifest_dir);
+
+    assert!(manifest.contains("qubit-fs = \"0.2\""));
+    assert!(manifest.contains(
+        "qubit-fs-local = { version = \"0.1\", features = [\"registry\"] }",
+    ));
+    assert!(!manifest.contains("../rs-fs"));
+    assert!(!manifest.contains("../rs-fs-local"));
 }
 
 /// Recreates a test-owned output directory.
@@ -151,6 +206,7 @@ fn is_rust_fence(language: &str) -> bool {
 ///
 /// - `manifest_dir`: Registry crate manifest directory.
 /// - `output_dir`: Test-owned root for generated crates and Cargo output.
+/// - `target_dir`: Shared Cargo target directory for generated crates.
 /// - `name`: Stable generated crate name suffix.
 /// - `snippets`: Rust snippets to compile.
 ///
@@ -161,6 +217,7 @@ fn is_rust_fence(language: &str) -> bool {
 fn compile_snippets(
     manifest_dir: &Path,
     output_dir: &Path,
+    target_dir: &Path,
     name: &str,
     snippets: &[String],
 ) {
@@ -188,7 +245,7 @@ fn compile_snippets(
         .arg("--quiet")
         .arg("--bins")
         .current_dir(&crate_dir)
-        .env("CARGO_TARGET_DIR", output_dir.join("target"))
+        .env("CARGO_TARGET_DIR", target_dir)
         .status()
         .expect("failed to compile Markdown snippets");
     assert!(status.success(), "Markdown Rust snippets failed for {name}");
@@ -203,15 +260,31 @@ fn compile_snippets(
 ///
 /// # Returns
 ///
-/// A Cargo manifest referencing the local registry, filesystem, and provider
-/// crates.
+/// A Cargo manifest referencing the registry crate and either local sibling or
+/// published filesystem and provider crates.
 fn build_markdown_doctest_manifest(name: &str, manifest_dir: &Path) -> String {
     let registry = toml_basic_string(&manifest_dir.display().to_string());
-    let filesystem =
-        toml_basic_string(&manifest_dir.join("../rs-fs").display().to_string());
-    let local = toml_basic_string(
-        &manifest_dir.join("../rs-fs-local").display().to_string(),
-    );
+    let filesystem_path = manifest_dir.join("../rs-fs");
+    let local_path = manifest_dir.join("../rs-fs-local");
+    let (filesystem, local) = if filesystem_path.join("Cargo.toml").is_file()
+        && local_path.join("Cargo.toml").is_file()
+    {
+        (
+            format!(
+                "{{ path = \"{}\" }}",
+                toml_basic_string(&filesystem_path.display().to_string()),
+            ),
+            format!(
+                "{{ path = \"{}\", features = [\"registry\"] }}",
+                toml_basic_string(&local_path.display().to_string()),
+            ),
+        )
+    } else {
+        (
+            "\"0.2\"".to_owned(),
+            "{ version = \"0.1\", features = [\"registry\"] }".to_owned(),
+        )
+    };
 
     format!(
         r#"[package]
@@ -221,8 +294,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-qubit-fs = {{ path = "{filesystem}" }}
-qubit-fs-local = {{ path = "{local}", features = ["registry"] }}
+qubit-fs = {filesystem}
+qubit-fs-local = {local}
 qubit-fs-registry = {{ path = "{registry}" }}
 "#,
     )
