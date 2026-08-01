@@ -18,7 +18,6 @@ use qubit_fs::{
     FsOperation,
 };
 use qubit_redact::{
-    RedactionPolicy,
     Redactor,
 };
 use qubit_spi::ProviderSelection;
@@ -84,7 +83,7 @@ impl fmt::Display for FileSystemRegistryError {
     ///
     /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let redactor = Redactor::new(RedactionPolicy::global_default());
+        let redactor = Redactor::default();
         match self {
             Self::InvalidConfiguration { message } => write_redacted(
                 formatter,
@@ -176,7 +175,7 @@ fn write_redacted(
     field: &str,
     value: &str,
 ) -> fmt::Result {
-    let escaped = redactor.redact(field, value).escape_for_log();
+    let escaped = redactor.redact_field(field, value).escape_for_log();
     formatter.write_str(escaped.as_str())
 }
 
