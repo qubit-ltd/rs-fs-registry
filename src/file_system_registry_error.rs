@@ -86,14 +86,12 @@ impl fmt::Display for FileSystemRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = Redactor::new(RedactionPolicy::global_default());
         match self {
-            Self::InvalidConfiguration { message } => {
-                write_redacted(
-                    formatter,
-                    &redactor,
-                    "message",
-                    &format!("invalid filesystem configuration: {message}"),
-                )
-            }
+            Self::InvalidConfiguration { message } => write_redacted(
+                formatter,
+                &redactor,
+                "message",
+                &format!("invalid filesystem configuration: {message}"),
+            ),
             Self::Registration(error) => {
                 write!(formatter, "provider registration failed")?;
                 write!(formatter, ": selector=")?;
