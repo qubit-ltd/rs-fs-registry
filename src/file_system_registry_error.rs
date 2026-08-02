@@ -17,9 +17,7 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
 };
-use qubit_redact::{
-    Redactor,
-};
+use qubit_redact::Redactor;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
     ProviderCreationError,
@@ -115,14 +113,8 @@ impl fmt::Display for FileSystemRegistryError {
                     error.provider(),
                 )
             }
-            Self::Selection(error) => {
-                write!(formatter, "provider selection is invalid: ")?;
-                write_redacted(
-                    formatter,
-                    &redactor,
-                    "selection",
-                    &error.to_string(),
-                )
+            Self::Selection(_error) => {
+                formatter.write_str("provider selection is invalid")
             }
             Self::SelectionConflict {
                 requested,
@@ -146,23 +138,11 @@ impl fmt::Display for FileSystemRegistryError {
                     &format!("{configured:?}"),
                 )
             }
-            Self::Resolution(error) => {
-                write!(formatter, "provider resolution failed: ")?;
-                write_redacted(
-                    formatter,
-                    &redactor,
-                    "resolution",
-                    &error.to_string(),
-                )
+            Self::Resolution(_error) => {
+                formatter.write_str("provider resolution failed")
             }
-            Self::Creation(error) => {
-                write!(formatter, "filesystem provider creation failed: ")?;
-                write_redacted(
-                    formatter,
-                    &redactor,
-                    "creation",
-                    &error.to_string(),
-                )
+            Self::Creation(_error) => {
+                formatter.write_str("filesystem provider creation failed")
             }
         }
     }
