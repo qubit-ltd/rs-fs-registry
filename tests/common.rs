@@ -51,6 +51,7 @@ use qubit_fs::{
     PathSemantics,
     RenameFailureState,
     RenameOutcome,
+    SymlinkPolicy,
     Uri,
 };
 use qubit_fs_registry::{
@@ -325,6 +326,7 @@ fn properties(
         FileSystemCapabilities::new(),
         limits,
         path_constraints,
+        SymlinkPolicy::Reject,
     )
     .expect("valid test properties")
 }

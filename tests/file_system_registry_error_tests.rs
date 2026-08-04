@@ -52,6 +52,18 @@ fn test_invalid_configuration_never_has_a_source() {
     assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
 
+/// Invalid configuration diagnostics mask embedded credential-like text.
+#[test]
+fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
+    let error = FileSystemRegistryError::InvalidConfiguration {
+        message: "connection failed for token=raw-secret-value",
+    };
+
+    let display = error.to_string();
+    assert!(!display.contains("raw-secret-value"));
+    assert!(display.contains("<redacted>"));
+}
+
 /// Registry error formatting retains safe provider and selection context.
 #[test]
 fn test_error_display_and_debug_include_safe_provider_and_selection_context() {
