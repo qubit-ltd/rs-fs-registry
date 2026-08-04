@@ -18,6 +18,9 @@ the filesystem together with its decoded path and canonical URI.
 cargo add qubit-fs qubit-fs-registry
 ```
 
+The registry is synchronous by default. Add the async feature to
+qubit-fs-registry when registering asynchronous providers.
+
 A local provider is supplied by its own crate:
 
 ```bash

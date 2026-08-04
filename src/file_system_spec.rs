@@ -8,14 +8,16 @@
 //! SPI service specification for filesystems.
 
 use qubit_fs::FsError;
+#[cfg(feature = "async")]
+use qubit_spi::AsyncServiceSpec;
 use qubit_spi::{
-    AsyncServiceSpec,
     ServiceSpec,
     SyncServiceSpec,
 };
 
+#[cfg(feature = "async")]
+use crate::AsyncFileSystemResolution;
 use crate::{
-    AsyncFileSystemResolution,
     FileSystemConfig,
     FileSystemResolution,
 };
@@ -33,6 +35,7 @@ impl SyncServiceSpec for FileSystemSpec {
     type Output = FileSystemResolution;
 }
 
+#[cfg(feature = "async")]
 impl AsyncServiceSpec for FileSystemSpec {
     type Output = AsyncFileSystemResolution;
 }
