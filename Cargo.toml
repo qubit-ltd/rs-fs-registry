@@ -29,12 +29,16 @@ categories = ["filesystem"]
 name = "qubit_fs_registry"
 doctest = true
 
+[features]
+default = []
+async = ["qubit-fs/async"]
+
 [[test]]
 name = "integration_tests"
 path = "tests/mod.rs"
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", version = "0.2" }
+qubit-fs = { path = "../rs-fs", version = "0.2", default-features = false }
 qubit-redact = { path = "../rs-redact", version = "0.6" }
 qubit-spi = { path = "../rs-spi", version = "0.11" }
 

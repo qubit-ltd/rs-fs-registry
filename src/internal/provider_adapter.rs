@@ -15,10 +15,9 @@ use qubit_fs::{
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::error::ProviderFailure;
 
-use crate::{
-    AsyncFileSystemResolution,
-    FileSystemResolution,
-};
+#[cfg(feature = "async")]
+use crate::AsyncFileSystemResolution;
+use crate::FileSystemResolution;
 
 /// Checks the provider identity returned by one synchronous provider.
 ///
@@ -63,6 +62,7 @@ pub(super) fn validate_sync_resolution(
 ///
 /// Returns a provider contract failure when the identities differ.
 #[inline]
+#[cfg(feature = "async")]
 pub(super) fn validate_async_resolution(
     descriptor: &ProviderDescriptor,
     resolution: AsyncFileSystemResolution,
