@@ -17,7 +17,10 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
 };
-use qubit_redact::Redactor;
+use qubit_redact::{
+    Redactor,
+    Sensitivity,
+};
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::{
     ProviderCreationError,
@@ -83,12 +86,10 @@ impl fmt::Display for FileSystemRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = Redactor::default();
         match self {
-            Self::InvalidConfiguration { message } => write_redacted(
-                formatter,
-                &redactor,
-                "message",
-                &format!("invalid filesystem configuration: {message}"),
-            ),
+            Self::InvalidConfiguration { message } => {
+                formatter.write_str("invalid filesystem configuration: ")?;
+                write_opaque_redacted(formatter, &redactor, message)
+            }
             Self::Registration(error) => {
                 write!(formatter, "provider registration failed")?;
                 write!(formatter, ": selector=")?;
@@ -156,6 +157,18 @@ fn write_redacted(
     value: &str,
 ) -> fmt::Result {
     let escaped = redactor.redact_field(field, value).escape_for_log();
+    formatter.write_str(escaped.as_str())
+}
+
+/// Writes an opaque diagnostic value after escaping it for a plain-text log.
+fn write_opaque_redacted(
+    formatter: &mut fmt::Formatter<'_>,
+    redactor: &Redactor,
+    value: &str,
+) -> fmt::Result {
+    let escaped = redactor
+        .redact_at(Sensitivity::Secret, value)
+        .escape_for_log();
     formatter.write_str(escaped.as_str())
 }
 
