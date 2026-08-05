@@ -28,9 +28,12 @@
 //! # Async quick start
 //!
 //! ```no_run
+//! # #[cfg(feature = "async")]
 //! use qubit_fs::ConnectionUri;
+//! # #[cfg(feature = "async")]
 //! use qubit_fs_registry::{AsyncFileSystemRegistry, FileSystemConfig};
 //!
+//! # #[cfg(feature = "async")]
 //! async fn resolve_from_registered_async_providers(
 //!     registry: &AsyncFileSystemRegistry,
 //! ) -> Result<(), Box<dyn std::error::Error>> {

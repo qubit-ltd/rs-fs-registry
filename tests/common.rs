@@ -7,6 +7,7 @@
 // =============================================================================
 // qubit-style: allow test-file-name -- shared integration-test fixture module.
 
+#[cfg(feature = "async")]
 use std::{
     future::Future,
     pin::pin,
@@ -17,7 +18,6 @@ use std::{
 };
 
 use qubit_fs::spi::{
-    AsyncFileSystemSpi,
     CreateDirectoryRequest,
     CreateTempDirectoryRequest,
     CreateTempFileRequest,
@@ -28,12 +28,15 @@ use qubit_fs::spi::{
     OpenReaderRequest,
     OpenWriterRequest,
     RenameRequest,
-    SpiFuture,
     SpiRenameFailure,
     StatRequest,
 };
+#[cfg(feature = "async")]
+use qubit_fs::spi::{
+    AsyncFileSystemSpi,
+    SpiFuture,
+};
 use qubit_fs::{
-    AsyncFileSystem,
     CreateDirectoryOutcome,
     DeleteOutcome,
     FileSystem,
@@ -54,10 +57,11 @@ use qubit_fs::{
     SymlinkPolicy,
     Uri,
 };
-use qubit_fs_registry::{
-    AsyncFileSystemResolution,
-    FileSystemResolution,
-};
+#[cfg(feature = "async")]
+use qubit_fs::AsyncFileSystem;
+use qubit_fs_registry::FileSystemResolution;
+#[cfg(feature = "async")]
+use qubit_fs_registry::AsyncFileSystemResolution;
 
 /// Polls a test future to completion without an asynchronous runtime.
 ///
@@ -71,6 +75,7 @@ use qubit_fs_registry::{
 /// # Returns
 ///
 /// The future's completed output.
+#[cfg(feature = "async")]
 pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
     let waker = std::task::Waker::noop();
     let mut context = Context::from_waker(waker);
@@ -201,6 +206,7 @@ pub(crate) fn sync_resolution_with_path_properties(
 ///
 /// Panics when the fixed fixture path, URI, or filesystem properties violate
 /// their constructors' contracts.
+#[cfg(feature = "async")]
 pub(crate) fn async_resolution(
     provider_id: &'static str,
 ) -> AsyncFileSystemResolution {
@@ -235,6 +241,7 @@ pub(crate) fn async_resolution(
 ///
 /// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
 /// test fixture.
+#[cfg(feature = "async")]
 pub(crate) fn async_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -271,6 +278,7 @@ pub(crate) fn async_resolution_with_scheme(
 /// # Panics
 ///
 /// Panics when `provider_id` or `path` cannot construct the test fixture.
+#[cfg(feature = "async")]
 pub(crate) fn async_resolution_with_path_properties(
     provider_id: &'static str,
     path: &str,
@@ -432,6 +440,7 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
     }
 }
 
+#[cfg(feature = "async")]
 struct AsyncPropertiesOnlySpi {
     provider_id: &'static str,
     scheme: Option<&'static str>,
@@ -439,6 +448,7 @@ struct AsyncPropertiesOnlySpi {
     path_constraints: PathConstraints,
 }
 
+#[cfg(feature = "async")]
 impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
     fn properties(&self) -> FileSystemProperties {
         properties(

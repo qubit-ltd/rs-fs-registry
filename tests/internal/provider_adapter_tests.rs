@@ -12,22 +12,28 @@ use qubit_fs::{
     FsErrorKind,
 };
 use qubit_fs_registry::{
-    AsyncFileSystemRegistry,
-    AsyncFileSystemResolution,
     FileSystemConfig,
     FileSystemRegistry,
     FileSystemRegistryError,
     FileSystemResolution,
     FileSystemSpec,
 };
+#[cfg(feature = "async")]
+use qubit_fs_registry::{
+    AsyncFileSystemRegistry,
+    AsyncFileSystemResolution,
+};
 use qubit_spi::error::ProviderFailure;
 use qubit_spi::{
-    AsyncServiceProvider,
     ProviderDescriptor,
-    ProviderFuture,
     ProviderId,
     ProviderMetadata,
     ServiceProvider,
+};
+#[cfg(feature = "async")]
+use qubit_spi::{
+    AsyncServiceProvider,
+    ProviderFuture,
 };
 
 use crate::common;
@@ -58,6 +64,7 @@ fn test_provider_adapter_rejects_mismatched_provider_identity() {
 
 /// Asynchronous provider-adapter validation rejects a resolution whose
 /// filesystem identity differs from the registered descriptor.
+#[cfg(feature = "async")]
 #[test]
 fn test_provider_adapter_rejects_mismatched_async_provider_identity() {
     let registry = AsyncFileSystemRegistry::default();
@@ -101,8 +108,10 @@ impl ServiceProvider<FileSystemSpec> for MismatchedProvider {
 }
 
 /// Asynchronous fixture whose output intentionally contradicts its descriptor.
+#[cfg(feature = "async")]
 struct MismatchedAsyncProvider;
 
+#[cfg(feature = "async")]
 impl ProviderMetadata for MismatchedAsyncProvider {
     fn descriptor(&self) -> ProviderDescriptor {
         ProviderDescriptor::new(
@@ -111,6 +120,7 @@ impl ProviderMetadata for MismatchedAsyncProvider {
     }
 }
 
+#[cfg(feature = "async")]
 impl AsyncServiceProvider<FileSystemSpec> for MismatchedAsyncProvider {
     fn create_configured<'a>(
         &'a self,

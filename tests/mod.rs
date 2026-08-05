@@ -6,7 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+#[cfg(feature = "async")]
 mod async_file_system_registry_tests;
+#[cfg(feature = "async")]
 mod async_file_system_resolution_tests;
 mod common;
 mod credential_ref_tests;
