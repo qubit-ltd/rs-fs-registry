@@ -11,6 +11,11 @@ use qubit_fs::{
     FsError,
     FsErrorKind,
 };
+#[cfg(feature = "async")]
+use qubit_fs_registry::{
+    AsyncFileSystemRegistry,
+    AsyncFileSystemResolution,
+};
 use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemRegistry,
@@ -18,22 +23,17 @@ use qubit_fs_registry::{
     FileSystemResolution,
     FileSystemSpec,
 };
-#[cfg(feature = "async")]
-use qubit_fs_registry::{
-    AsyncFileSystemRegistry,
-    AsyncFileSystemResolution,
-};
 use qubit_spi::error::ProviderFailure;
+#[cfg(feature = "async")]
+use qubit_spi::{
+    AsyncServiceProvider,
+    ProviderFuture,
+};
 use qubit_spi::{
     ProviderDescriptor,
     ProviderId,
     ProviderMetadata,
     ServiceProvider,
-};
-#[cfg(feature = "async")]
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderFuture,
 };
 
 use crate::common;

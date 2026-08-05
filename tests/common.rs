@@ -17,6 +17,13 @@ use std::{
     },
 };
 
+#[cfg(feature = "async")]
+use qubit_fs::AsyncFileSystem;
+#[cfg(feature = "async")]
+use qubit_fs::spi::{
+    AsyncFileSystemSpi,
+    SpiFuture,
+};
 use qubit_fs::spi::{
     CreateDirectoryRequest,
     CreateTempDirectoryRequest,
@@ -30,11 +37,6 @@ use qubit_fs::spi::{
     RenameRequest,
     SpiRenameFailure,
     StatRequest,
-};
-#[cfg(feature = "async")]
-use qubit_fs::spi::{
-    AsyncFileSystemSpi,
-    SpiFuture,
 };
 use qubit_fs::{
     CreateDirectoryOutcome,
@@ -58,10 +60,8 @@ use qubit_fs::{
     Uri,
 };
 #[cfg(feature = "async")]
-use qubit_fs::AsyncFileSystem;
-use qubit_fs_registry::FileSystemResolution;
-#[cfg(feature = "async")]
 use qubit_fs_registry::AsyncFileSystemResolution;
+use qubit_fs_registry::FileSystemResolution;
 
 /// Polls a test future to completion without an asynchronous runtime.
 ///
