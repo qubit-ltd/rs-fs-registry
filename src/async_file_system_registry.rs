@@ -14,8 +14,8 @@ use qubit_fs::ConnectionUri;
 use qubit_spi::AsyncProviderDefinition;
 use qubit_spi::AsyncProviderRegistry;
 use qubit_spi::AsyncResolvingServiceProvider;
-use qubit_spi::ProviderId;
 use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
 use qubit_spi::ProviderSelection;
 
 use crate::AsyncFileSystemProvider;

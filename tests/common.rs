@@ -48,9 +48,6 @@ use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ListRequest;
 use qubit_fs::spi::OpenReaderRequest;
 use qubit_fs::spi::OpenWriterRequest;
-use qubit_fs::spi::RenameRequest;
-#[cfg(feature = "async")]
-use qubit_fs::spi::SpiFuture;
 #[cfg(feature = "async")]
 use qubit_fs::spi::OpenedAsyncDirectoryStream;
 #[cfg(feature = "async")]
@@ -61,12 +58,15 @@ use qubit_fs::spi::OpenedAsyncTempDirectory;
 use qubit_fs::spi::OpenedAsyncTempFile;
 #[cfg(feature = "async")]
 use qubit_fs::spi::OpenedAsyncWriter;
-use qubit_fs::spi::SpiRenameFailure;
 use qubit_fs::spi::OpenedDirectoryStream;
 use qubit_fs::spi::OpenedReader;
-use qubit_fs::spi::OpenedWriter;
 use qubit_fs::spi::OpenedTempDirectory;
 use qubit_fs::spi::OpenedTempFile;
+use qubit_fs::spi::OpenedWriter;
+use qubit_fs::spi::RenameRequest;
+#[cfg(feature = "async")]
+use qubit_fs::spi::SpiFuture;
+use qubit_fs::spi::SpiRenameFailure;
 use qubit_fs::spi::StatRequest;
 use qubit_fs::spi::StatResponse;
 #[cfg(feature = "async")]
