@@ -7,29 +7,21 @@
 // =============================================================================
 //! Error model for filesystem provider registry operations.
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
-use qubit_redact::{
-    DiagnosticLogBuilder,
-    RedactionPolicy,
-    RedactionSession,
-    Sensitivity,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_redact::DiagnosticLogBuilder;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::RedactionSession;
+use qubit_redact::Sensitivity;
 use qubit_spi::ProviderSelection;
-use qubit_spi::error::{
-    ProviderCreationError,
-    ProviderResolutionError,
-    ProviderSelectionBuildError,
-    RegistrationError,
-};
+use qubit_spi::error::ProviderCreationError;
+use qubit_spi::error::ProviderResolutionError;
+use qubit_spi::error::ProviderSelectionBuildError;
+use qubit_spi::error::RegistrationError;
 
 /// Result returned by filesystem registry operations.
 ///

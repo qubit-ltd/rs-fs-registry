@@ -6,16 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    ConnectionUri,
-    FsErrorKind,
-    NonSensitiveMetadata,
-    UserMetadata,
-};
-use qubit_fs_registry::{
-    CredentialRef,
-    FileSystemConfig,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FsErrorKind;
+use qubit_fs::NonSensitiveMetadata;
+use qubit_fs::UserMetadata;
+use qubit_fs_registry::CredentialRef;
+use qubit_fs_registry::FileSystemConfig;
 use qubit_spi::ProviderSelection;
 
 /// Builder methods accept already validated metadata without a fallible step.

@@ -6,35 +6,27 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    ConnectionUri,
-    FsError,
-    FsErrorKind,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
 #[cfg(feature = "async")]
-use qubit_fs_registry::{
-    AsyncFileSystemRegistry,
-    AsyncFileSystemResolution,
-};
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-    FileSystemRegistryError,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs_registry::AsyncFileSystemRegistry;
+#[cfg(feature = "async")]
+use qubit_fs_registry::AsyncFileSystemResolution;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+#[cfg(feature = "async")]
+use qubit_spi::AsyncServiceProvider;
+use qubit_spi::ProviderDescriptor;
+#[cfg(feature = "async")]
+use qubit_spi::ProviderFuture;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
-#[cfg(feature = "async")]
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderFuture,
-};
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderId,
-    ProviderMetadata,
-    ServiceProvider,
-};
 
 use crate::common;
 

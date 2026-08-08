@@ -7,15 +7,11 @@
 // =============================================================================
 
 use qubit_fs::FsError;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemResolution,
-    FileSystemSpec,
-};
-use qubit_spi::{
-    ServiceSpec,
-    SyncServiceSpec,
-};
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::ServiceSpec;
+use qubit_spi::SyncServiceSpec;
 
 /// The filesystem service specification binds the registry's public config,
 /// error, and resolution types.

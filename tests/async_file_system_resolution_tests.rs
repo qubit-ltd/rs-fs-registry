@@ -6,18 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FileSystemLimit,
-    FileSystemLimits,
-    FsErrorKind,
-    PathConstraints,
-};
+use qubit_fs::FileSystemLimit;
+use qubit_fs::FileSystemLimits;
+use qubit_fs::FsErrorKind;
+use qubit_fs::PathConstraints;
 
-use crate::common::{
-    async_resolution,
-    async_resolution_with_path_properties,
-    async_resolution_with_scheme,
-};
+use crate::common::async_resolution;
+use crate::common::async_resolution_with_path_properties;
+use crate::common::async_resolution_with_scheme;
 
 /// An asynchronous resolution retains its facade, decoded path, and canonical
 /// URI across access and ownership transfer.

@@ -6,23 +6,17 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    ConnectionUri,
-    FsError,
-};
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FsError;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderId,
-    ProviderMetadata,
-    ServiceProvider,
-};
 
 use crate::common;
 

@@ -7,11 +7,9 @@
 // =============================================================================
 //! Provider adapters enforcing filesystem-specific creation invariants.
 
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::error::ProviderFailure;
 
