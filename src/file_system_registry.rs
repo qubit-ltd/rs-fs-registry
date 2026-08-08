@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use qubit_fs::ConnectionUri;
 use qubit_spi::ProviderDefinition;
-use qubit_spi::ProviderId;
 use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
 use qubit_spi::ProviderRegistry;
 use qubit_spi::ProviderSelection;
 use qubit_spi::ResolvingServiceProvider;
