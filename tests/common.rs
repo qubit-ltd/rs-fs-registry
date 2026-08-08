@@ -379,31 +379,19 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
         )
     }
 
-    fn stat(
-        &self,
-        _: StatRequest<'_>,
-    ) -> FsResult<StatResponse> {
+    fn stat(&self, _: StatRequest<'_>) -> FsResult<StatResponse> {
         Err(unused())
     }
 
-    fn list(
-        &self,
-        _: ListRequest<'_>,
-    ) -> FsResult<OpenedDirectoryStream> {
+    fn list(&self, _: ListRequest<'_>) -> FsResult<OpenedDirectoryStream> {
         Err(unused())
     }
 
-    fn open_reader(
-        &self,
-        _: OpenReaderRequest<'_>,
-    ) -> FsResult<OpenedReader> {
+    fn open_reader(&self, _: OpenReaderRequest<'_>) -> FsResult<OpenedReader> {
         Err(unused())
     }
 
-    fn open_writer(
-        &self,
-        _: OpenWriterRequest<'_>,
-    ) -> FsResult<OpenedWriter> {
+    fn open_writer(&self, _: OpenWriterRequest<'_>) -> FsResult<OpenedWriter> {
         Err(unused())
     }
 
@@ -479,8 +467,7 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
     fn list<'a>(
         &'a self,
         _: ListRequest<'a>,
-    ) -> SpiFuture<'a, FsResult<OpenedAsyncDirectoryStream>>
-    {
+    ) -> SpiFuture<'a, FsResult<OpenedAsyncDirectoryStream>> {
         Box::pin(async { Err(unused()) })
     }
 
