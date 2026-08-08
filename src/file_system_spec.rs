@@ -10,17 +10,13 @@
 use qubit_fs::FsError;
 #[cfg(feature = "async")]
 use qubit_spi::AsyncServiceSpec;
-use qubit_spi::{
-    ServiceSpec,
-    SyncServiceSpec,
-};
+use qubit_spi::ServiceSpec;
+use qubit_spi::SyncServiceSpec;
 
 #[cfg(feature = "async")]
 use crate::AsyncFileSystemResolution;
-use crate::{
-    FileSystemConfig,
-    FileSystemResolution,
-};
+use crate::FileSystemConfig;
+use crate::FileSystemResolution;
 
 /// Service specification for filesystem providers.
 #[derive(Debug)]

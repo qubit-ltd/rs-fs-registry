@@ -7,17 +7,13 @@
 // =============================================================================
 //! Complete secret-safe provider configuration.
 
-use std::fmt::{
-    Debug,
-    Display,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
-use qubit_fs::{
-    ConnectionUri,
-    NonSensitiveMetadata,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::NonSensitiveMetadata;
 use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;

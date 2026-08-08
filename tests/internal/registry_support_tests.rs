@@ -7,11 +7,9 @@
 // =============================================================================
 
 use qubit_fs::ConnectionUri;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-    FileSystemRegistryError,
-};
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
 /// Invalid URI schemes fail instead of falling back to the default provider.
 #[test]
 fn test_invalid_uri_scheme_is_rejected_without_default_fallback() {

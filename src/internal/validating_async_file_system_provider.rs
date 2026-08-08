@@ -10,21 +10,17 @@
 use std::sync::Arc;
 
 use qubit_fs::FsError;
+use qubit_spi::AsyncServiceProvider;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderFuture;
+use qubit_spi::ProviderMetadata;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderDescriptor,
-    ProviderFuture,
-    ProviderMetadata,
-};
 
 use super::provider_adapter::validate_async_resolution;
-use crate::{
-    AsyncFileSystemProvider,
-    AsyncFileSystemResolution,
-    FileSystemConfig,
-    FileSystemSpec,
-};
+use crate::AsyncFileSystemProvider;
+use crate::AsyncFileSystemResolution;
+use crate::FileSystemConfig;
+use crate::FileSystemSpec;
 
 /// Asynchronous provider wrapper that binds successful output to its
 /// descriptor.

@@ -9,11 +9,9 @@
 
 use qubit_spi::ProviderSelection;
 
-use crate::{
-    FileSystemConfig,
-    FileSystemRegistryError,
-    FileSystemRegistryResult,
-};
+use crate::FileSystemConfig;
+use crate::FileSystemRegistryError;
+use crate::FileSystemRegistryResult;
 
 /// Validates that only one credential source occupies the configuration slot.
 ///

@@ -7,28 +7,22 @@
 // =============================================================================
 
 use qubit_fs::ConnectionUri;
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
-use qubit_fs_registry::{
-    CredentialRef,
-    FileSystemConfig,
-    FileSystemRegistry,
-    FileSystemRegistryError,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs_registry::CredentialRef;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::FallbackPolicy;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ProviderSelection;
+use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    FallbackPolicy,
-    ProviderDescriptor,
-    ProviderId,
-    ProviderMetadata,
-    ProviderSelection,
-    ServiceProvider,
-};
 
 /// Cloned synchronous registries share providers and default selection state.
 #[test]

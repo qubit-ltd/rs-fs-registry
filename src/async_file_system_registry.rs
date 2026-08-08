@@ -7,33 +7,26 @@
 // =============================================================================
 //! Runtime facade for asynchronous filesystem provider factories.
 
-use std::{
-    future::Future,
-    sync::Arc,
-};
+use std::future::Future;
+use std::sync::Arc;
 
 use qubit_fs::ConnectionUri;
-use qubit_spi::{
-    AsyncProviderDefinition,
-    AsyncProviderRegistry,
-    AsyncResolvingServiceProvider,
-    ProviderDescriptor,
-    ProviderSelection,
-};
+use qubit_spi::AsyncProviderDefinition;
+use qubit_spi::AsyncProviderRegistry;
+use qubit_spi::AsyncResolvingServiceProvider;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderSelection;
 
-use crate::internal::{
-    ValidatingAsyncFileSystemProvider,
-    ensure_selection_matches_config,
-    selection_for_config,
-    validate_credentials,
-};
-use crate::{
-    AsyncFileSystemProvider,
-    AsyncFileSystemResolution,
-    FileSystemConfig,
-    FileSystemRegistryResult,
-    FileSystemSpec,
-};
+use crate::AsyncFileSystemProvider;
+use crate::AsyncFileSystemResolution;
+use crate::FileSystemConfig;
+use crate::FileSystemRegistryResult;
+use crate::FileSystemSpec;
+use crate::internal::ValidatingAsyncFileSystemProvider;
+use crate::internal::ensure_selection_matches_config;
+use crate::internal::selection_for_config;
+use crate::internal::validate_credentials;
 
 /// Shared registry of self-described asynchronous filesystem providers.
 ///
@@ -137,7 +130,7 @@ impl AsyncFileSystemRegistry {
     /// Returns canonical provider IDs in registration order.
     #[inline(always)]
     #[must_use]
-    pub fn provider_ids(&self) -> Vec<qubit_spi::ProviderId> {
+    pub fn provider_ids(&self) -> Vec<ProviderId> {
         self.providers.provider_ids()
     }
     /// Returns the registered provider count.

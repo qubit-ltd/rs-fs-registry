@@ -7,20 +7,16 @@
 // =============================================================================
 //! Provider-decoded synchronous filesystem resolution.
 
-use std::fmt::{
-    Debug,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
-use qubit_fs::{
-    FileSystem,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    Path,
-    Uri,
-};
+use qubit_fs::FileSystem;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::Path;
+use qubit_fs::Uri;
 
 /// A configured synchronous facade paired with its decoded location.
 #[derive(Clone)]

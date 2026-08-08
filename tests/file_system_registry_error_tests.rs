@@ -6,21 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
-use qubit_fs_registry::FileSystemRegistryError;
-use qubit_spi::ProviderSelection;
 use std::error::Error;
 
-use crate::file_system_registry_tests::FailingProvider;
 use qubit_fs::ConnectionUri;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
+use qubit_spi::ProviderSelection;
+
+use crate::file_system_registry_tests::FailingProvider;
 /// Selection conflicts convert to filesystem invalid-options errors.
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {

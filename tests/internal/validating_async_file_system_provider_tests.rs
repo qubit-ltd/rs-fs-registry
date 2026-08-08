@@ -6,24 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    ConnectionUri,
-    FsError,
-};
-use qubit_fs_registry::{
-    AsyncFileSystemRegistry,
-    AsyncFileSystemResolution,
-    FileSystemConfig,
-    FileSystemSpec,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FsError;
+use qubit_fs_registry::AsyncFileSystemRegistry;
+use qubit_fs_registry::AsyncFileSystemResolution;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::AsyncServiceProvider;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderFuture;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderDescriptor,
-    ProviderFuture,
-    ProviderId,
-    ProviderMetadata,
-};
 
 use crate::common;
 

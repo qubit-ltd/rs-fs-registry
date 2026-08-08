@@ -6,19 +6,15 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FileSystemLimit,
-    FileSystemLimits,
-    FsErrorKind,
-    PathConstraints,
-    Uri,
-};
+use qubit_fs::FileSystemLimit;
+use qubit_fs::FileSystemLimits;
+use qubit_fs::FsErrorKind;
+use qubit_fs::PathConstraints;
+use qubit_fs::Uri;
 
-use crate::common::{
-    sync_resolution,
-    sync_resolution_with_path_properties,
-    sync_resolution_with_scheme,
-};
+use crate::common::sync_resolution;
+use crate::common::sync_resolution_with_path_properties;
+use crate::common::sync_resolution_with_scheme;
 /// Canonical resolution URIs accept no embedded credential material.
 #[test]
 fn test_resolution_boundary_uses_secret_free_uri() {

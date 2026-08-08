@@ -10,20 +10,16 @@
 use std::sync::Arc;
 
 use qubit_fs::FsError;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderMetadata,
-    ServiceProvider,
-};
 
 use super::provider_adapter::validate_sync_resolution;
-use crate::{
-    FileSystemConfig,
-    FileSystemProvider,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use crate::FileSystemConfig;
+use crate::FileSystemProvider;
+use crate::FileSystemResolution;
+use crate::FileSystemSpec;
 
 /// Synchronous provider wrapper that binds successful output to its descriptor.
 pub(crate) struct ValidatingFileSystemProvider {

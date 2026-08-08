@@ -10,27 +10,22 @@
 use std::sync::Arc;
 
 use qubit_fs::ConnectionUri;
-use qubit_spi::{
-    ProviderDefinition,
-    ProviderDescriptor,
-    ProviderRegistry,
-    ProviderSelection,
-    ResolvingServiceProvider,
-};
+use qubit_spi::ProviderDefinition;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderRegistry;
+use qubit_spi::ProviderSelection;
+use qubit_spi::ResolvingServiceProvider;
 
-use crate::internal::{
-    ValidatingFileSystemProvider,
-    ensure_selection_matches_config,
-    selection_for_config,
-    validate_credentials,
-};
-use crate::{
-    FileSystemConfig,
-    FileSystemProvider,
-    FileSystemRegistryResult,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use crate::FileSystemConfig;
+use crate::FileSystemProvider;
+use crate::FileSystemRegistryResult;
+use crate::FileSystemResolution;
+use crate::FileSystemSpec;
+use crate::internal::ValidatingFileSystemProvider;
+use crate::internal::ensure_selection_matches_config;
+use crate::internal::selection_for_config;
+use crate::internal::validate_credentials;
 
 /// Shared registry of self-described synchronous filesystem providers.
 ///
@@ -134,7 +129,7 @@ impl FileSystemRegistry {
     /// Returns canonical provider IDs in registration order.
     #[inline(always)]
     #[must_use]
-    pub fn provider_ids(&self) -> Vec<qubit_spi::ProviderId> {
+    pub fn provider_ids(&self) -> Vec<ProviderId> {
         self.providers.provider_ids()
     }
     /// Returns the registered provider count.

@@ -6,30 +6,25 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use super::common;
 use qubit_fs::ConnectionUri;
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-};
-use qubit_fs_registry::{
-    AsyncFileSystemRegistry,
-    AsyncFileSystemResolution,
-    CredentialRef,
-    FileSystemConfig,
-    FileSystemRegistryError,
-    FileSystemSpec,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs_registry::AsyncFileSystemRegistry;
+use qubit_fs_registry::AsyncFileSystemResolution;
+use qubit_fs_registry::CredentialRef;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistryError;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::AsyncServiceProvider;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderFuture;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    AsyncServiceProvider,
-    ProviderDescriptor,
-    ProviderFuture,
-    ProviderId,
-    ProviderMetadata,
-    ProviderSelection,
-};
+
+use super::common;
 
 /// Cloned asynchronous registries share providers and default selection state.
 #[test]
