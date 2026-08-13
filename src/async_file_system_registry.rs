@@ -176,10 +176,8 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_config(
         &self,
         config: FileSystemConfig,
-    ) -> impl Future<
-        Output = FileSystemRegistryResult<AsyncFileSystemResolution>,
-    > + Send
-    + 'static {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
+    {
         let snapshot = validate_credentials(&config)
             .and_then(|()| selection_for_config(&config))
             .and_then(|s| self.resolve_selected(&s));
@@ -208,10 +206,8 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_uri(
         &self,
         uri: ConnectionUri,
-    ) -> impl Future<
-        Output = FileSystemRegistryResult<AsyncFileSystemResolution>,
-    > + Send
-    + 'static {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
+    {
         self.resolve_config(FileSystemConfig::new(uri))
     }
     /// Resolves owned config through an explicit selection.
@@ -235,10 +231,8 @@ impl AsyncFileSystemRegistry {
         &self,
         selection: ProviderSelection,
         config: FileSystemConfig,
-    ) -> impl Future<
-        Output = FileSystemRegistryResult<AsyncFileSystemResolution>,
-    > + Send
-    + 'static {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
+    {
         let snapshot = validate_credentials(&config)
             .and_then(|()| ensure_selection_matches_config(&selection, &config))
             .and_then(|()| self.resolve_selected(&selection));
@@ -267,10 +261,8 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_default_config(
         &self,
         config: FileSystemConfig,
-    ) -> impl Future<
-        Output = FileSystemRegistryResult<AsyncFileSystemResolution>,
-    > + Send
-    + 'static {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
+    {
         self.resolve_selected_config(self.default_selection(), config)
     }
 
@@ -292,8 +284,7 @@ impl AsyncFileSystemRegistry {
     pub(crate) fn resolve_selected(
         &self,
         selection: &ProviderSelection,
-    ) -> FileSystemRegistryResult<AsyncResolvingServiceProvider<FileSystemSpec>>
-    {
+    ) -> FileSystemRegistryResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
         self.providers
             .resolve_selected(selection)
             .map_err(Into::into)

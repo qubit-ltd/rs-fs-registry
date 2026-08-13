@@ -30,8 +30,7 @@ fn test_validating_async_file_system_provider_accepts_matching_identity() {
         .register(MatchingAsyncProvider)
         .expect("register matching provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource")
-            .expect("valid URI"),
+        ConnectionUri::parse("registered-async:///resource").expect("valid URI"),
     );
 
     let resolution = common::block_on(registry.resolve_config(config))
@@ -52,9 +51,7 @@ struct MatchingAsyncProvider;
 
 impl ProviderMetadata for MatchingAsyncProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-async").expect("provider id"),
-        )
+        ProviderDescriptor::new(ProviderId::new("registered-async").expect("provider id"))
     }
 }
 
@@ -62,10 +59,7 @@ impl AsyncServiceProvider<FileSystemSpec> for MatchingAsyncProvider {
     fn create_configured<'a>(
         &'a self,
         _: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
         Box::pin(async { Ok(common::async_resolution("registered-async")) })
     }
 }

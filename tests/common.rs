@@ -112,9 +112,7 @@ pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
 ///
 /// Panics when the fixed fixture path, URI, or filesystem properties violate
 /// their constructors' contracts.
-pub(crate) fn sync_resolution(
-    provider_id: &'static str,
-) -> FileSystemResolution {
+pub(crate) fn sync_resolution(provider_id: &'static str) -> FileSystemResolution {
     let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
         provider_id,
         scheme: Some("registry-test"),
@@ -217,9 +215,7 @@ pub(crate) fn sync_resolution_with_path_properties(
 /// Panics when the fixed fixture path, URI, or filesystem properties violate
 /// their constructors' contracts.
 #[cfg(feature = "async")]
-pub(crate) fn async_resolution(
-    provider_id: &'static str,
-) -> AsyncFileSystemResolution {
+pub(crate) fn async_resolution(provider_id: &'static str) -> AsyncFileSystemResolution {
     let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
         provider_id,
         scheme: Some("registry-test"),
@@ -395,10 +391,7 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
         Err(unused())
     }
 
-    fn create_directory(
-        &self,
-        _: CreateDirectoryRequest<'_>,
-    ) -> FsResult<CreateDirectoryOutcome> {
+    fn create_directory(&self, _: CreateDirectoryRequest<'_>) -> FsResult<CreateDirectoryOutcome> {
         Err(unused())
     }
 
@@ -406,27 +399,18 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
         Err(unused())
     }
 
-    fn delete_directory(
-        &self,
-        _: DeleteDirectoryRequest<'_>,
-    ) -> FsResult<DeleteOutcome> {
+    fn delete_directory(&self, _: DeleteDirectoryRequest<'_>) -> FsResult<DeleteOutcome> {
         Err(unused())
     }
 
-    fn rename(
-        &self,
-        _: RenameRequest<'_>,
-    ) -> Result<RenameOutcome, SpiRenameFailure> {
+    fn rename(&self, _: RenameRequest<'_>) -> Result<RenameOutcome, SpiRenameFailure> {
         Err(SpiRenameFailure::new(
             unused(),
             RenameFailureState::Unchanged,
         ))
     }
 
-    fn create_temp_file(
-        &self,
-        _: CreateTempFileRequest,
-    ) -> FsResult<OpenedTempFile> {
+    fn create_temp_file(&self, _: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
         Err(unused())
     }
 
@@ -457,10 +441,7 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
         )
     }
 
-    fn stat<'a>(
-        &'a self,
-        _: StatRequest<'a>,
-    ) -> SpiFuture<'a, FsResult<StatResponse>> {
+    fn stat<'a>(&'a self, _: StatRequest<'a>) -> SpiFuture<'a, FsResult<StatResponse>> {
         Box::pin(async { Err(unused()) })
     }
 

@@ -36,8 +36,7 @@ fn test_async_registry_clone_shares_catalog_and_default_selection() {
         .expect("register shared provider");
     assert_eq!(clone.len(), 1);
 
-    let selection =
-        ProviderSelection::named("async-failing").expect("valid selection");
+    let selection = ProviderSelection::named("async-failing").expect("valid selection");
     clone.set_default_selection(selection.clone());
     assert_eq!(registry.default_selection(), selection);
 }
@@ -47,15 +46,12 @@ fn test_async_registry_clone_shares_catalog_and_default_selection() {
 #[test]
 fn test_async_registry_rejects_embedded_and_referenced_credentials() {
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("s3://user:password@bucket/key")
-            .expect("URI should parse"),
+        ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"),
     )
     .with_credential(CredentialRef::DefaultChain);
 
-    let error = common::block_on(
-        AsyncFileSystemRegistry::default().resolve_config(config),
-    )
-    .expect_err("credential sources conflict");
+    let error = common::block_on(AsyncFileSystemRegistry::default().resolve_config(config))
+        .expect_err("credential sources conflict");
     assert!(matches!(
         error,
         FileSystemRegistryError::InvalidConfiguration { .. }
@@ -67,8 +63,7 @@ fn test_async_registry_accepts_owned_config_without_borrowing_the_registry() {
     let future = {
         let registry = AsyncFileSystemRegistry::default();
         registry.resolve_config(FileSystemConfig::new(
-            ConnectionUri::parse("missing:///resource")
-                .expect("URI should parse"),
+            ConnectionUri::parse("missing:///resource").expect("URI should parse"),
         ))
     };
     drop(future);
@@ -83,8 +78,7 @@ fn test_async_registry_future_is_static_and_polls_after_registry_is_dropped() {
             .register(AsyncFailingProvider)
             .expect("register provider");
         registry.resolve_config(FileSystemConfig::new(
-            ConnectionUri::parse("async-failing:///resource")
-                .expect("URI should parse"),
+            ConnectionUri::parse("async-failing:///resource").expect("URI should parse"),
         ))
     };
     let error = common::block_on(future).expect_err("provider should fail");
@@ -105,24 +99,19 @@ fn test_async_registry_inspection_and_resolution_entry_points() {
     assert_eq!(registry.descriptors()[0].id().as_str(), "async-failing");
     assert_eq!(registry.provider_ids()[0].as_str(), "async-failing");
 
-    let uri = ConnectionUri::parse("async-failing:///resource")
-        .expect("URI should parse");
-    let selection = ProviderSelection::named("async-failing")
-        .expect("selection should parse");
+    let uri = ConnectionUri::parse("async-failing:///resource").expect("URI should parse");
+    let selection = ProviderSelection::named("async-failing").expect("selection should parse");
     for result in [
         common::block_on(registry.resolve_uri(uri.clone())),
-        common::block_on(registry.resolve_selected_config(
-            selection.clone(),
-            FileSystemConfig::new(uri.clone()),
-        )),
+        common::block_on(
+            registry.resolve_selected_config(selection.clone(), FileSystemConfig::new(uri.clone())),
+        ),
     ] {
         assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
     }
     registry.set_default_selection(selection);
     assert!(matches!(
-        common::block_on(
-            registry.resolve_default_config(FileSystemConfig::new(uri))
-        ),
+        common::block_on(registry.resolve_default_config(FileSystemConfig::new(uri))),
         Err(FileSystemRegistryError::Creation(_))
     ));
 }
@@ -132,14 +121,10 @@ fn test_async_registry_inspection_and_resolution_entry_points() {
 fn test_async_registry_selected_config_rejects_conflicting_selection() {
     let registry = AsyncFileSystemRegistry::default();
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("configured:///resource")
-            .expect("URI should parse"),
+        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
     )
-    .with_selection(
-        ProviderSelection::named("configured").expect("selection should parse"),
-    );
-    let requested =
-        ProviderSelection::named("requested").expect("selection should parse");
+    .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+    let requested = ProviderSelection::named("requested").expect("selection should parse");
     assert!(matches!(
         common::block_on(registry.resolve_selected_config(requested, config)),
         Err(FileSystemRegistryError::SelectionConflict { .. })
@@ -154,13 +139,9 @@ fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
         .register(AsyncFailingProvider)
         .expect("register provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("unregistered-scheme:///resource")
-            .expect("URI should parse"),
+        ConnectionUri::parse("unregistered-scheme:///resource").expect("URI should parse"),
     )
-    .with_selection(
-        ProviderSelection::named("async-failing")
-            .expect("selection should parse"),
-    );
+    .with_selection(ProviderSelection::named("async-failing").expect("selection should parse"));
 
     assert!(matches!(
         common::block_on(registry.resolve_config(config)),
@@ -173,8 +154,7 @@ fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
 fn test_resolve_config_snapshots_missing_provider_before_registration() {
     let registry = AsyncFileSystemRegistry::default();
     let future = registry.resolve_config(FileSystemConfig::new(
-        ConnectionUri::parse("async-failing:///resource")
-            .expect("URI should parse"),
+        ConnectionUri::parse("async-failing:///resource").expect("URI should parse"),
     ));
     registry
         .register(AsyncFailingProvider)
@@ -189,19 +169,14 @@ fn test_resolve_config_snapshots_missing_provider_before_registration() {
 struct AsyncFailingProvider;
 impl ProviderMetadata for AsyncFailingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("async-failing").expect("provider id"),
-        )
+        ProviderDescriptor::new(ProviderId::new("async-failing").expect("provider id"))
     }
 }
 impl AsyncServiceProvider<FileSystemSpec> for AsyncFailingProvider {
     fn create_configured<'a>(
         &'a self,
         _: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
         Box::pin(async {
             Err(ProviderFailure::unavailable(FsError::new(
                 FsErrorKind::ProviderUnavailable,
