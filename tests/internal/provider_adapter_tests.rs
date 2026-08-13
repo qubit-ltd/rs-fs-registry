@@ -64,8 +64,7 @@ fn test_provider_adapter_rejects_mismatched_async_provider_identity() {
         .register(MismatchedAsyncProvider)
         .expect("register mismatched provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource")
-            .expect("valid URI"),
+        ConnectionUri::parse("registered-async:///resource").expect("valid URI"),
     );
 
     let error = common::block_on(registry.resolve_config(config))
@@ -84,9 +83,7 @@ struct MismatchedProvider;
 
 impl ProviderMetadata for MismatchedProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-sync").expect("provider id"),
-        )
+        ProviderDescriptor::new(ProviderId::new("registered-sync").expect("provider id"))
     }
 }
 
@@ -106,9 +103,7 @@ struct MismatchedAsyncProvider;
 #[cfg(feature = "async")]
 impl ProviderMetadata for MismatchedAsyncProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-async").expect("provider id"),
-        )
+        ProviderDescriptor::new(ProviderId::new("registered-async").expect("provider id"))
     }
 }
 
@@ -117,10 +112,7 @@ impl AsyncServiceProvider<FileSystemSpec> for MismatchedAsyncProvider {
     fn create_configured<'a>(
         &'a self,
         _: &'a FileSystemConfig,
-    ) -> ProviderFuture<
-        'a,
-        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
-    > {
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
         Box::pin(async { Ok(common::async_resolution("reported-async")) })
     }
 }
