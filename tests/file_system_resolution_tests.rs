@@ -39,7 +39,8 @@ fn test_resolution_rejects_path_outside_constraints() {
 /// Resolution construction enforces finite provider path-size limits.
 #[test]
 fn test_resolution_rejects_path_exceeding_limits() {
-    let limits = FileSystemLimits::unknown().with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let limits = FileSystemLimits::unknown()
+        .with_max_path_text_bytes(FileSystemLimit::Maximum(4));
     let error = sync_resolution_with_path_properties(
         "resolution-provider",
         "/large",
@@ -79,9 +80,12 @@ fn test_resolution_exposes_and_transfers_components() {
 /// another scheme before the resolution is published.
 #[test]
 fn test_resolution_rejects_unadvertised_canonical_uri_scheme() {
-    let error =
-        sync_resolution_with_scheme("resolution-provider", "accepted", "rejected:///resource")
-            .expect_err("unadvertised scheme must fail");
+    let error = sync_resolution_with_scheme(
+        "resolution-provider",
+        "accepted",
+        "rejected:///resource",
+    )
+    .expect_err("unadvertised scheme must fail");
     assert_eq!(error.kind(), FsErrorKind::InvalidUri);
 }
 

@@ -58,8 +58,11 @@ impl AsyncFileSystemResolution {
     ) -> Result<Self, FsError> {
         let p = file_system.properties();
         p.path_constraints().validate(&path)?;
-        p.limits()
-            .validate_path(&path, p.info().path_semantics(), FsOperation::ParsePath)?;
+        p.limits().validate_path(
+            &path,
+            p.info().path_semantics(),
+            FsOperation::ParsePath,
+        )?;
         if !p
             .info()
             .schemes()

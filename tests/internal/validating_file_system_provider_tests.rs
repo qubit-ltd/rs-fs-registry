@@ -51,7 +51,9 @@ struct MatchingProvider;
 
 impl ProviderMetadata for MatchingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(ProviderId::new("registered-sync").expect("provider id"))
+        ProviderDescriptor::new(
+            ProviderId::new("registered-sync").expect("provider id"),
+        )
     }
 }
 

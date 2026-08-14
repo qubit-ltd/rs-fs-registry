@@ -57,7 +57,8 @@ fn test_async_resolution_rejects_path_outside_constraints() {
 /// Async resolution construction enforces finite provider path-size limits.
 #[test]
 fn test_async_resolution_rejects_path_exceeding_limits() {
-    let limits = FileSystemLimits::unknown().with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let limits = FileSystemLimits::unknown()
+        .with_max_path_text_bytes(FileSystemLimit::Maximum(4));
     let error = async_resolution_with_path_properties(
         "async-resolution-provider",
         "/large",

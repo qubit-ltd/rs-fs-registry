@@ -268,7 +268,8 @@ impl FileSystemRegistry {
     pub(crate) fn resolve_selected(
         &self,
         selection: &ProviderSelection,
-    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
+    ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>>
+    {
         self.providers
             .resolve_selected(selection)
             .map_err(Into::into)
