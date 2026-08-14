@@ -36,7 +36,9 @@ pub(super) fn validate_sync_resolution(
     descriptor: &ProviderDescriptor,
     resolution: FileSystemResolution,
 ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
-    if resolution.file_system().properties().info().provider_id() == descriptor.id().as_str() {
+    if resolution.file_system().properties().info().provider_id()
+        == descriptor.id().as_str()
+    {
         Ok(resolution)
     } else {
         Err(provider_identity_mismatch(descriptor))
@@ -63,7 +65,9 @@ pub(super) fn validate_async_resolution(
     descriptor: &ProviderDescriptor,
     resolution: AsyncFileSystemResolution,
 ) -> Result<AsyncFileSystemResolution, ProviderFailure<FsError>> {
-    if resolution.file_system().properties().info().provider_id() == descriptor.id().as_str() {
+    if resolution.file_system().properties().info().provider_id()
+        == descriptor.id().as_str()
+    {
         Ok(resolution)
     } else {
         Err(provider_identity_mismatch(descriptor))
@@ -80,7 +84,9 @@ pub(super) fn validate_async_resolution(
 ///
 /// A failure containing a safe contract-violation error and provider ID.
 #[inline]
-fn provider_identity_mismatch(descriptor: &ProviderDescriptor) -> ProviderFailure<FsError> {
+fn provider_identity_mismatch(
+    descriptor: &ProviderDescriptor,
+) -> ProviderFailure<FsError> {
     ProviderFailure::initialization_failed(
         FsError::new(
             FsErrorKind::ProviderContractViolation,

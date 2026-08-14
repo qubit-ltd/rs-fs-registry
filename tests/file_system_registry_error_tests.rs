@@ -22,8 +22,10 @@ use crate::file_system_registry_tests::FailingProvider;
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
     let error = FileSystemRegistryError::SelectionConflict {
-        requested: ProviderSelection::named("requested").expect("valid selector"),
-        configured: ProviderSelection::named("configured").expect("valid selector"),
+        requested: ProviderSelection::named("requested")
+            .expect("valid selector"),
+        configured: ProviderSelection::named("configured")
+            .expect("valid selector"),
     };
     assert!(error.source().is_none());
     let fs_error: FsError = error.into();
@@ -66,8 +68,10 @@ fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
 #[test]
 fn test_error_display_and_debug_include_safe_provider_and_selection_context() {
     let error = FileSystemRegistryError::SelectionConflict {
-        requested: ProviderSelection::named("production-secret-provider").expect("valid selector"),
-        configured: ProviderSelection::named("other-secret-provider").expect("valid selector"),
+        requested: ProviderSelection::named("production-secret-provider")
+            .expect("valid selector"),
+        configured: ProviderSelection::named("other-secret-provider")
+            .expect("valid selector"),
     };
     let display = format!("{error}");
     assert!(display.contains("production-secret-provider"));
@@ -92,12 +96,14 @@ fn test_registry_error_variants_format_and_convert_safely() {
     };
     let resolution = FileSystemRegistry::default()
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("missing:///resource").expect("URI should parse"),
+            ConnectionUri::parse("missing:///resource")
+                .expect("URI should parse"),
         ))
         .expect_err("missing provider must fail resolution");
     let selection = FileSystemRegistry::default()
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("invalid-:///resource").expect("URI should parse"),
+            ConnectionUri::parse("invalid-:///resource")
+                .expect("URI should parse"),
         ))
         .expect_err("invalid scheme must fail selection");
     let creation = {
@@ -107,7 +113,8 @@ fn test_registry_error_variants_format_and_convert_safely() {
             .expect("register provider");
         registry
             .resolve_config(&FileSystemConfig::new(
-                ConnectionUri::parse("creation:///resource").expect("URI should parse"),
+                ConnectionUri::parse("creation:///resource")
+                    .expect("URI should parse"),
             ))
             .expect_err("unavailable provider must fail creation")
     };

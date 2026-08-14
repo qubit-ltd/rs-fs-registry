@@ -67,7 +67,9 @@ impl ProviderMetadata for ValidatingAsyncFileSystemProvider {
     }
 }
 
-impl AsyncServiceProvider<FileSystemSpec> for ValidatingAsyncFileSystemProvider {
+impl AsyncServiceProvider<FileSystemSpec>
+    for ValidatingAsyncFileSystemProvider
+{
     /// Delegates creation and validates the resulting filesystem identity.
     ///
     /// # Parameters
@@ -87,7 +89,10 @@ impl AsyncServiceProvider<FileSystemSpec> for ValidatingAsyncFileSystemProvider 
     fn create_configured<'a>(
         &'a self,
         config: &'a FileSystemConfig,
-    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+    ) -> ProviderFuture<
+        'a,
+        Result<AsyncFileSystemResolution, ProviderFailure<FsError>>,
+    > {
         Box::pin(async move {
             let resolution = self.provider.create_configured(config).await?;
             validate_async_resolution(&self.descriptor, resolution)
