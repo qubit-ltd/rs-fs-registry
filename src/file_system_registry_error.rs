@@ -15,7 +15,7 @@ use qubit_fs::FsErrorKind;
 use qubit_fs::FsOperation;
 use qubit_redact::DiagnosticLogBuilder;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::RedactionSession;
+use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderCreationError;
@@ -79,20 +79,21 @@ impl fmt::Display for FileSystemRegistryError {
     /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let policy = RedactionPolicy::default();
-        let session = RedactionSession::diagnostic(&policy);
-        let mut output = DiagnosticLogBuilder::new(policy.limits().diagnostic_event());
+        let redactor = Redactor::new(policy);
+        let mut session = redactor.session();
+        let mut output = DiagnosticLogBuilder::new(redactor.policy().limits().diagnostic_event());
         match self {
             Self::InvalidConfiguration { message } => {
                 output.push_fmt(format_args!("invalid filesystem configuration: "))?;
-                output.push_redacted_at(&session, Sensitivity::Secret, message);
+                output.push_redacted_at(&mut session, Sensitivity::Secret, message);
             }
             Self::Registration(error) => {
                 output.push_fmt(format_args!("provider registration failed: selector="))?;
-                output.push_redacted_field(&session, "selector", error.selector());
+                output.push_redacted_field(&mut session, "selector", error.selector());
                 output.push_fmt(format_args!(", existing_provider="))?;
-                output.push_redacted_field(&session, "provider_id", error.existing_provider());
+                output.push_redacted_field(&mut session, "provider_id", error.existing_provider());
                 output.push_fmt(format_args!(", provider="))?;
-                output.push_redacted_field(&session, "provider_id", error.provider());
+                output.push_redacted_field(&mut session, "provider_id", error.provider());
             }
             Self::Selection(_error) => {
                 output.push_fmt(format_args!("provider selection is invalid"))?;
@@ -104,9 +105,9 @@ impl fmt::Display for FileSystemRegistryError {
                 output.push_fmt(format_args!(
                     "configured provider selection conflicts with requested selection: requested=",
                 ))?;
-                output.push_redacted_field(&session, "selection", &format!("{requested:?}"));
+                output.push_redacted_field(&mut session, "selection", &format!("{requested:?}"));
                 output.push_fmt(format_args!(", configured="))?;
-                output.push_redacted_field(&session, "selection", &format!("{configured:?}"));
+                output.push_redacted_field(&mut session, "selection", &format!("{configured:?}"));
             }
             Self::Resolution(_error) => {
                 output.push_fmt(format_args!("provider resolution failed"))?;
