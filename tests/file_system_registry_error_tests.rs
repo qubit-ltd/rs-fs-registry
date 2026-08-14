@@ -57,6 +57,9 @@ fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
     let display = error.to_string();
     assert!(!display.contains("raw-secret-value"));
     assert!(display.contains("<redacted>"));
+    let debug = format!("{error:?}");
+    assert!(!debug.contains("raw-secret-value"));
+    assert!(debug.contains("<redacted>"));
 }
 
 /// Registry error formatting retains safe provider and selection context.
