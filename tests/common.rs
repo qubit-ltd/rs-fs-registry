@@ -30,7 +30,6 @@ use qubit_fs::metadata::FileSystemCapabilities;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::metadata::FileSystemInfo;
 use qubit_fs::metadata::FileSystemLimits;
-use qubit_fs::metadata::FileSystemProperties;
 use qubit_fs::metadata::SymlinkPolicy;
 use qubit_fs::path::PathConstraints;
 use qubit_fs::path::PathSemantics;
@@ -63,6 +62,8 @@ use qubit_fs::spi::OpenedReader;
 use qubit_fs::spi::OpenedTempDirectory;
 use qubit_fs::spi::OpenedTempFile;
 use qubit_fs::spi::OpenedWriter;
+use qubit_fs::spi::ProviderOperations;
+use qubit_fs::spi::ProviderProperties;
 use qubit_fs::spi::RenameRequest;
 #[cfg(feature = "async")]
 use qubit_fs::spi::SpiFuture;
@@ -330,7 +331,7 @@ fn properties(
     scheme: Option<&str>,
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
-) -> FileSystemProperties {
+) -> ProviderProperties {
     let mut info = FileSystemInfo::new(
         FileSystemId::new("registry-test-fs").expect("valid filesystem ID"),
         provider_id,
@@ -339,8 +340,9 @@ fn properties(
     if let Some(scheme) = scheme {
         info = info.with_scheme(scheme).expect("valid test scheme");
     }
-    FileSystemProperties::new(
+    ProviderProperties::new(
         info,
+        ProviderOperations::new(),
         FileSystemCapabilities::new(),
         limits,
         path_constraints,
@@ -370,7 +372,7 @@ struct SyncPropertiesOnlySpi {
 }
 
 impl FileSystemSpi for SyncPropertiesOnlySpi {
-    fn properties(&self) -> FileSystemProperties {
+    fn properties(&self) -> ProviderProperties {
         properties(
             self.provider_id,
             self.scheme,
@@ -448,7 +450,7 @@ struct AsyncPropertiesOnlySpi {
 
 #[cfg(feature = "async")]
 impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
-    fn properties(&self) -> FileSystemProperties {
+    fn properties(&self) -> ProviderProperties {
         properties(
             self.provider_id,
             self.scheme,
