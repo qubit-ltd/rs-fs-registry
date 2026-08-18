@@ -51,7 +51,8 @@ not re-exported by this crate.
 ## Core Workflow
 
 ```rust
-use qubit_fs::{ConnectionUri, FsResult};
+use qubit_fs::error::FsResult;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 

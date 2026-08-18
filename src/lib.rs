@@ -10,7 +10,7 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use qubit_fs::ConnectionUri;
+//! use qubit_fs::path::ConnectionUri;
 //! use qubit_fs_registry::{
 //!     FileSystemConfig,
 //!     FileSystemRegistry,
@@ -29,7 +29,7 @@
 //!
 //! ```no_run
 //! # #[cfg(feature = "async")]
-//! use qubit_fs::ConnectionUri;
+//! use qubit_fs::path::ConnectionUri;
 //! # #[cfg(feature = "async")]
 //! use qubit_fs_registry::{AsyncFileSystemRegistry, FileSystemConfig};
 //!

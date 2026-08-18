@@ -46,7 +46,8 @@ cargo add qubit-fs-local --features registry
 ## 核心工作流
 
 ```rust
-use qubit_fs::{ConnectionUri, FsResult};
+use qubit_fs::error::FsResult;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
