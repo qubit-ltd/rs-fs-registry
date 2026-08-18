@@ -6,11 +6,11 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::FileSystemLimit;
-use qubit_fs::FileSystemLimits;
-use qubit_fs::FsErrorKind;
-use qubit_fs::PathConstraints;
-use qubit_fs::Uri;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::FileSystemLimit;
+use qubit_fs::metadata::FileSystemLimits;
+use qubit_fs::path::PathConstraints;
+use qubit_fs::path::Uri;
 
 use crate::common::sync_resolution;
 use crate::common::sync_resolution_with_path_properties;

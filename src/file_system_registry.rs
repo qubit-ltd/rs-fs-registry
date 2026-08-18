@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use qubit_fs::ConnectionUri;
+use qubit_fs::path::ConnectionUri;
 use qubit_spi::ProviderDefinition;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;

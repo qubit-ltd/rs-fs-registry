@@ -10,7 +10,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use qubit_fs::ConnectionUri;
+use qubit_fs::path::ConnectionUri;
 use qubit_spi::AsyncProviderDefinition;
 use qubit_spi::AsyncProviderRegistry;
 use qubit_spi::AsyncResolvingServiceProvider;

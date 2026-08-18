@@ -6,8 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::ConnectionUri;
 use qubit_fs::FsError;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::AsyncFileSystemRegistry;
 use qubit_fs_registry::AsyncFileSystemResolution;
 use qubit_fs_registry::FileSystemConfig;
