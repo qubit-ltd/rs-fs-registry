@@ -13,10 +13,10 @@ use std::fmt::Result as FmtResult;
 
 use qubit_fs::AsyncFileSystem;
 use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
 use qubit_fs::Path;
-use qubit_fs::Uri;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::path::Uri;
 
 /// A configured asynchronous facade paired with its decoded location.
 #[derive(Clone)]

@@ -11,9 +11,8 @@ use std::error::Error;
 use std::fmt;
 
 use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_redact::DiagnosticLogBuilder;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
@@ -80,76 +79,61 @@ impl fmt::Display for FileSystemRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let policy = RedactionPolicy::default();
         let redactor = Redactor::new(policy);
-        let mut session = redactor.session();
-        let mut output = DiagnosticLogBuilder::new(
-            redactor.policy().limits().diagnostic_event(),
-        );
+        let redact_field = |field: &str, value: &str| {
+            redactor
+                .redact_field(field, value)
+                .escape_for_log()
+                .into_string()
+        };
+        let redact_secret = |value: &str| {
+            redactor
+                .redact_at(Sensitivity::Secret, value)
+                .escape_for_log()
+                .into_string()
+        };
+        let mut output = String::new();
         match self {
             Self::InvalidConfiguration { message } => {
-                output.push_fmt(format_args!(
-                    "invalid filesystem configuration: "
-                ))?;
-                output.push_redacted_at(
-                    &mut session,
-                    Sensitivity::Secret,
-                    message,
-                );
+                output.push_str("invalid filesystem configuration: ");
+                output.push_str(&redact_secret(message));
             }
             Self::Registration(error) => {
-                output.push_fmt(format_args!(
-                    "provider registration failed: selector="
-                ))?;
-                output.push_redacted_field(
-                    &mut session,
-                    "selector",
-                    error.selector(),
-                );
-                output.push_fmt(format_args!(", existing_provider="))?;
-                output.push_redacted_field(
-                    &mut session,
+                output.push_str("provider registration failed: selector=");
+                output.push_str(&redact_field("selector", error.selector()));
+                output.push_str(", existing_provider=");
+                output.push_str(&redact_field(
                     "provider_id",
                     error.existing_provider(),
-                );
-                output.push_fmt(format_args!(", provider="))?;
-                output.push_redacted_field(
-                    &mut session,
-                    "provider_id",
-                    error.provider(),
-                );
+                ));
+                output.push_str(", provider=");
+                output.push_str(&redact_field("provider_id", error.provider()));
             }
             Self::Selection(_error) => {
-                output
-                    .push_fmt(format_args!("provider selection is invalid"))?;
+                output.push_str("provider selection is invalid");
             }
             Self::SelectionConflict {
                 requested,
                 configured,
             } => {
-                output.push_fmt(format_args!(
-                    "configured provider selection conflicts with requested selection: requested=",
-                ))?;
-                output.push_redacted_field(
-                    &mut session,
+                output.push_str("configured provider selection conflicts with requested selection: requested=");
+                output.push_str(&redact_field(
                     "selection",
                     &format!("{requested:?}"),
-                );
-                output.push_fmt(format_args!(", configured="))?;
-                output.push_redacted_field(
-                    &mut session,
+                ));
+                output.push_str(", configured=");
+                output.push_str(&redact_field(
                     "selection",
                     &format!("{configured:?}"),
-                );
+                ));
             }
             Self::Resolution(_error) => {
-                output.push_fmt(format_args!("provider resolution failed"))?;
+                output.push_str("provider resolution failed");
             }
             Self::Creation(_error) => {
-                output.push_fmt(format_args!(
-                    "filesystem provider creation failed"
-                ))?;
+                output.push_str("filesystem provider creation failed");
             }
         }
-        formatter.write_str(output.finish().as_str())
+        formatter.write_str(&output)
     }
 }
 

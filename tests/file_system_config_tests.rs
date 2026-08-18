@@ -6,10 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::ConnectionUri;
-use qubit_fs::FsErrorKind;
-use qubit_fs::NonSensitiveMetadata;
-use qubit_fs::UserMetadata;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::NonSensitiveMetadata;
+use qubit_fs::metadata::UserMetadata;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_spi::ProviderSelection;

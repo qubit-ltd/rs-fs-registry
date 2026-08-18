@@ -12,8 +12,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use qubit_fs::ConnectionUri;
-use qubit_fs::NonSensitiveMetadata;
+use qubit_fs::metadata::NonSensitiveMetadata;
+use qubit_fs::path::ConnectionUri;
 use qubit_spi::ProviderSelection;
 
 use crate::CredentialRef;
