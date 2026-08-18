@@ -27,7 +27,8 @@ cargo add qubit-fs-local --features registry
 打开本地报表的应用可注册一次 provider，并在边界处解析 `file:` 配置：
 
 ```rust
-use qubit_fs::{ConnectionUri, FsResult};
+use qubit_fs::error::FsResult;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
