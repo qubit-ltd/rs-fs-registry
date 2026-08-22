@@ -15,7 +15,6 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
-use qubit_redact::Sensitivity;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderCreationError;
 use qubit_spi::error::ProviderResolutionError;
@@ -82,15 +81,10 @@ impl fmt::Display for FileSystemRegistryError {
         let redact_field = |field: &str, value: &str| {
             redactor
                 .redact_field(field, value)
-                .escape_for_log()
+                .into_text()
                 .into_string()
         };
-        let redact_secret = |value: &str| {
-            redactor
-                .redact_at(Sensitivity::Secret, value)
-                .escape_for_log()
-                .into_string()
-        };
+        let redact_secret = |_value: &str| "<redacted>".to_owned();
         let mut output = String::new();
         match self {
             Self::InvalidConfiguration { message } => {
