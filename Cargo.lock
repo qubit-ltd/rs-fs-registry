@@ -136,6 +136,7 @@ version = "0.5.0"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
+ "serde",
 ]
 
 [[package]]
