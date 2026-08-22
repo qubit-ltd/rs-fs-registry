@@ -13,7 +13,7 @@ use std::fmt;
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
-use qubit_redact::RedactionPolicy;
+use qubit_redact::RedactionTextOutput;
 use qubit_redact::Redactor;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderCreationError;
@@ -65,6 +65,49 @@ pub enum FileSystemRegistryError {
     ),
 }
 
+impl FileSystemRegistryError {
+    /// Builds one bounded diagnostic event with an explicit redactor snapshot.
+    fn redacted_output(&self, redactor: &Redactor) -> RedactionTextOutput {
+        match self {
+            Self::InvalidConfiguration { message } => redactor
+                .text_composer()
+                .literal("invalid filesystem configuration: ")
+                .field("password", message),
+            Self::Registration(error) => redactor
+                .text_composer()
+                .literal("provider registration failed: selector=")
+                .field("selector", error.selector())
+                .literal(", existing_provider=")
+                .field("provider_id", error.existing_provider())
+                .literal(", provider=")
+                .field("provider_id", error.provider()),
+            Self::Selection(_error) => redactor
+                .text_composer()
+                .literal("provider selection is invalid"),
+            Self::SelectionConflict {
+                requested,
+                configured,
+            } => {
+                let requested = format!("{requested:?}");
+                let configured = format!("{configured:?}");
+                redactor
+                    .text_composer()
+                    .literal("configured provider selection conflicts with requested selection: requested=")
+                    .field("selection", &requested)
+                    .literal(", configured=")
+                    .field("selection", &configured)
+            }
+            Self::Resolution(_error) => redactor
+                .text_composer()
+                .literal("provider resolution failed"),
+            Self::Creation(_error) => redactor
+                .text_composer()
+                .literal("filesystem provider creation failed"),
+        }
+        .finish()
+    }
+}
+
 impl fmt::Display for FileSystemRegistryError {
     /// Formats the registry failure with its preserved SPI context.
     ///
@@ -76,58 +119,9 @@ impl fmt::Display for FileSystemRegistryError {
     ///
     /// The formatter result.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let policy = RedactionPolicy::default();
-        let redactor = Redactor::new(policy);
-        let redact_field = |field: &str, value: &str| {
-            redactor
-                .redact_field(field, value)
-                .into_text()
-                .into_string()
-        };
-        let redact_secret = |_value: &str| "<redacted>".to_owned();
-        let mut output = String::new();
-        match self {
-            Self::InvalidConfiguration { message } => {
-                output.push_str("invalid filesystem configuration: ");
-                output.push_str(&redact_secret(message));
-            }
-            Self::Registration(error) => {
-                output.push_str("provider registration failed: selector=");
-                output.push_str(&redact_field("selector", error.selector()));
-                output.push_str(", existing_provider=");
-                output.push_str(&redact_field(
-                    "provider_id",
-                    error.existing_provider(),
-                ));
-                output.push_str(", provider=");
-                output.push_str(&redact_field("provider_id", error.provider()));
-            }
-            Self::Selection(_error) => {
-                output.push_str("provider selection is invalid");
-            }
-            Self::SelectionConflict {
-                requested,
-                configured,
-            } => {
-                output.push_str("configured provider selection conflicts with requested selection: requested=");
-                output.push_str(&redact_field(
-                    "selection",
-                    &format!("{requested:?}"),
-                ));
-                output.push_str(", configured=");
-                output.push_str(&redact_field(
-                    "selection",
-                    &format!("{configured:?}"),
-                ));
-            }
-            Self::Resolution(_error) => {
-                output.push_str("provider resolution failed");
-            }
-            Self::Creation(_error) => {
-                output.push_str("filesystem provider creation failed");
-            }
-        }
-        formatter.write_str(&output)
+        let redactor = Redactor::standard();
+        let output = self.redacted_output(&redactor);
+        formatter.write_str(output.text().as_str())
     }
 }
 
@@ -285,5 +279,36 @@ impl From<FileSystemRegistryError> for FsError {
             Some(provider) => error.with_provider(provider),
             None => error,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_redact::RedactionPolicy;
+    use qubit_redact::Redactor;
+    use qubit_spi::ProviderSelection;
+
+    use super::FileSystemRegistryError;
+
+    /// One error diagnostic must share its output budget across all fields.
+    #[test]
+    fn redacted_output_uses_one_event_budget() {
+        let policy = RedactionPolicy::builder()
+            .limits(|limits| {
+                limits.max_output_bytes(24);
+            })
+            .expect("limits should be valid")
+            .build()
+            .expect("policy should build");
+        let error = FileSystemRegistryError::SelectionConflict {
+            requested: ProviderSelection::named("requested-provider")
+                .expect("valid selector"),
+            configured: ProviderSelection::named("configured-provider")
+                .expect("valid selector"),
+        };
+
+        let output = error.redacted_output(&Redactor::new(policy));
+
+        assert!(output.text().as_str().len() <= 24);
     }
 }
