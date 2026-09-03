@@ -53,12 +53,12 @@ not re-exported by this crate.
 ```rust
 use qubit_fs::error::FsResult;
 use qubit_fs::path::ConnectionUri;
-use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
 fn inspect_report() -> FsResult<()> {
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::new())?;
+    registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
 
     let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
     let resolution = registry.resolve_config(&config)?;
