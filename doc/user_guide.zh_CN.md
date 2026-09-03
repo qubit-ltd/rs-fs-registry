@@ -27,7 +27,7 @@ resolution = filesystem + decoded path + canonical URI
 两者都提供注册、descriptor、catalog 大小、URI 便捷方法和相同的 selection 规则。异步配置方法
 接收配置的所有权，并返回用于 resolution 的 future。
 
-## 贯穿场景
+## 实战场景
 
 某应用在启动时选择本地文件系统 provider，再打开一个报表 URI，而不让报表处理代码耦合于
 provider factory。成功标准是边界返回可用于 `stat` 的文件系统与逻辑路径，并可取得 canonical URI
