@@ -31,9 +31,7 @@ use crate::FileSystemRegistryResult;
 /// Returns [`FileSystemRegistryError::InvalidConfiguration`] when the URI
 /// embeds a secret while an external credential reference is also configured.
 #[inline]
-pub(crate) fn validate_credentials(
-    config: &FileSystemConfig,
-) -> FileSystemRegistryResult<()> {
+pub(crate) fn validate_credentials(config: &FileSystemConfig) -> FileSystemRegistryResult<()> {
     if config.uri().has_embedded_secret() && config.credential().is_some() {
         return Err(FileSystemRegistryError::InvalidConfiguration {
             message: "embedded and referenced credentials conflict",
@@ -57,13 +55,10 @@ pub(crate) fn validate_credentials(
 /// Returns [`FileSystemRegistryError::Selection`] when the URI scheme cannot
 /// form a provider selection.
 #[inline]
-pub(crate) fn selection_for_config(
-    config: &FileSystemConfig,
-) -> FileSystemRegistryResult<ProviderSelection> {
+pub(crate) fn selection_for_config(config: &FileSystemConfig) -> FileSystemRegistryResult<ProviderSelection> {
     match config.selection() {
         Some(selection) => Ok(selection.clone()),
-        None => ProviderSelection::named(config.uri().scheme())
-            .map_err(FileSystemRegistryError::from),
+        None => ProviderSelection::named(config.uri().scheme()).map_err(FileSystemRegistryError::from),
     }
 }
 
