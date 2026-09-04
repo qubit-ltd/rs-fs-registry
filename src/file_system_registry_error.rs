@@ -13,6 +13,7 @@ use std::fmt;
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
+use qubit_redact::DebugDisplay;
 use qubit_redact::RedactionTextOutput;
 use qubit_redact::Redactor;
 use qubit_spi::ProviderSelection;
@@ -81,28 +82,15 @@ impl FileSystemRegistryError {
                 .field("provider_id", error.existing_provider())
                 .literal(", provider=")
                 .field("provider_id", error.provider()),
-            Self::Selection(_error) => redactor
+            Self::Selection(_error) => redactor.text_composer().literal("provider selection is invalid"),
+            Self::SelectionConflict { requested, configured } => redactor
                 .text_composer()
-                .literal("provider selection is invalid"),
-            Self::SelectionConflict {
-                requested,
-                configured,
-            } => {
-                let requested = format!("{requested:?}");
-                let configured = format!("{configured:?}");
-                redactor
-                    .text_composer()
-                    .literal("configured provider selection conflicts with requested selection: requested=")
-                    .field("selection", &requested)
-                    .literal(", configured=")
-                    .field("selection", &configured)
-            }
-            Self::Resolution(_error) => redactor
-                .text_composer()
-                .literal("provider resolution failed"),
-            Self::Creation(_error) => redactor
-                .text_composer()
-                .literal("filesystem provider creation failed"),
+                .literal("configured provider selection conflicts with requested selection: requested=")
+                .field("selection", &DebugDisplay::new(requested))
+                .literal(", configured=")
+                .field("selection", &DebugDisplay::new(configured)),
+            Self::Resolution(_error) => redactor.text_composer().literal("provider resolution failed"),
+            Self::Creation(_error) => redactor.text_composer().literal("filesystem provider creation failed"),
         }
         .finish()
     }
@@ -239,16 +227,12 @@ impl From<FileSystemRegistryError> for FsError {
     /// A filesystem provider-operation error retaining `error` as its source.
     fn from(error: FileSystemRegistryError) -> Self {
         let (kind, message, provider) = match &error {
-            FileSystemRegistryError::InvalidConfiguration { .. } => (
-                FsErrorKind::InvalidOptions,
-                "filesystem configuration is invalid",
-                None,
-            ),
-            FileSystemRegistryError::Registration(_) => (
-                FsErrorKind::Conflict,
-                "filesystem provider registration failed",
-                None,
-            ),
+            FileSystemRegistryError::InvalidConfiguration { .. } => {
+                (FsErrorKind::InvalidOptions, "filesystem configuration is invalid", None)
+            }
+            FileSystemRegistryError::Registration(_) => {
+                (FsErrorKind::Conflict, "filesystem provider registration failed", None)
+            }
             FileSystemRegistryError::Selection(_) => (
                 FsErrorKind::InvalidUri,
                 "filesystem provider selection is invalid",
@@ -273,8 +257,7 @@ impl From<FileSystemRegistryError> for FsError {
                 )
             }
         };
-        let error =
-            FsError::with_source(kind, FsOperation::Provider, message, error);
+        let error = FsError::with_source(kind, FsOperation::Provider, message, error);
         match provider {
             Some(provider) => error.with_provider(provider),
             None => error,
@@ -301,10 +284,8 @@ mod tests {
             .build()
             .expect("policy should build");
         let error = FileSystemRegistryError::SelectionConflict {
-            requested: ProviderSelection::named("requested-provider")
-                .expect("valid selector"),
-            configured: ProviderSelection::named("configured-provider")
-                .expect("valid selector"),
+            requested: ProviderSelection::named("requested-provider").expect("valid selector"),
+            configured: ProviderSelection::named("configured-provider").expect("valid selector"),
         };
 
         let output = error.redacted_output(&Redactor::new(policy));
