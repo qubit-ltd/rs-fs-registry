@@ -23,17 +23,10 @@ fn test_shipped_markdown_rust_examples_compile() {
         ("readme_en", manifest_dir.join("README.md")),
         ("readme_zh_cn", manifest_dir.join("README.zh_CN.md")),
         ("user_guide_en", manifest_dir.join("doc/user_guide.md")),
-        (
-            "user_guide_zh_cn",
-            manifest_dir.join("doc/user_guide.zh_CN.md"),
-        ),
+        ("user_guide_zh_cn", manifest_dir.join("doc/user_guide.zh_CN.md")),
     ] {
         let snippets = extract_rust_snippets(&path);
-        assert!(
-            !snippets.is_empty(),
-            "{} should contain Rust snippets",
-            path.display(),
-        );
+        assert!(!snippets.is_empty(), "{} should contain Rust snippets", path.display(),);
         compile_snippets(
             &manifest_dir,
             &workspace.output_dir,
@@ -99,23 +92,19 @@ fn test_markdown_doctest_output_dir_scopes_to_current_process() {
     let output_dir = markdown_doctest_output_dir(&manifest_dir);
 
     assert!(
-        output_dir
-            .ends_with(format!("markdown-doctest-{}", std::process::id())),
+        output_dir.ends_with(format!("markdown-doctest-{}", std::process::id())),
         "the output directory should be isolated to the current test process",
     );
 }
 
 /// Verifies packaged crates fall back to published dependency versions.
 #[test]
-fn test_markdown_doctest_manifest_uses_published_dependencies_without_siblings()
-{
+fn test_markdown_doctest_manifest_uses_published_dependencies_without_siblings() {
     let manifest_dir = Path::new("/nonexistent/qubit-fs-registry");
     let manifest = build_markdown_doctest_manifest("packaged", manifest_dir);
 
     assert!(manifest.contains("qubit-fs = \"0.2\""));
-    assert!(manifest.contains(
-        "qubit-fs-local = { version = \"0.1\", features = [\"registry\"] }",
-    ));
+    assert!(manifest.contains("qubit-fs-local = { version = \"0.1\", features = [\"registry\"] }",));
     assert!(!manifest.contains("../rs-fs"));
     assert!(!manifest.contains("../rs-fs-local"));
 }
@@ -132,11 +121,9 @@ fn test_markdown_doctest_manifest_uses_published_dependencies_without_siblings()
 /// cannot be created.
 fn recreate_dir(path: &Path) {
     if path.exists() {
-        fs::remove_dir_all(path)
-            .expect("failed to remove old markdown doctest directory");
+        fs::remove_dir_all(path).expect("failed to remove old markdown doctest directory");
     }
-    fs::create_dir_all(path)
-        .expect("failed to create markdown doctest directory");
+    fs::create_dir_all(path).expect("failed to create markdown doctest directory");
 }
 
 /// Extracts fenced Rust snippets from one Markdown document.
@@ -153,8 +140,7 @@ fn recreate_dir(path: &Path) {
 ///
 /// Panics when the Markdown document cannot be read.
 fn extract_rust_snippets(path: &Path) -> Vec<String> {
-    let content =
-        fs::read_to_string(path).expect("failed to read Markdown file");
+    let content = fs::read_to_string(path).expect("failed to read Markdown file");
     let mut snippets = Vec::new();
     let mut in_rust = false;
     let mut current = String::new();
@@ -212,17 +198,10 @@ fn is_rust_fence(language: &str) -> bool {
 ///
 /// Panics when fixture files cannot be written, Cargo cannot run, or any
 /// snippet fails to compile.
-fn compile_snippets(
-    manifest_dir: &Path,
-    output_dir: &Path,
-    target_dir: &Path,
-    name: &str,
-    snippets: &[String],
-) {
+fn compile_snippets(manifest_dir: &Path, output_dir: &Path, target_dir: &Path, name: &str, snippets: &[String]) {
     let crate_dir = output_dir.join(name);
     let bin_dir = crate_dir.join("src/bin");
-    fs::create_dir_all(&bin_dir)
-        .expect("failed to create snippet binary directory");
+    fs::create_dir_all(&bin_dir).expect("failed to create snippet binary directory");
 
     fs::write(
         crate_dir.join("Cargo.toml"),
@@ -231,11 +210,8 @@ fn compile_snippets(
     .expect("failed to write snippet Cargo manifest");
 
     for (index, snippet) in snippets.iter().enumerate() {
-        fs::write(
-            bin_dir.join(format!("snippet_{index}.rs")),
-            normalize_snippet(snippet),
-        )
-        .expect("failed to write snippet source");
+        fs::write(bin_dir.join(format!("snippet_{index}.rs")), normalize_snippet(snippet))
+            .expect("failed to write snippet source");
     }
 
     let status = Command::new("cargo")
@@ -264,8 +240,7 @@ fn build_markdown_doctest_manifest(name: &str, manifest_dir: &Path) -> String {
     let registry = toml_basic_string(&manifest_dir.display().to_string());
     let filesystem_path = manifest_dir.join("../rs-fs");
     let local_path = manifest_dir.join("../rs-fs-local");
-    let (filesystem, local) = if filesystem_path.join("Cargo.toml").is_file()
-        && local_path.join("Cargo.toml").is_file()
+    let (filesystem, local) = if filesystem_path.join("Cargo.toml").is_file() && local_path.join("Cargo.toml").is_file()
     {
         (
             format!(
@@ -320,8 +295,7 @@ fn toml_basic_string(value: &str) -> String {
             '"' => escaped.push_str("\\\""),
             '\\' => escaped.push_str("\\\\"),
             '\u{0000}'..='\u{001F}' | '\u{007F}' => {
-                write!(escaped, "\\u{:04X}", character as u32)
-                    .expect("writing to a string should not fail");
+                write!(escaped, "\\u{:04X}", character as u32).expect("writing to a string should not fail");
             }
             _ => escaped.push(character),
         }
@@ -340,8 +314,7 @@ fn toml_basic_string(value: &str) -> String {
 /// A compilable binary source file preserving snippets that already define
 /// `main`.
 fn normalize_snippet(snippet: &str) -> String {
-    let allow_example_noise =
-        "#![allow(dead_code, unused_imports, unused_variables)]\n";
+    let allow_example_noise = "#![allow(dead_code, unused_imports, unused_variables)]\n";
     if snippet.contains("fn main") {
         format!("{allow_example_noise}{snippet}\n")
     } else {

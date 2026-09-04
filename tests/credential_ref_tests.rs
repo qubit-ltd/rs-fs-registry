@@ -31,12 +31,8 @@ fn test_credential_reference_variants_are_comparable() {
         },
     );
     assert_eq!(
-        CredentialRef::Provider {
-            id: "vault".to_owned(),
-        },
-        CredentialRef::Provider {
-            id: "vault".to_owned(),
-        },
+        CredentialRef::Provider { id: "vault".to_owned() },
+        CredentialRef::Provider { id: "vault".to_owned() },
     );
 }
 

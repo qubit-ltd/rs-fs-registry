@@ -25,12 +25,8 @@ use crate::common;
 #[test]
 fn test_validating_file_system_provider_accepts_matching_identity() {
     let registry = FileSystemRegistry::default();
-    registry
-        .register(MatchingProvider)
-        .expect("register matching provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-sync:///resource").expect("valid URI"),
-    );
+    registry.register(MatchingProvider).expect("register matching provider");
+    let config = FileSystemConfig::new(ConnectionUri::parse("registered-sync:///resource").expect("valid URI"));
 
     let resolution = registry
         .resolve_config(&config)
@@ -40,10 +36,7 @@ fn test_validating_file_system_provider_accepts_matching_identity() {
         "registered-sync"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(
-        resolution.canonical_uri().as_str(),
-        "registry-test:///resource"
-    );
+    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
 }
 
 /// Provider fixture whose output identity matches its descriptor.
@@ -51,17 +44,12 @@ struct MatchingProvider;
 
 impl ProviderMetadata for MatchingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            ProviderId::new("registered-sync").expect("provider id"),
-        )
+        ProviderDescriptor::new(ProviderId::new("registered-sync").expect("provider id"))
     }
 }
 
 impl ServiceProvider<FileSystemSpec> for MatchingProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Ok(common::sync_resolution("registered-sync"))
     }
 }

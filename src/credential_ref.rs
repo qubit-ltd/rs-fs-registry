@@ -51,9 +51,8 @@ impl std::fmt::Debug for CredentialRef {
         match self {
             Self::DefaultChain => formatter.write_str("CredentialRef::DefaultChain"),
             Self::Profile { .. } => formatter.write_str("CredentialRef::Profile(<redacted>)"),
-            Self::Environment { .. } => formatter.write_str(
-                "CredentialRef::Environment { access_key_env: <redacted>, secret_key_env: <redacted> }",
-            ),
+            Self::Environment { .. } => formatter
+                .write_str("CredentialRef::Environment { access_key_env: <redacted>, secret_key_env: <redacted> }"),
             Self::Provider { .. } => formatter.write_str("CredentialRef::Provider(<redacted>)"),
         }
     }

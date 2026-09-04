@@ -34,47 +34,34 @@ fn test_registry_clone_shares_catalog_and_default_selection() {
         .expect("register shared provider");
     assert_eq!(clone.len(), 1);
 
-    let selection =
-        ProviderSelection::named("shared").expect("valid selection");
+    let selection = ProviderSelection::named("shared").expect("valid selection");
     clone.set_default_selection(selection.clone());
     assert_eq!(registry.default_selection(), selection);
 }
 
 /// Embedded URI secrets conflict with an external credential reference.
 #[test]
-fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
-{
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("s3://user:password@bucket/key")
-            .expect("URI should parse"),
-    )
-    .with_credential(CredentialRef::Profile {
-        name: "integration".to_owned(),
-    });
+fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution() {
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"))
+            .with_credential(CredentialRef::Profile {
+                name: "integration".to_owned(),
+            });
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("credential sources conflict");
-    assert!(matches!(
-        error,
-        FileSystemRegistryError::InvalidConfiguration { .. }
-    ));
+    assert!(matches!(error, FileSystemRegistryError::InvalidConfiguration { .. }));
 }
 
 /// A username without secret material may coexist with a credential reference.
 #[test]
-fn test_registry_allows_username_only_connection_uri_with_credential_reference()
-{
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("s3://user@bucket/key").expect("URI should parse"),
-    )
-    .with_credential(CredentialRef::DefaultChain);
+fn test_registry_allows_username_only_connection_uri_with_credential_reference() {
+    let config = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI should parse"))
+        .with_credential(CredentialRef::DefaultChain);
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("empty registry should fail after credential validation");
-    assert!(!matches!(
-        error,
-        FileSystemRegistryError::InvalidConfiguration { .. }
-    ));
+    assert!(!matches!(error, FileSystemRegistryError::InvalidConfiguration { .. }));
 }
 
 /// Provider creation failures preserve provider registration order.
@@ -87,17 +74,13 @@ fn test_registry_aggregates_provider_failures_in_registration_order() {
     registry
         .register(FailingProvider::new("second"))
         .expect("register second");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("first:///resource").expect("URI should parse"),
-    )
-    .with_selection(
-        ProviderSelection::chain(["first", "second"])
-            .expect("selection should parse")
-            .with_fallback_policy(FallbackPolicy::OnAnyError),
-    );
-    let error = registry
-        .resolve_config(&config)
-        .expect_err("providers fail");
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI should parse"))
+        .with_selection(
+            ProviderSelection::chain(["first", "second"])
+                .expect("selection should parse")
+                .with_fallback_policy(FallbackPolicy::OnAnyError),
+        );
+    let error = registry.resolve_config(&config).expect_err("providers fail");
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected aggregate creation error")
     };
@@ -123,16 +106,11 @@ fn test_registry_inspection_and_resolution_entry_points() {
     assert_eq!(registry.descriptors()[0].id().as_str(), "entry-points");
     assert_eq!(registry.provider_ids()[0].as_str(), "entry-points");
 
-    let uri = ConnectionUri::parse("entry-points:///resource")
-        .expect("URI should parse");
-    let selection = ProviderSelection::named("entry-points")
-        .expect("selection should parse");
+    let uri = ConnectionUri::parse("entry-points:///resource").expect("URI should parse");
+    let selection = ProviderSelection::named("entry-points").expect("selection should parse");
     for result in [
         registry.resolve_uri(&uri),
-        registry.resolve_selected_config(
-            &selection,
-            &FileSystemConfig::new(uri.clone()),
-        ),
+        registry.resolve_selected_config(&selection, &FileSystemConfig::new(uri.clone())),
     ] {
         assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
     }
@@ -147,15 +125,9 @@ fn test_registry_inspection_and_resolution_entry_points() {
 #[test]
 fn test_registry_selected_config_rejects_conflicting_selection() {
     let registry = FileSystemRegistry::default();
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("configured:///resource")
-            .expect("URI should parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("configured").expect("selection should parse"),
-    );
-    let requested =
-        ProviderSelection::named("requested").expect("selection should parse");
+    let config = FileSystemConfig::new(ConnectionUri::parse("configured:///resource").expect("URI should parse"))
+        .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+    let requested = ProviderSelection::named("requested").expect("selection should parse");
     assert!(matches!(
         registry.resolve_selected_config(&requested, &config),
         Err(FileSystemRegistryError::SelectionConflict { .. })
@@ -170,22 +142,17 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
     registry
         .register(FailingProvider::new("matching"))
         .expect("register provider");
-    let selection =
-        ProviderSelection::named("matching").expect("selection should parse");
-    let matching = FileSystemConfig::new(
-        ConnectionUri::parse("matching:///resource").expect("URI should parse"),
-    )
-    .with_selection(selection.clone());
+    let selection = ProviderSelection::named("matching").expect("selection should parse");
+    let matching = FileSystemConfig::new(ConnectionUri::parse("matching:///resource").expect("URI should parse"))
+        .with_selection(selection.clone());
     assert!(matches!(
         registry.resolve_selected_config(&selection, &matching),
         Err(FileSystemRegistryError::Creation(_))
     ));
 
-    let query_credential = FileSystemConfig::new(
-        ConnectionUri::parse("s3://bucket/key?token=secret")
-            .expect("URI should parse"),
-    )
-    .with_credential(CredentialRef::DefaultChain);
+    let query_credential =
+        FileSystemConfig::new(ConnectionUri::parse("s3://bucket/key?token=secret").expect("URI should parse"))
+            .with_credential(CredentialRef::DefaultChain);
     assert!(matches!(
         FileSystemRegistry::default().resolve_config(&query_credential),
         Err(FileSystemRegistryError::InvalidConfiguration { .. })
@@ -199,14 +166,9 @@ fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
     registry
         .register(FailingProvider::new("selected-provider"))
         .expect("register provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("unregistered-scheme:///resource")
-            .expect("URI should parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("selected-provider")
-            .expect("selection should parse"),
-    );
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("unregistered-scheme:///resource").expect("URI should parse"))
+            .with_selection(ProviderSelection::named("selected-provider").expect("selection should parse"));
 
     assert!(matches!(
         registry.resolve_config(&config),
@@ -237,10 +199,7 @@ impl ProviderMetadata for FailingProvider {
     }
 }
 impl ServiceProvider<FileSystemSpec> for FailingProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::unavailable(FsError::new(
             FsErrorKind::ProviderUnavailable,
             FsOperation::Provider,

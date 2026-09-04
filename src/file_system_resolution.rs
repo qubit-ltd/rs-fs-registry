@@ -51,18 +51,12 @@ impl FileSystemResolution {
     ///
     /// Returns an [`FsError`] when the path violates facade constraints or
     /// limits, or when the canonical URI scheme is unsupported.
-    pub fn try_new(
-        file_system: FileSystem,
-        path: Path,
-        canonical_uri: Uri,
-    ) -> Result<Self, FsError> {
+    pub fn try_new(file_system: FileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
         let properties = file_system.properties();
         properties.path_constraints().validate(&path)?;
-        properties.limits().validate_path(
-            &path,
-            properties.info().path_semantics(),
-            FsOperation::ParsePath,
-        )?;
+        properties
+            .limits()
+            .validate_path(&path, properties.info().path_semantics(), FsOperation::ParsePath)?;
         if !properties
             .info()
             .schemes()

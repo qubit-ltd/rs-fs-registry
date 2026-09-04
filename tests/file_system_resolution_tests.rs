@@ -39,15 +39,10 @@ fn test_resolution_rejects_path_outside_constraints() {
 /// Resolution construction enforces finite provider path-size limits.
 #[test]
 fn test_resolution_rejects_path_exceeding_limits() {
-    let limits = FileSystemLimits::unknown()
-        .with_max_path_text_bytes(FileSystemLimit::Maximum(4));
-    let error = sync_resolution_with_path_properties(
-        "resolution-provider",
-        "/large",
-        limits,
-        PathConstraints::absolute(),
-    )
-    .expect_err("oversized path must violate the provider limit");
+    let limits = FileSystemLimits::unknown().with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let error =
+        sync_resolution_with_path_properties("resolution-provider", "/large", limits, PathConstraints::absolute())
+            .expect_err("oversized path must violate the provider limit");
     assert_eq!(error.kind(), FsErrorKind::ResourceLimitExceeded);
 }
 
@@ -61,17 +56,11 @@ fn test_resolution_exposes_and_transfers_components() {
         "resolution-provider"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(
-        resolution.canonical_uri().as_str(),
-        "registry-test:///resource"
-    );
+    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
     let debug = format!("{resolution:?}");
     assert!(debug.contains("/resource"));
     let (file_system, path, uri) = resolution.into_parts();
-    assert_eq!(
-        file_system.properties().info().provider_id(),
-        "resolution-provider"
-    );
+    assert_eq!(file_system.properties().info().provider_id(), "resolution-provider");
     assert_eq!(path.as_str(), "/resource");
     assert_eq!(uri.as_str(), "registry-test:///resource");
 }
@@ -80,12 +69,8 @@ fn test_resolution_exposes_and_transfers_components() {
 /// another scheme before the resolution is published.
 #[test]
 fn test_resolution_rejects_unadvertised_canonical_uri_scheme() {
-    let error = sync_resolution_with_scheme(
-        "resolution-provider",
-        "accepted",
-        "rejected:///resource",
-    )
-    .expect_err("unadvertised scheme must fail");
+    let error = sync_resolution_with_scheme("resolution-provider", "accepted", "rejected:///resource")
+        .expect_err("unadvertised scheme must fail");
     assert_eq!(error.kind(), FsErrorKind::InvalidUri);
 }
 
