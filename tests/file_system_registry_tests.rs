@@ -6,6 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -195,6 +199,28 @@ fn test_registry_default_config_validates_credentials_before_resolution() {
     assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
 }
 
+/// Credential validation prevents provider creation from observing conflicting
+/// embedded and referenced credentials.
+#[test]
+fn test_registry_rejects_credential_conflict_before_provider_creation() {
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(CountingProvider::new("credential-counter", Arc::clone(&create_calls)))
+        .expect("register provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("credential-counter://user:password@bucket/resource")
+            .expect("URI should parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("credential conflict should fail before provider creation");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert_eq!(create_calls.load(Ordering::SeqCst), 0);
+}
+
 /// A synchronous default resolution keeps its captured resolver after a later
 /// default selection change.
 #[test]
@@ -232,6 +258,35 @@ fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
 pub(crate) struct FailingProvider {
     id: &'static str,
 }
+
+struct CountingProvider {
+    id: &'static str,
+    create_calls: Arc<AtomicUsize>,
+}
+
+impl CountingProvider {
+    fn new(id: &'static str, create_calls: Arc<AtomicUsize>) -> Self {
+        Self { id, create_calls }
+    }
+}
+
+impl ProviderMetadata for CountingProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider id"))
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for CountingProvider {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Err(ProviderFailure::unavailable(FsError::new(
+            FsErrorKind::ProviderUnavailable,
+            FsOperation::Provider,
+            "unavailable",
+        )))
+    }
+}
+
 impl FailingProvider {
     /// Creates a provider fixture with the requested descriptor identity.
     ///
