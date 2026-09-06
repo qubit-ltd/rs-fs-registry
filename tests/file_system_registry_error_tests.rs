@@ -301,10 +301,7 @@ impl ProviderMetadata for InvalidConfigurationProvider {
 }
 
 impl ServiceProvider<FileSystemSpec> for InvalidConfigurationProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::invalid_configuration(FsError::new(
             FsErrorKind::InvalidOptions,
             FsOperation::Provider,
