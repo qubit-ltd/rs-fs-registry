@@ -55,10 +55,7 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
 
     let error = common::block_on(AsyncFileSystemRegistry::default().resolve_config(config))
         .expect_err("credential sources conflict");
-    assert!(matches!(
-        error,
-        FileSystemRegistryError::CredentialSourceConflict
-    ));
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
 }
 
 /// An asynchronous default selection conflict takes precedence over resolving
@@ -67,10 +64,8 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
 fn test_async_registry_default_selection_conflict_precedes_default_resolution() {
     let registry = AsyncFileSystemRegistry::default();
     registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
-    )
-    .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+    let config = FileSystemConfig::new(ConnectionUri::parse("configured:///resource").expect("URI should parse"))
+        .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
 
     let error = common::block_on(registry.resolve_default_config(config))
         .expect_err("the configured selection should conflict before resolution");
@@ -100,11 +95,13 @@ fn test_async_registry_rejects_credential_conflict_before_provider_creation() {
     let create_calls = Arc::new(AtomicUsize::new(0));
     let registry = AsyncFileSystemRegistry::default();
     registry
-        .register(CountingAsyncProvider::new("async-credential-counter", Arc::clone(&create_calls)))
+        .register(CountingAsyncProvider::new(
+            "async-credential-counter",
+            Arc::clone(&create_calls),
+        ))
         .expect("register provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("async-credential-counter://user:password@bucket/resource")
-            .expect("URI should parse"),
+        ConnectionUri::parse("async-credential-counter://user:password@bucket/resource").expect("URI should parse"),
     )
     .with_credential(CredentialRef::DefaultChain);
 

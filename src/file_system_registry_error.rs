@@ -79,9 +79,7 @@ impl FileSystemRegistryError {
             .literal("filesystem registry error: code=")
             .field("reason_code", self.reason_code());
         let composer = match self {
-            Self::InvalidConfiguration { message } => composer
-                .literal(", detail=")
-                .field("password", message),
+            Self::InvalidConfiguration { message } => composer.literal(", detail=").field("password", message),
             Self::CredentialSourceConflict => composer,
             Self::Registration(error) => composer
                 .literal(", selector=")
@@ -103,9 +101,7 @@ impl FileSystemRegistryError {
                         .literal(", selector_count=")
                         .field("selector_count", &selectors.len());
                     for selector in selectors.iter().take(8) {
-                        composer = composer
-                            .literal(", selector=")
-                            .field("selector", selector.as_str());
+                        composer = composer.literal(", selector=").field("selector", selector.as_str());
                     }
                 }
                 composer

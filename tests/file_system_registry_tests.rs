@@ -54,10 +54,7 @@ fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("credential sources conflict");
-    assert!(matches!(
-        error,
-        FileSystemRegistryError::CredentialSourceConflict
-    ));
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
 }
 
 /// A username without secret material may coexist with a credential reference.
@@ -172,10 +169,8 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
 fn test_registry_default_selection_conflict_precedes_default_resolution() {
     let registry = FileSystemRegistry::default();
     registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
-    )
-    .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+    let config = FileSystemConfig::new(ConnectionUri::parse("configured:///resource").expect("URI should parse"))
+        .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
 
     let error = registry
         .resolve_default_config(&config)
@@ -209,8 +204,7 @@ fn test_registry_rejects_credential_conflict_before_provider_creation() {
         .register(CountingProvider::new("credential-counter", Arc::clone(&create_calls)))
         .expect("register provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("credential-counter://user:password@bucket/resource")
-            .expect("URI should parse"),
+        ConnectionUri::parse("credential-counter://user:password@bucket/resource").expect("URI should parse"),
     )
     .with_credential(CredentialRef::DefaultChain);
 
