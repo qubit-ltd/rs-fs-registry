@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // =============================================================================
 //    Copyright (c) 2026 Haixing Hu.
 //
@@ -119,6 +121,7 @@ pub(crate) fn sync_resolution(provider_id: &'static str) -> FileSystemResolution
         scheme: Some("registry-test"),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
+        path_semantics: PathSemantics::Hierarchical,
     })
     .expect("valid test facade");
     FileSystemResolution::try_new(
@@ -145,6 +148,7 @@ pub(crate) fn sync_resolution(provider_id: &'static str) -> FileSystemResolution
 ///
 /// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
 /// test fixture.
+#[allow(dead_code)]
 pub(crate) fn sync_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -155,6 +159,7 @@ pub(crate) fn sync_resolution_with_scheme(
         scheme: Some(scheme),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
+        path_semantics: PathSemantics::Hierarchical,
     })
     .expect("valid test facade");
     FileSystemResolution::try_new(
@@ -187,16 +192,52 @@ pub(crate) fn sync_resolution_with_path_properties(
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
 ) -> Result<FileSystemResolution, FsError> {
-    let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
+    sync_resolution_with_path_semantics_and_scheme(
         provider_id,
-        scheme: None,
+        path,
         limits,
         path_constraints,
+        PathSemantics::Hierarchical,
+        None,
+    )
+}
+
+pub(crate) fn sync_resolution_with_path_semantics(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+) -> Result<FileSystemResolution, FsError> {
+    sync_resolution_with_path_semantics_and_scheme(
+        provider_id,
+        path,
+        limits,
+        path_constraints,
+        path_semantics,
+        Some("registry-test"),
+    )
+}
+
+fn sync_resolution_with_path_semantics_and_scheme(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+    scheme: Option<&'static str>,
+) -> Result<FileSystemResolution, FsError> {
+    let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
+        provider_id,
+        scheme,
+        limits,
+        path_constraints,
+        path_semantics,
     })
     .expect("valid test facade");
     FileSystemResolution::try_new(
         file_system,
-        Path::parse(path).expect("valid test path"),
+        Path::parse_with_semantics(path, path_semantics).expect("valid test path"),
         Uri::parse("registry-test:///resource").expect("valid canonical URI"),
     )
 }
@@ -222,6 +263,7 @@ pub(crate) fn async_resolution(provider_id: &'static str) -> AsyncFileSystemReso
         scheme: Some("registry-test"),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
+        path_semantics: PathSemantics::Hierarchical,
     })
     .expect("valid test facade");
     AsyncFileSystemResolution::try_new(
@@ -249,6 +291,7 @@ pub(crate) fn async_resolution(provider_id: &'static str) -> AsyncFileSystemReso
 /// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
 /// test fixture.
 #[cfg(feature = "async")]
+#[allow(dead_code)]
 pub(crate) fn async_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -259,6 +302,7 @@ pub(crate) fn async_resolution_with_scheme(
         scheme: Some(scheme),
         limits: FileSystemLimits::unknown(),
         path_constraints: PathConstraints::absolute(),
+        path_semantics: PathSemantics::Hierarchical,
     })
     .expect("valid test facade");
     AsyncFileSystemResolution::try_new(
@@ -292,16 +336,54 @@ pub(crate) fn async_resolution_with_path_properties(
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
 ) -> Result<AsyncFileSystemResolution, FsError> {
-    let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
+    async_resolution_with_path_semantics_and_scheme(
         provider_id,
-        scheme: None,
+        path,
         limits,
         path_constraints,
+        PathSemantics::Hierarchical,
+        None,
+    )
+}
+
+#[cfg(feature = "async")]
+pub(crate) fn async_resolution_with_path_semantics(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+) -> Result<AsyncFileSystemResolution, FsError> {
+    async_resolution_with_path_semantics_and_scheme(
+        provider_id,
+        path,
+        limits,
+        path_constraints,
+        path_semantics,
+        Some("registry-test"),
+    )
+}
+
+#[cfg(feature = "async")]
+fn async_resolution_with_path_semantics_and_scheme(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+    scheme: Option<&'static str>,
+) -> Result<AsyncFileSystemResolution, FsError> {
+    let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
+        provider_id,
+        scheme,
+        limits,
+        path_constraints,
+        path_semantics,
     })
     .expect("valid test facade");
     AsyncFileSystemResolution::try_new(
         file_system,
-        Path::parse(path).expect("valid test path"),
+        Path::parse_with_semantics(path, path_semantics).expect("valid test path"),
         Uri::parse("registry-test:///resource").expect("valid canonical URI"),
     )
 }
@@ -327,11 +409,12 @@ fn properties(
     scheme: Option<&str>,
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
 ) -> ProviderProperties {
     let mut info = FileSystemInfo::new(
         FileSystemId::new("registry-test-fs").expect("valid filesystem ID"),
         provider_id,
-        PathSemantics::Hierarchical,
+        path_semantics,
     );
     if let Some(scheme) = scheme {
         info = info.with_scheme(scheme).expect("valid test scheme");
@@ -365,6 +448,7 @@ struct SyncPropertiesOnlySpi {
     scheme: Option<&'static str>,
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
 }
 
 impl FileSystemSpi for SyncPropertiesOnlySpi {
@@ -374,6 +458,7 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
             self.scheme,
             self.limits,
             self.path_constraints.clone(),
+            self.path_semantics,
         )
     }
 
@@ -424,6 +509,7 @@ struct AsyncPropertiesOnlySpi {
     scheme: Option<&'static str>,
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
 }
 
 #[cfg(feature = "async")]
@@ -434,6 +520,7 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
             self.scheme,
             self.limits,
             self.path_constraints.clone(),
+            self.path_semantics,
         )
     }
 

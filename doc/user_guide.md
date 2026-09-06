@@ -34,8 +34,12 @@ configuration and return futures for resolution.
 
 An application selects a local filesystem provider at startup, then opens a
 report URI without coupling its report-handling code to a provider factory.
-Success means the boundary yields a filesystem and logical path that can be
-used for `stat`, while the canonical URI is available for safe identification.
+Success means the boundary yields a filesystem and logical path that have passed
+the facade's `PathSemantics`, path-form constraints, and limits checks, while
+the canonical URI is available for safe identification. Resolution validation
+is local and metadata-based: creating a resolution does not call `stat`, touch
+the backend, or prove that the target exists. Call `stat` or another operation
+when the application needs resource state.
 
 ## Installation and Minimal Configuration
 
@@ -71,6 +75,11 @@ fn inspect_report() -> FsResult<()> {
 Keep the URI and configuration at the resolution boundary. Downstream code
 uses `resolution.file_system()` and `resolution.path()` rather than decoding
 the URI again.
+
+Both synchronous and asynchronous resolutions apply the same path validation
+rules. Provider-specific URI-to-path decoding remains the provider's job; the
+registry validates the resulting path against the configured facade before it
+returns the resolution.
 
 ## Advanced Usage
 
