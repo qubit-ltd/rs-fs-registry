@@ -248,11 +248,11 @@ impl AsyncFileSystemRegistry {
         config: FileSystemConfig,
     ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
         let snapshot = validate_credentials(&config).and_then(|()| {
-            let selection = self.default_selection();
+            let (selection, resolver) = self
+                .providers
+                .resolve_default_snapshot_with_selection();
             ensure_selection_matches_config(&selection, &config)?;
-            self.providers
-                .resolve_default_snapshot()
-                .map_err(FileSystemRegistryError::from)
+            resolver.map_err(FileSystemRegistryError::from)
         });
         async move { snapshot?.create_configured(&config).await.map_err(Into::into) }
     }
