@@ -58,6 +58,20 @@ fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
     assert!(debug.contains("<redacted>"));
 }
 
+/// Credential source conflicts expose a stable reason code and only safe
+/// structured diagnostic text.
+#[test]
+fn test_credential_source_conflict_has_safe_reason_code() {
+    let error = FileSystemRegistryError::CredentialSourceConflict {
+        reason_code: "embedded_and_referenced_credentials",
+    };
+
+    assert_eq!(error.reason_code(), "embedded_and_referenced_credentials");
+    assert!(error.to_string().contains("credential source conflict"));
+    assert!(error.to_string().contains("embedded_and_referenced_credentials"));
+    assert!(error.source().is_none());
+}
+
 /// Registry error formatting retains safe provider and selection context.
 #[test]
 fn test_error_display_and_debug_include_safe_provider_and_selection_context() {

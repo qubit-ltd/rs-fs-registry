@@ -51,7 +51,26 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
 
     let error = common::block_on(AsyncFileSystemRegistry::default().resolve_config(config))
         .expect_err("credential sources conflict");
-    assert!(matches!(error, FileSystemRegistryError::InvalidConfiguration { .. }));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict { .. }
+    ));
+}
+
+/// An asynchronous default selection conflict takes precedence over resolving
+/// an unknown default provider.
+#[test]
+fn test_async_registry_default_selection_conflict_precedes_default_resolution() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
+    )
+    .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+
+    let error = common::block_on(registry.resolve_default_config(config))
+        .expect_err("the configured selection should conflict before resolution");
+    assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
 }
 /// Resolution futures own their configuration rather than borrowing it.
 #[test]
@@ -148,6 +167,24 @@ fn test_resolve_config_snapshots_missing_provider_before_registration() {
     assert!(matches!(
         common::block_on(future),
         Err(FileSystemRegistryError::Resolution(_))
+    ));
+}
+
+/// An asynchronous default future retains its provider snapshot after the
+/// registry's default selection changes.
+#[test]
+fn test_resolve_default_config_snapshots_provider_before_default_changes() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(AsyncFailingProvider).expect("register provider");
+    registry.set_default_selection(ProviderSelection::named("async-failing").expect("selection should parse"));
+    let future = registry.resolve_default_config(FileSystemConfig::new(
+        ConnectionUri::parse("async-failing:///resource").expect("URI should parse"),
+    ));
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+
+    assert!(matches!(
+        common::block_on(future),
+        Err(FileSystemRegistryError::Creation(_))
     ));
 }
 
