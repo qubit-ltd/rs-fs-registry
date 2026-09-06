@@ -62,13 +62,11 @@ fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
 /// structured diagnostic text.
 #[test]
 fn test_credential_source_conflict_has_safe_reason_code() {
-    let error = FileSystemRegistryError::CredentialSourceConflict {
-        reason_code: "embedded_and_referenced_credentials",
-    };
+    let error = FileSystemRegistryError::CredentialSourceConflict;
 
-    assert_eq!(error.reason_code(), "embedded_and_referenced_credentials");
+    assert_eq!(error.reason_code(), "credential_source_conflict");
     assert!(error.to_string().contains("credential source conflict"));
-    assert!(error.to_string().contains("embedded_and_referenced_credentials"));
+    assert!(error.to_string().contains("credential_source_conflict"));
     assert!(error.source().is_none());
 }
 

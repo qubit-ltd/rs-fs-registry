@@ -53,7 +53,7 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
         .expect_err("credential sources conflict");
     assert!(matches!(
         error,
-        FileSystemRegistryError::CredentialSourceConflict { .. }
+        FileSystemRegistryError::CredentialSourceConflict
     ));
 }
 
@@ -71,6 +71,22 @@ fn test_async_registry_default_selection_conflict_precedes_default_resolution() 
     let error = common::block_on(registry.resolve_default_config(config))
         .expect_err("the configured selection should conflict before resolution");
     assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
+}
+
+/// Async credential validation takes precedence over resolving an unknown
+/// default.
+#[test]
+fn test_async_registry_default_config_validates_credentials_before_resolution() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured://user:password@bucket/resource").expect("URI should parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+
+    let error = common::block_on(registry.resolve_default_config(config))
+        .expect_err("credential conflict should precede default resolution");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
 }
 /// Resolution futures own their configuration rather than borrowing it.
 #[test]

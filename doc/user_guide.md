@@ -100,6 +100,9 @@ The registry default is resolved as an atomic catalog snapshot: the default
 selection and its candidate provider handles are read together. A concurrent
 registration or default replacement affects a later snapshot and cannot mix
 two catalog versions into one default resolution.
+At the SPI layer, this operation is exposed as
+`ProviderRegistry::resolve_default_snapshot()` and is performed once for each
+default resolution.
 
 ### Credentials and async resolution
 
@@ -108,7 +111,7 @@ Use `CredentialRef` only to reference a provider-recognized source:
 ID. Do not place secret material in it. The registry also rejects configuration
 credential conflicts before provider creation. This returns
 `FileSystemRegistryError::CredentialSourceConflict`; its stable
-`reason_code()` is `embedded_and_referenced_credentials` when an embedded URI
+`reason_code()` is `credential_source_conflict` when an embedded URI
 secret and an external `CredentialRef` occupy the same slot. The reason code is
 safe structured data and contains no URI, reference, or secret payload.
 
@@ -125,7 +128,7 @@ registration, selection, resolution, and provider-creation diagnostics in
 been selected; inspect the typed error rather than replacing it with a generic
 message. A registry error can convert to `FsError` while retaining the typed
 registry error as its source.
-Formatted registry errors include safe selector and provider context. Their
+Formatted registry errors include only applicable safe selector and provider context. Their
 fields are rendered with the immutable built-in standard policy from
 `qubit_redact::Redactor::standard()`; registry `Display` and `Debug` do not read
 or follow later replacements of the process-wide application-default redactor.

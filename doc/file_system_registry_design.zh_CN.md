@@ -293,7 +293,7 @@ provider creation 前报 configuration conflict，不能静默选择优先级。
 
 该冲突使用 `FileSystemRegistryError::CredentialSourceConflict` 表示，并提供稳定的
 `reason_code()`。当前 embedded URI secret 与外部 `CredentialRef` 同时存在时，代码为
-`embedded_and_referenced_credentials`。reason code 只用于结构化诊断，不包含 URI、
+`credential_source_conflict`。reason code 只用于结构化诊断，不包含 URI、
 credential reference 或 secret；该错误没有底层 `source()`。
 
 `CredentialRef` 只描述外部 secret 的引用，不承载 token、password、private key 等

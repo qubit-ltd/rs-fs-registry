@@ -52,7 +52,7 @@ fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
         .expect_err("credential sources conflict");
     assert!(matches!(
         error,
-        FileSystemRegistryError::CredentialSourceConflict { .. }
+        FileSystemRegistryError::CredentialSourceConflict
     ));
 }
 
@@ -158,7 +158,7 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
             .with_credential(CredentialRef::DefaultChain);
     assert!(matches!(
         FileSystemRegistry::default().resolve_config(&query_credential),
-        Err(FileSystemRegistryError::CredentialSourceConflict { .. })
+        Err(FileSystemRegistryError::CredentialSourceConflict)
     ));
 }
 
@@ -177,6 +177,39 @@ fn test_registry_default_selection_conflict_precedes_default_resolution() {
         .resolve_default_config(&config)
         .expect_err("the configured selection should conflict before resolution");
     assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
+}
+
+/// Credential validation takes precedence over resolving an unknown default.
+#[test]
+fn test_registry_default_config_validates_credentials_before_resolution() {
+    let registry = FileSystemRegistry::default();
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured://user:password@bucket/resource").expect("URI should parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+
+    let error = registry
+        .resolve_default_config(&config)
+        .expect_err("credential conflict should precede default resolution");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+}
+
+/// A synchronous default resolution keeps its captured resolver after a later
+/// default selection change.
+#[test]
+fn test_registry_default_config_captures_resolver_before_default_changes() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(FailingProvider::new("captured-default"))
+        .expect("register provider");
+    registry.set_default_selection(ProviderSelection::named("captured-default").expect("selection should parse"));
+    let result = registry.resolve_default_config(&FileSystemConfig::new(
+        ConnectionUri::parse("captured-default:///resource").expect("URI should parse"),
+    ));
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+
+    assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
 }
 
 /// An explicit configuration selection takes precedence over the URI scheme.
