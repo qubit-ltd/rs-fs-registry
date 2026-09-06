@@ -6,6 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -87,6 +91,27 @@ fn test_async_registry_default_config_validates_credentials_before_resolution() 
     let error = common::block_on(registry.resolve_default_config(config))
         .expect_err("credential conflict should precede default resolution");
     assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+}
+
+/// Credential validation prevents asynchronous provider creation from observing
+/// conflicting embedded and referenced credentials.
+#[test]
+fn test_async_registry_rejects_credential_conflict_before_provider_creation() {
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let registry = AsyncFileSystemRegistry::default();
+    registry
+        .register(CountingAsyncProvider::new("async-credential-counter", Arc::clone(&create_calls)))
+        .expect("register provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("async-credential-counter://user:password@bucket/resource")
+            .expect("URI should parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+
+    let error = common::block_on(registry.resolve_config(config))
+        .expect_err("credential conflict should fail before provider creation");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert_eq!(create_calls.load(Ordering::SeqCst), 0);
 }
 /// Resolution futures own their configuration rather than borrowing it.
 #[test]
@@ -186,6 +211,25 @@ fn test_resolve_config_snapshots_missing_provider_before_registration() {
     ));
 }
 
+/// Async default resolution snapshots a missing provider before later
+/// registration.
+#[test]
+fn test_resolve_default_config_snapshots_missing_provider_before_registration() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry.set_default_selection(ProviderSelection::named("async-late").expect("selection should parse"));
+    let future = registry.resolve_default_config(FileSystemConfig::new(
+        ConnectionUri::parse("async-late:///resource").expect("URI should parse"),
+    ));
+    registry
+        .register(NamedAsyncFailingProvider::new("async-late"))
+        .expect("register provider after creating future");
+
+    assert!(matches!(
+        common::block_on(future),
+        Err(FileSystemRegistryError::Resolution(_))
+    ));
+}
+
 /// An asynchronous default future retains its provider snapshot after the
 /// registry's default selection changes.
 #[test]
@@ -205,6 +249,71 @@ fn test_resolve_default_config_snapshots_provider_before_default_changes() {
 }
 
 struct AsyncFailingProvider;
+
+struct CountingAsyncProvider {
+    id: &'static str,
+    create_calls: Arc<AtomicUsize>,
+}
+
+impl CountingAsyncProvider {
+    fn new(id: &'static str, create_calls: Arc<AtomicUsize>) -> Self {
+        Self { id, create_calls }
+    }
+}
+
+impl ProviderMetadata for CountingAsyncProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider id"))
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for CountingAsyncProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async {
+            Err(ProviderFailure::unavailable(FsError::new(
+                FsErrorKind::ProviderUnavailable,
+                FsOperation::Provider,
+                "unavailable",
+            )))
+        })
+    }
+}
+
+struct NamedAsyncFailingProvider {
+    id: &'static str,
+}
+
+impl NamedAsyncFailingProvider {
+    fn new(id: &'static str) -> Self {
+        Self { id }
+    }
+}
+
+impl ProviderMetadata for NamedAsyncFailingProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider id"))
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for NamedAsyncFailingProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        Box::pin(async {
+            Err(ProviderFailure::unavailable(FsError::new(
+                FsErrorKind::ProviderUnavailable,
+                FsOperation::Provider,
+                "unavailable",
+            )))
+        })
+    }
+}
+
 impl ProviderMetadata for AsyncFailingProvider {
     fn descriptor(&self) -> ProviderDescriptor {
         ProviderDescriptor::new(ProviderId::new("async-failing").expect("provider id"))
