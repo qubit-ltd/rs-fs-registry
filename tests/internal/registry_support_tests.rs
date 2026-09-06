@@ -10,15 +10,15 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
-/// A URI scheme derives a named provider selector and does not fall back to
-/// the registry default when that provider is unavailable.
+/// A URI scheme can be valid URI syntax while failing the provider selector
+/// grammar; that failure does not fall back to the registry default.
 #[test]
-fn test_uri_scheme_selector_is_resolved_without_default_fallback() {
+fn test_valid_uri_scheme_outside_selector_grammar_does_not_use_default() {
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("unregistered-scheme:///resource").expect("URI should parse"),
+        ConnectionUri::parse("invalid-:///resource").expect("URI should parse"),
     );
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
-        .expect_err("an unregistered scheme should not use the default");
-    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+        .expect_err("an invalid selector should not use the default");
+    assert!(matches!(error, FileSystemRegistryError::Selection(_)));
 }
