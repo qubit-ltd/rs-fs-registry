@@ -146,6 +146,7 @@ pub(crate) fn sync_resolution(provider_id: &'static str) -> FileSystemResolution
 ///
 /// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
 /// test fixture.
+#[allow(dead_code)]
 pub(crate) fn sync_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
@@ -288,6 +289,7 @@ pub(crate) fn async_resolution(provider_id: &'static str) -> AsyncFileSystemReso
 /// Panics when `provider_id`, `scheme`, or `canonical_uri` cannot construct the
 /// test fixture.
 #[cfg(feature = "async")]
+#[allow(dead_code)]
 pub(crate) fn async_resolution_with_scheme(
     provider_id: &'static str,
     scheme: &'static str,
