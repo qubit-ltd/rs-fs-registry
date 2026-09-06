@@ -19,6 +19,7 @@ use qubit_spi::ResolvingServiceProvider;
 
 use crate::FileSystemConfig;
 use crate::FileSystemProvider;
+use crate::FileSystemRegistryError;
 use crate::FileSystemRegistryResult;
 use crate::FileSystemResolution;
 use crate::FileSystemSpec;
@@ -234,8 +235,14 @@ impl FileSystemRegistry {
     /// Returns the same errors as [`Self::resolve_selected_config`].
     #[inline(always)]
     pub fn resolve_default_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
+        validate_credentials(config)?;
         let selection = self.default_selection();
-        self.resolve_selected_config(&selection, config)
+        ensure_selection_matches_config(&selection, config)?;
+        self.providers
+            .resolve_default_snapshot()
+            .map_err(FileSystemRegistryError::from)?
+            .create_configured(config)
+            .map_err(Into::into)
     }
 
     /// Resolves a provider selection without creating it.

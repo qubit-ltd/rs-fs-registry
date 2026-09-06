@@ -21,6 +21,7 @@ use qubit_spi::ProviderSelection;
 use crate::AsyncFileSystemProvider;
 use crate::AsyncFileSystemResolution;
 use crate::FileSystemConfig;
+use crate::FileSystemRegistryError;
 use crate::FileSystemRegistryResult;
 use crate::FileSystemSpec;
 use crate::internal::ValidatingAsyncFileSystemProvider;
@@ -246,7 +247,14 @@ impl AsyncFileSystemRegistry {
         &self,
         config: FileSystemConfig,
     ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
-        self.resolve_selected_config(self.default_selection(), config)
+        let snapshot = validate_credentials(&config).and_then(|()| {
+            let selection = self.default_selection();
+            ensure_selection_matches_config(&selection, &config)?;
+            self.providers
+                .resolve_default_snapshot()
+                .map_err(FileSystemRegistryError::from)
+        });
+        async move { snapshot?.create_configured(&config).await.map_err(Into::into) }
     }
 
     /// Resolves a selection to an owned provider snapshot.

@@ -37,6 +37,11 @@ pub enum FileSystemRegistryError {
         /// Safe description that never contains connection or credential data.
         message: &'static str,
     },
+    /// Configuration contains more than one credential source.
+    CredentialSourceConflict {
+        /// Stable, machine-readable reason for the credential conflict.
+        reason_code: &'static str,
+    },
     /// A provider descriptor could not be registered.
     Registration(
         /// Typed SPI registration failure.
@@ -74,6 +79,10 @@ impl FileSystemRegistryError {
                 .text_composer()
                 .literal("invalid filesystem configuration: ")
                 .field("password", message),
+            Self::CredentialSourceConflict { reason_code } => redactor
+                .text_composer()
+                .literal("credential source conflict: reason_code=")
+                .field("reason_code", reason_code),
             Self::Registration(error) => redactor
                 .text_composer()
                 .literal("provider registration failed: selector=")
@@ -93,6 +102,24 @@ impl FileSystemRegistryError {
             Self::Creation(_error) => redactor.text_composer().literal("filesystem provider creation failed"),
         }
         .finish()
+    }
+
+    /// Returns the stable reason code for this registry error.
+    ///
+    /// The code is safe to record in structured diagnostics and does not
+    /// include configuration, credential, or provider payloads.
+    #[inline]
+    #[must_use]
+    pub const fn reason_code(&self) -> &'static str {
+        match self {
+            Self::InvalidConfiguration { .. } => "invalid_configuration",
+            Self::CredentialSourceConflict { reason_code } => reason_code,
+            Self::Registration(_) => "provider_registration_failed",
+            Self::Selection(_) => "provider_selection_invalid",
+            Self::SelectionConflict { .. } => "provider_selection_conflict",
+            Self::Resolution(_) => "provider_resolution_failed",
+            Self::Creation(_) => "provider_creation_failed",
+        }
     }
 }
 
@@ -138,6 +165,7 @@ impl Error for FileSystemRegistryError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidConfiguration { .. } => None,
+            Self::CredentialSourceConflict { .. } => None,
             Self::Registration(error) => Some(error),
             Self::Selection(error) => Some(error),
             Self::SelectionConflict { .. } => None,
@@ -230,6 +258,11 @@ impl From<FileSystemRegistryError> for FsError {
             FileSystemRegistryError::InvalidConfiguration { .. } => {
                 (FsErrorKind::InvalidOptions, "filesystem configuration is invalid", None)
             }
+            FileSystemRegistryError::CredentialSourceConflict { .. } => (
+                FsErrorKind::InvalidOptions,
+                "filesystem credential sources conflict",
+                None,
+            ),
             FileSystemRegistryError::Registration(_) => {
                 (FsErrorKind::Conflict, "filesystem provider registration failed", None)
             }

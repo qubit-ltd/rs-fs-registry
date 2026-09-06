@@ -50,7 +50,10 @@ fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("credential sources conflict");
-    assert!(matches!(error, FileSystemRegistryError::InvalidConfiguration { .. }));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict { .. }
+    ));
 }
 
 /// A username without secret material may coexist with a credential reference.
@@ -155,8 +158,25 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
             .with_credential(CredentialRef::DefaultChain);
     assert!(matches!(
         FileSystemRegistry::default().resolve_config(&query_credential),
-        Err(FileSystemRegistryError::InvalidConfiguration { .. })
+        Err(FileSystemRegistryError::CredentialSourceConflict { .. })
     ));
+}
+
+/// A default selection conflict takes precedence over resolving an unknown
+/// default provider.
+#[test]
+fn test_registry_default_selection_conflict_precedes_default_resolution() {
+    let registry = FileSystemRegistry::default();
+    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
+    )
+    .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
+
+    let error = registry
+        .resolve_default_config(&config)
+        .expect_err("the configured selection should conflict before resolution");
+    assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
 }
 
 /// An explicit configuration selection takes precedence over the URI scheme.
