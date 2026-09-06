@@ -59,10 +59,11 @@ fn open_local_report() -> FsResult<()> {
 - Each resolution pairs a filesystem with its provider-decoded path and a
   secret-free canonical URI.
 
-Formatted registry errors include safe selector and provider context. These
-fields are classified through the process-wide `qubit_redact::RedactionPolicy`;
-applications can raise `provider_id` or `selection` to a sensitive level before
-formatting diagnostics.
+Formatted registry errors include safe selector and provider context. Registry
+`Display` and `Debug` use the immutable built-in policy from
+`qubit_redact::Redactor::standard()`; they do not read or follow later changes
+to the process-wide application-default redactor, recursively expand a
+provider source, or emit an internal message as unredacted text.
 
 Selection is configuration-first: `resolve_config` uses an explicit selection,
 then the URI scheme; it does not fall back to the registry default.
@@ -75,10 +76,28 @@ password, private key, or other secret. `ProviderSelection`, `ProviderId`, and
 `ProviderDescriptor` are owned by `qubit-spi` and are intentionally not
 re-exported. Add `qubit-spi` directly when using those types.
 
+If an embedded URI credential and a `CredentialRef` occupy the same credential
+slot, resolution fails before provider creation with
+`FileSystemRegistryError::CredentialSourceConflict`. Its stable
+`reason_code()` is `embedded_and_referenced_credentials`; the code contains no
+URI or credential payload.
+
+URI scheme selection accepts only a nonempty ASCII token with alphanumeric
+endpoints and the separators `-`, `_`, `.`, and `+` in its body. The selector
+parser trims surrounding whitespace and lowercases ASCII letters. Fallback
+classifies provider failures as `Unsupported`, `Unavailable`,
+`InvalidConfiguration`, or `InitializationFailed`; the default
+`OnAbsence` policy continues only after the first two. A default resolution
+uses one atomic catalog snapshot for its selection and candidate providers.
+The canonical URI is the selected provider's credential-free location for that
+resolution and is scoped to the returned filesystem facade's advertised
+schemes.
+
 ## Learn More
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Registry 合约迁移说明](doc/registry_contract_migration.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-registry)
 - [中文 README](README.zh_CN.md)
 

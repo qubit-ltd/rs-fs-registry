@@ -51,9 +51,9 @@ fn open_local_report() -> FsResult<()> {
   `CredentialRef`。
 - 每个 resolution 将文件系统与 provider 解码路径、无 secret 的 canonical URI 配对。
 
-格式化 registry error 会包含安全的 selector 和 provider 上下文；这些字段会经过进程级
-`qubit_redact::RedactionPolicy`。如果 provider identity 或 selection 也应视为敏感字段，可在格式化前
-将 `provider_id` 或 `selection` 提升为敏感级别。
+格式化 registry error 会包含安全的 selector 和 provider 上下文。registry 的 `Display` 与 `Debug`
+使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
+application-default redactor，不递归展开 provider source，也不会将内部 message 作为未脱敏文本输出。
 
 selection 以配置为先：`resolve_config` 先使用显式 selection，再使用 URI scheme；它不会回退到
 registry 默认 selection。`resolve_selected_config` 和 `resolve_default_config` 会拒绝配置中与其
@@ -64,10 +64,22 @@ token、password、private key 或其他 secret。`ProviderSelection`、`Provide
 `ProviderDescriptor` 由 `qubit-spi` 所有，本 crate 有意不重新导出它们。使用这些类型时需直接
 添加 `qubit-spi` 依赖。
 
+如果 embedded URI credential 与 `CredentialRef` 占用同一个 credential slot，resolution 会在
+provider 创建前返回 `FileSystemRegistryError::CredentialSourceConflict`。其稳定的
+`reason_code()` 为 `embedded_and_referenced_credentials`，不包含 URI 或 credential 内容。
+
+URI scheme selection 只接受非空 ASCII token：首尾为字母或数字，正文分隔符仅限 `-`、`_`、`.` 和
+`+`。selector parser 会去除首尾空白并将 ASCII 字母转为小写。provider failure 分为
+`Unsupported`、`Unavailable`、`InvalidConfiguration` 和 `InitializationFailed`；默认的
+`OnAbsence` 只在前两类失败后继续。default resolution 使用同一个原子 catalog 快照读取 selection
+和候选 provider。canonical URI 是选中 provider 针对本次 resolution 生成的无凭据定位结果，其
+scheme 必须属于返回 filesystem facade 声明的 schemes。
+
 ## 延伸阅读
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Registry 合约迁移说明](doc/registry_contract_migration.zh_CN.md)
 - [API 文档](https://docs.rs/qubit-fs-registry)
 - [English README](README.md)
 
