@@ -89,6 +89,8 @@ fn inspect_report() -> FsResult<()> {
 registry 默认入口以原子 catalog 快照解析：default selection 与其候选 provider handle 在同一个
 快照中读取。并发注册或替换默认 selection 只影响后续快照，不会让一次 default resolution 混用
 两个 catalog 版本。
+在 SPI 层，这个操作由 `ProviderRegistry::resolve_default_snapshot()` 提供；每次 default
+resolution 只调用一次该快照入口。
 
 ### 凭据与异步 resolution
 
@@ -96,7 +98,7 @@ registry 默认入口以原子 catalog 快照解析：default selection 与其�
 provider ID。不得将 secret material 放入其中。registry 也会在 provider 创建前拒绝相互冲突的
 credential 配置。此时返回 `FileSystemRegistryError::CredentialSourceConflict`；当 embedded URI
 secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_code()` 为
-`embedded_and_referenced_credentials`。reason code 可安全写入结构化诊断，不包含 URI、reference
+`credential_source_conflict`。reason code 可安全写入结构化诊断，不包含 URI、reference
 或 secret 内容。
 
 对于异步 provider，使用 `AsyncFileSystemRegistry` 注册，并 await 其接收 owned config 的
@@ -108,7 +110,7 @@ secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_co
 registry 操作返回 `FileSystemRegistryResult`，并在 `FileSystemRegistryError` 中保留结构化的注册、
 selection、resolution 和 provider 创建诊断。provider 被选中后创建仍可能失败；应检查 typed error，
 而非将其替换为笼统消息。registry error 可转换为 `FsError`，同时保留 typed registry error 作为 source。
-格式化 registry error 会包含安全的 selector 和 provider 上下文；registry 的 `Display` 与 `Debug`
+格式化 registry error 只会在适用时包含安全的 selector 和 provider 上下文；registry 的 `Display` 与 `Debug`
 使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
 application-default redactor。它们不会递归展开 provider `source()`，也不会把内部 message 作为未脱敏
 文本输出。需要结构化错误处理时，应显式使用 typed `Error::source()` 链。

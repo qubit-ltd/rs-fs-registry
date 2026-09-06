@@ -10,12 +10,10 @@ facade/SPI 重构后的可观察合约。它补充[中文用户手册](user_guid
 `CredentialRef` 提供。registry 在调用 provider 之前检查这一不变量，并返回：
 
 ```text
-FileSystemRegistryError::CredentialSourceConflict {
-    reason_code: "embedded_and_referenced_credentials",
-}
+FileSystemRegistryError::CredentialSourceConflict
 ```
 
-`reason_code()` 返回稳定的机器可读字符串。它只表达冲突类别，不包含 URI、credential
+`reason_code()` 固定返回 `credential_source_conflict`。它只表达冲突类别，不包含 URI、credential
 reference 或 secret；此变体的 `Error::source()` 为 `None`。迁移时应按变体或
 reason code 处理，而不要依赖旧版 `InvalidConfiguration.message` 的文字内容。
 

@@ -51,7 +51,7 @@ fn open_local_report() -> FsResult<()> {
   `CredentialRef`。
 - 每个 resolution 将文件系统与 provider 解码路径、无 secret 的 canonical URI 配对。
 
-格式化 registry error 会包含安全的 selector 和 provider 上下文。registry 的 `Display` 与 `Debug`
+格式化 registry error 只会在适用时包含安全的 selector 和 provider 上下文。registry 的 `Display` 与 `Debug`
 使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
 application-default redactor，不递归展开 provider source，也不会将内部 message 作为未脱敏文本输出。
 
@@ -66,7 +66,7 @@ token、password、private key 或其他 secret。`ProviderSelection`、`Provide
 
 如果 embedded URI credential 与 `CredentialRef` 占用同一个 credential slot，resolution 会在
 provider 创建前返回 `FileSystemRegistryError::CredentialSourceConflict`。其稳定的
-`reason_code()` 为 `embedded_and_referenced_credentials`，不包含 URI 或 credential 内容。
+`reason_code()` 为 `credential_source_conflict`，不包含 URI 或 credential 内容。
 
 URI scheme selection 只接受非空 ASCII token：首尾为字母或数字，正文分隔符仅限 `-`、`_`、`.` 和
 `+`。selector parser 会去除首尾空白并将 ASCII 字母转为小写。provider failure 分为

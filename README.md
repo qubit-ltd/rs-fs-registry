@@ -59,7 +59,7 @@ fn open_local_report() -> FsResult<()> {
 - Each resolution pairs a filesystem with its provider-decoded path and a
   secret-free canonical URI.
 
-Formatted registry errors include safe selector and provider context. Registry
+Formatted registry errors include only applicable safe selector and provider context. Registry
 `Display` and `Debug` use the immutable built-in policy from
 `qubit_redact::Redactor::standard()`; they do not read or follow later changes
 to the process-wide application-default redactor, recursively expand a
@@ -79,7 +79,7 @@ re-exported. Add `qubit-spi` directly when using those types.
 If an embedded URI credential and a `CredentialRef` occupy the same credential
 slot, resolution fails before provider creation with
 `FileSystemRegistryError::CredentialSourceConflict`. Its stable
-`reason_code()` is `embedded_and_referenced_credentials`; the code contains no
+`reason_code()` is `credential_source_conflict`; the code contains no
 URI or credential payload.
 
 URI scheme selection accepts only a nonempty ASCII token with alphanumeric
