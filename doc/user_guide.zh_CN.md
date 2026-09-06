@@ -30,8 +30,10 @@ resolution = filesystem + decoded path + canonical URI
 ## 实战场景
 
 某应用在启动时选择本地文件系统 provider，再打开一个报表 URI，而不让报表处理代码耦合于
-provider factory。成功标准是边界返回可用于 `stat` 的文件系统与逻辑路径，并可取得 canonical URI
-用于安全标识。
+provider factory。成功标准是边界返回已经通过 facade `PathSemantics`、路径形式约束和 limits
+校验的文件系统与逻辑路径，并可取得 canonical URI 用于安全标识。resolution 的校验只读取
+facade 已声明的 properties，不调用 `stat`、不访问后端，也不证明目标已经存在；需要资源状态时，
+再显式调用 `stat` 或其他 operation。
 
 ## 安装与最小配置
 
@@ -65,6 +67,9 @@ fn inspect_report() -> FsResult<()> {
 
 应将 URI 与配置保留在 resolution 边界。下游代码使用 `resolution.file_system()` 和
 `resolution.path()`，而不是再次解码 URI。
+
+同步与异步 resolution 使用完全相同的路径校验规则。provider 负责 URI 到逻辑路径的特有解码；
+registry 在返回 resolution 前，会依据已配置的 facade 校验解码后的路径。
 
 ## 进阶用法
 
