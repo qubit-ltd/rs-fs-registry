@@ -189,12 +189,13 @@ pub(crate) fn sync_resolution_with_path_properties(
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
 ) -> Result<FileSystemResolution, FsError> {
-    sync_resolution_with_path_semantics(
+    sync_resolution_with_path_semantics_and_scheme(
         provider_id,
         path,
         limits,
         path_constraints,
         PathSemantics::Hierarchical,
+        None,
     )
 }
 
@@ -205,9 +206,27 @@ pub(crate) fn sync_resolution_with_path_semantics(
     path_constraints: PathConstraints,
     path_semantics: PathSemantics,
 ) -> Result<FileSystemResolution, FsError> {
+    sync_resolution_with_path_semantics_and_scheme(
+        provider_id,
+        path,
+        limits,
+        path_constraints,
+        path_semantics,
+        Some("registry-test"),
+    )
+}
+
+fn sync_resolution_with_path_semantics_and_scheme(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+    scheme: Option<&'static str>,
+) -> Result<FileSystemResolution, FsError> {
     let file_system = FileSystem::from_spi(SyncPropertiesOnlySpi {
         provider_id,
-        scheme: Some("registry-test"),
+        scheme,
         limits,
         path_constraints,
         path_semantics,
@@ -313,12 +332,13 @@ pub(crate) fn async_resolution_with_path_properties(
     limits: FileSystemLimits,
     path_constraints: PathConstraints,
 ) -> Result<AsyncFileSystemResolution, FsError> {
-    async_resolution_with_path_semantics(
+    async_resolution_with_path_semantics_and_scheme(
         provider_id,
         path,
         limits,
         path_constraints,
         PathSemantics::Hierarchical,
+        None,
     )
 }
 
@@ -330,9 +350,28 @@ pub(crate) fn async_resolution_with_path_semantics(
     path_constraints: PathConstraints,
     path_semantics: PathSemantics,
 ) -> Result<AsyncFileSystemResolution, FsError> {
+    async_resolution_with_path_semantics_and_scheme(
+        provider_id,
+        path,
+        limits,
+        path_constraints,
+        path_semantics,
+        Some("registry-test"),
+    )
+}
+
+#[cfg(feature = "async")]
+fn async_resolution_with_path_semantics_and_scheme(
+    provider_id: &'static str,
+    path: &str,
+    limits: FileSystemLimits,
+    path_constraints: PathConstraints,
+    path_semantics: PathSemantics,
+    scheme: Option<&'static str>,
+) -> Result<AsyncFileSystemResolution, FsError> {
     let file_system = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
         provider_id,
-        scheme: Some("registry-test"),
+        scheme,
         limits,
         path_constraints,
         path_semantics,

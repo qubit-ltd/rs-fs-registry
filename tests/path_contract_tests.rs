@@ -45,11 +45,12 @@ fn synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
 
 #[test]
 fn synchronous_resolution_accepts_relative_and_literal_object_key_paths() {
-    let relative = common::sync_resolution_with_path_properties(
+    let relative = common::sync_resolution_with_path_semantics(
         "relative-provider",
         "dir/file",
         FileSystemLimits::unknown(),
         PathConstraints::relative(),
+        PathSemantics::Hierarchical,
     )
     .expect("relative paths accepted by relative filesystem");
     assert_eq!("dir/file", relative.path().as_str());
@@ -102,11 +103,12 @@ fn asynchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
 #[cfg(feature = "async")]
 #[test]
 fn asynchronous_resolution_accepts_relative_and_literal_object_key_paths() {
-    let relative = common::async_resolution_with_path_properties(
+    let relative = common::async_resolution_with_path_semantics(
         "relative-provider",
         "dir/file",
         FileSystemLimits::unknown(),
         PathConstraints::relative(),
+        PathSemantics::Hierarchical,
     )
     .expect("relative paths accepted by relative filesystem");
     assert_eq!("dir/file", relative.path().as_str());
