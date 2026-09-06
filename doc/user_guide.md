@@ -87,12 +87,30 @@ Therefore `resolve_config` does not fall back to the registry default. Use the
 explicit/default entry points only when the caller, rather than the URI
 configuration, owns selection.
 
+When a URI scheme is used as a named selection, it is passed through
+`ProviderSelection::named`. The selector must be a nonempty ASCII token with an
+alphanumeric first and last character. Its body may contain only lowercase
+ASCII letters, digits, `-`, `_`, `.`, and `+`. Selector parsing trims
+surrounding whitespace and lowercases ASCII letters; `/`, `:`, whitespace,
+non-ASCII characters, and other punctuation are rejected. Only the parsed
+scheme is used for selection. Authority, userinfo, query, and the raw URI text
+are not re-parsed as selector input.
+
+The registry default is resolved as an atomic catalog snapshot: the default
+selection and its candidate provider handles are read together. A concurrent
+registration or default replacement affects a later snapshot and cannot mix
+two catalog versions into one default resolution.
+
 ### Credentials and async resolution
 
 Use `CredentialRef` only to reference a provider-recognized source:
 `DefaultChain`, a profile, environment variable names, or an external provider
 ID. Do not place secret material in it. The registry also rejects configuration
-credential conflicts before provider creation.
+credential conflicts before provider creation. This returns
+`FileSystemRegistryError::CredentialSourceConflict`; its stable
+`reason_code()` is `embedded_and_referenced_credentials` when an embedded URI
+secret and an external `CredentialRef` occupy the same slot. The reason code is
+safe structured data and contains no URI, reference, or secret payload.
 
 For async providers, register with `AsyncFileSystemRegistry` and await its
 owned-config `resolve_config`, `resolve_uri`, `resolve_selected_config`, or
@@ -108,9 +126,26 @@ been selected; inspect the typed error rather than replacing it with a generic
 message. A registry error can convert to `FsError` while retaining the typed
 registry error as its source.
 Formatted registry errors include safe selector and provider context. Their
-fields are passed through the process-wide `qubit_redact::RedactionPolicy`, so
-applications can raise `provider_id` or `selection` to a sensitive level before
-formatting diagnostics.
+fields are rendered with the immutable built-in standard policy from
+`qubit_redact::Redactor::standard()`; registry `Display` and `Debug` do not read
+or follow later replacements of the process-wide application-default redactor.
+They do not recursively expand a provider `source()` or emit an internal
+message as unredacted text. Use the typed `Error::source()` chain explicitly
+when structured error handling needs it.
+
+Provider creation failures retain their SPI classification:
+`Unsupported`, `Unavailable`, `InvalidConfiguration`, or
+`InitializationFailed`. The default `FallbackPolicy::OnAbsence` continues only
+after `Unsupported` and `Unavailable`; `Never` always stops, and `OnAnyError`
+continues after every leaf failure. Named selections never fall back. Resolution
+errors raised before a provider is called do not create provider attempts.
+
+The canonical URI is the selected provider's credential-free location for this
+resolution. It is not a universal URI normalization or a replacement for the
+connection URI. Its scheme must be advertised by the returned filesystem
+facade; provider-specific authority, path normalization, and URI-to-path
+semantics remain the provider's responsibility. Do not treat it as a
+cross-provider global identity.
 
 ## Troubleshooting
 

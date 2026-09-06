@@ -202,14 +202,25 @@ Selection precedence 保持确定：
 不暴露或重新解析原始 URI 文本，也不把 authority、userinfo 或 query 放入 selection
 diagnostics。
 
+URI scheme 作为 named selection 的输入时，会经过 `ProviderSelection::named` 的
+selector 校验。输入必须是非空 ASCII token，首尾必须是 ASCII 字母或数字，正文只能
+使用 ASCII 小写字母、数字以及 `-`、`_`、`.`、`+`；解析会去掉首尾空白并将 ASCII
+字母转为小写。空 scheme、包含 `/`、`:`、空白、非 ASCII 字符或其他分隔符的值不能
+形成 scheme-derived selection，并在 provider 创建前返回 selection error。scheme 只
+决定 provider selection，不等于对完整 URI 文本重新解析。
+
 Fallback policy 必须区分：
 
-- provider 未注册；
-- provider 明确不适用于 config；
-- provider configuration invalid；
-- credential resolution failure；
-- provider unavailable；
-- provider construction failure。
+- `Unsupported`：provider 明确不适用于当前请求；
+- `Unavailable`：provider 或其运行环境不可用；
+- `InvalidConfiguration`：provider 拒绝 provider-specific 配置；
+- `InitializationFailed`：provider 接受请求后初始化失败。
+
+`Unsupported` 和 `Unavailable` 构成 absence 类别。`FallbackPolicy::Never` 在任何
+叶失败后停止；默认的 `FallbackPolicy::OnAbsence` 只在 absence 后继续；
+`FallbackPolicy::OnAnyError` 在所有叶失败后都允许继续。named selection 只有一个
+候选且不 fallback。provider 尚未被调用时产生的 unknown/no-candidate/empty-registry
+resolution error 不属于 provider failure，也不会伪造 provider attempt。
 
 只有 policy 明确允许的 failure class 才进入下一个 provider。错误聚合保留尝试顺序、
 provider identity 和决定停止 fallback 的 decisive failure。
@@ -228,6 +239,11 @@ Provider resolution 使用 point-in-time provider snapshot：
 - async await 期间不持有 registry lock；
 - provider 实例的生命周期由 snapshot 保证；
 - provider 创建出的 `FileSystem` 可以独立于 registry 存活。
+
+默认入口使用同一个 catalog read snapshot 读取当前 default selection 并解析候选
+provider；selection 与候选集合以一个原子结果配对。注册 provider 或替换默认 selection
+只能影响之后取得的 snapshot，不能让一次已开始的 default resolution 混入两个版本的
+selection/candidate 集合。
 
 若 registry 或 provider 实现 configured filesystem cache，缓存值必须是
 `FileSystem` / `AsyncFileSystem` 门面，而不是 operation SPI。克隆门面保留同一 SPI
@@ -275,6 +291,11 @@ provider creation 前报 configuration conflict，不能静默选择优先级。
 不提供 provider-specific 例外；如果未来需要组合不同 credential role，应先定义并
 验证显式的 credential policy，再放宽这一不变量。
 
+该冲突使用 `FileSystemRegistryError::CredentialSourceConflict` 表示，并提供稳定的
+`reason_code()`。当前 embedded URI secret 与外部 `CredentialRef` 同时存在时，代码为
+`embedded_and_referenced_credentials`。reason code 只用于结构化诊断，不包含 URI、
+credential reference 或 secret；该错误没有底层 `source()`。
+
 `CredentialRef` 只描述外部 secret 的引用，不承载 token、password、private key 等
 secret value。`ConnectionUri` 可以在受控入口承载 userinfo password 或敏感 query，
 但其普通 `Display`/`Debug` 必须委托 `qubit-redact`，且不能实现会静默暴露明文的
@@ -290,12 +311,21 @@ resolution 前产生 secret-free canonical `Uri`。在此过程中：
   规则；
 - `FileSystemConfig` 不派生会输出明文 `ConnectionUri` 的普通 serialization；如需
   持久化 secret-bearing 配置，必须使用名称醒目的显式导出边界；
-- registry error 的手写 `Display`/`Debug` 不展开 provider source；
+- registry error 的手写 `Display`/`Debug` 不递归展开 provider `source()`，也不把
+  `InvalidConfiguration.message` 当作普通明文字段输出；message 通过敏感字段规则
+  交给 redactor；
 - typed provider source 可以通过显式 `Error::source()` 链访问，但不能因 derive 或
   diagnostics 自动格式化而泄漏 secret。
 
 `ConnectionUri` 不能直接作为 cache key；canonical `Uri` 只有在 provider 移除
 credential-like query、password 及其他 secret 后才能进入 resolution 或非敏感 key。
+
+canonical URI 的作用域是一次 provider resolution 的安全定位结果。它由选中的 provider
+根据其 URI 与 decoded `Path` 关系生成，不是对所有 provider 通用的 URI 规范化，也不
+替代原始 `ConnectionUri` 的连接输入。`FileSystemResolution::try_new` 只要求其 scheme
+属于返回 filesystem facade 声明的 schemes；authority、path 的具体规范化及 provider
+语义仍由 provider 负责。canonical URI 不得恢复 credential、userinfo 或敏感 query，
+也不能被当作跨 provider 的全局 identity。
 
 ## 11. Error 模型
 
@@ -306,6 +336,7 @@ credential-like query、password 及其他 secret 后才能进入 resolution 或
 - provider unavailable；
 - invalid configuration；
 - credential resolution；
+- credential source conflict（含稳定 `reason_code`）；
 - resolution failure；
 - provider creation；
 - exhausted fallback。
@@ -317,6 +348,12 @@ credential-like query、password 及其他 secret 后才能进入 resolution 或
 - 有序 provider failures；
 - decisive failure；
 - typed source。
+
+安全文本诊断只输出经过 redaction 的安全上下文，不展开 typed source 的内容，也不
+把内部 message 当作未经处理的明文。`FileSystemRegistryError` 的 `Display`/`Debug`
+每次使用 `qubit_redact::Redactor::standard()` 的不可变内置策略快照；它不读取也不
+跟随进程级 `application_default` redactor 的后续替换。需要结构化错误链时，调用方
+仍可通过显式 `Error::source()` 访问 typed source，并自行决定其处理方式。
 
 转换为 `FsError` 时：
 
