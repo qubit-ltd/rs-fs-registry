@@ -53,9 +53,7 @@ impl AsyncFileSystemResolution {
     /// limits, or when the canonical URI scheme is unsupported.
     pub fn try_new(file_system: AsyncFileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
         let p = file_system.properties();
-        p.path_constraints().validate(&path)?;
-        p.limits()
-            .validate_path(&path, p.info().path_semantics(), FsOperation::ParsePath)?;
+        p.validate_path(&path, FsOperation::ParsePath)?;
         if !p.info().schemes().iter().any(|s| s == canonical_uri.scheme()) {
             return Err(FsError::new(
                 FsErrorKind::InvalidUri,
