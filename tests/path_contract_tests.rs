@@ -5,9 +5,6 @@
 // =============================================================================
 //! Regression tests for resolution path validation delegation.
 
-#[path = "common.rs"]
-mod common;
-
 use qubit_fs::Path;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -15,6 +12,8 @@ use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::path::PathConstraints;
 use qubit_fs::path::PathSemantics;
+
+use super::common;
 
 #[test]
 fn synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
