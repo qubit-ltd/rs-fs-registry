@@ -15,11 +15,11 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
-use qubit_spi::ProviderSelection;
 use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderMetadata;
+use qubit_spi::ProviderSelection;
 use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderCreationError;
 use qubit_spi::error::ProviderFailure;
@@ -101,8 +101,7 @@ fn test_registry_error_reason_codes_preserve_typed_categories() {
         .expect_err("invalid selector must fail selection");
     let no_candidates = FileSystemRegistry::default()
         .resolve_selected_config(
-            &ProviderSelection::chain_allowing_missing(["missing"])
-                .expect("selector should parse"),
+            &ProviderSelection::chain_allowing_missing(["missing"]).expect("selector should parse"),
             &FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI should parse")),
         )
         .expect_err("lenient missing provider must have no candidates");
