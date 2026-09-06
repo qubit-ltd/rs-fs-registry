@@ -18,4 +18,5 @@ mod file_system_registry_tests;
 mod file_system_resolution_tests;
 mod file_system_spec_tests;
 mod internal;
+mod path_contract_tests;
 mod readme_examples_tests;
