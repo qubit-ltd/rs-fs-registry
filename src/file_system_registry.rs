@@ -236,7 +236,7 @@ impl FileSystemRegistry {
     #[inline(always)]
     pub fn resolve_default_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
-        let (selection, resolver) = self.providers.resolve_default_snapshot_with_selection();
+        let (selection, resolver) = self.providers.resolve_default_snapshot();
         ensure_selection_matches_config(&selection, config)?;
         resolver
             .map_err(FileSystemRegistryError::from)?
