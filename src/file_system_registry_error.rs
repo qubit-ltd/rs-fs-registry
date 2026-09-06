@@ -74,34 +74,58 @@ pub enum FileSystemRegistryError {
 impl FileSystemRegistryError {
     /// Builds one bounded diagnostic event with an explicit redactor snapshot.
     fn redacted_output(&self, redactor: &Redactor) -> RedactionTextOutput {
-        match self {
-            Self::InvalidConfiguration { message } => redactor
-                .text_composer()
-                .literal("invalid filesystem configuration: ")
+        let composer = redactor
+            .text_composer()
+            .literal("filesystem registry error: code=")
+            .field("reason_code", self.reason_code());
+        let composer = match self {
+            Self::InvalidConfiguration { message } => composer
+                .literal(", detail=")
                 .field("password", message),
-            Self::CredentialSourceConflict => redactor
-                .text_composer()
-                .literal("credential source conflict: reason_code=")
-                .field("reason_code", "credential_source_conflict"),
-            Self::Registration(error) => redactor
-                .text_composer()
-                .literal("provider registration failed: selector=")
+            Self::CredentialSourceConflict => composer,
+            Self::Registration(error) => composer
+                .literal(", selector=")
                 .field("selector", error.selector())
                 .literal(", existing_provider=")
                 .field("provider_id", error.existing_provider())
                 .literal(", provider=")
                 .field("provider_id", error.provider()),
-            Self::Selection(_error) => redactor.text_composer().literal("provider selection is invalid"),
-            Self::SelectionConflict { requested, configured } => redactor
-                .text_composer()
-                .literal("configured provider selection conflicts with requested selection: requested=")
+            Self::Selection(_error) => composer,
+            Self::SelectionConflict { requested, configured } => composer
+                .literal(", requested=")
                 .field("selection", &DebugDisplay::new(requested))
                 .literal(", configured=")
                 .field("selection", &DebugDisplay::new(configured)),
-            Self::Resolution(_error) => redactor.text_composer().literal("provider resolution failed"),
-            Self::Creation(_error) => redactor.text_composer().literal("filesystem provider creation failed"),
-        }
-        .finish()
+            Self::Resolution(error) => {
+                let mut composer = composer;
+                if let Some(selectors) = error.selectors() {
+                    composer = composer
+                        .literal(", selector_count=")
+                        .field("selector_count", &selectors.len());
+                    for selector in selectors.iter().take(8) {
+                        composer = composer
+                            .literal(", selector=")
+                            .field("selector", selector.as_str());
+                    }
+                }
+                composer
+            }
+            Self::Creation(error) => {
+                let decisive = error.decisive_attempt();
+                composer
+                    .literal(", attempt_count=")
+                    .field("attempt_count", &error.attempts().len())
+                    .literal(", termination=")
+                    .field("termination", &DebugDisplay::new(&error.termination()))
+                    .literal(", provider=")
+                    .field("provider_id", decisive.provider_id().as_str())
+                    .literal(", failure_kind=")
+                    .field("failure_kind", &DebugDisplay::new(&decisive.failure().kind()))
+                    .literal(", fs_error_kind=")
+                    .field("fs_error_kind", &DebugDisplay::new(&decisive.failure().error().kind()))
+            }
+        };
+        composer.finish()
     }
 
     /// Returns the stable reason code for this registry error.
@@ -114,10 +138,15 @@ impl FileSystemRegistryError {
         match self {
             Self::InvalidConfiguration { .. } => "invalid_configuration",
             Self::CredentialSourceConflict => "credential_source_conflict",
-            Self::Registration(_) => "provider_registration_failed",
-            Self::Selection(_) => "provider_selection_invalid",
-            Self::SelectionConflict { .. } => "provider_selection_conflict",
-            Self::Resolution(_) => "provider_resolution_failed",
+            Self::Registration(_) => "registration_conflict",
+            Self::Selection(_) => "invalid_selection",
+            Self::SelectionConflict { .. } => "selection_conflict",
+            Self::Resolution(error) => match error {
+                ProviderResolutionError::UnknownProviders { .. } => "unknown_providers",
+                ProviderResolutionError::NoCandidates { .. } => "no_candidates",
+                ProviderResolutionError::EmptyRegistry => "empty_registry",
+                _ => "resolution_failed",
+            },
             Self::Creation(_) => "provider_creation_failed",
         }
     }
