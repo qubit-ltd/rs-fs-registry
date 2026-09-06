@@ -15,6 +15,8 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
 use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
@@ -298,11 +300,11 @@ impl ProviderMetadata for InvalidConfigurationProvider {
     }
 }
 
-impl ServiceProvider<qubit_fs_registry::FileSystemSpec> for InvalidConfigurationProvider {
+impl ServiceProvider<FileSystemSpec> for InvalidConfigurationProvider {
     fn create_configured(
         &self,
         _: &FileSystemConfig,
-    ) -> Result<qubit_fs_registry::FileSystemResolution, ProviderFailure<FsError>> {
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::invalid_configuration(FsError::new(
             FsErrorKind::InvalidOptions,
             FsOperation::Provider,
