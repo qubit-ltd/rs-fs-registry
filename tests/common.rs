@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 // =============================================================================
 //    Copyright (c) 2026 Haixing Hu.
 //
@@ -8,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 // qubit-style: allow test-file-name -- shared integration-test fixture module.
+
+#![allow(dead_code)]
 
 #[cfg(feature = "async")]
 use std::future::Future;
@@ -477,14 +477,20 @@ impl FileSystemSpi for SyncPropertiesOnlySpi {
     }
 
     fn rename(&self, _: RenameRequest<'_>) -> Result<RenameOutcome, SpiRenameFailure> {
-        Err(SpiRenameFailure::new(unused(), RenameFailureState::Unchanged))
+        Err(SpiRenameFailure::new(
+            unused(),
+            RenameFailureState::Unchanged,
+        ))
     }
 
     fn create_temp_file(&self, _: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
         Err(unused())
     }
 
-    fn create_temp_directory(&self, _: CreateTempDirectoryRequest) -> FsResult<OpenedTempDirectory> {
+    fn create_temp_directory(
+        &self,
+        _: CreateTempDirectoryRequest,
+    ) -> FsResult<OpenedTempDirectory> {
         Err(unused())
     }
 }
@@ -514,15 +520,24 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
         Box::pin(async { Err(unused()) })
     }
 
-    fn list<'a>(&'a self, _: ListRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncDirectoryStream>> {
+    fn list<'a>(
+        &'a self,
+        _: ListRequest<'a>,
+    ) -> SpiFuture<'a, FsResult<OpenedAsyncDirectoryStream>> {
         Box::pin(async { Err(unused()) })
     }
 
-    fn open_reader<'a>(&'a self, _: OpenReaderRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncReader>> {
+    fn open_reader<'a>(
+        &'a self,
+        _: OpenReaderRequest<'a>,
+    ) -> SpiFuture<'a, FsResult<OpenedAsyncReader>> {
         Box::pin(async { Err(unused()) })
     }
 
-    fn open_writer<'a>(&'a self, _: OpenWriterRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncWriter>> {
+    fn open_writer<'a>(
+        &'a self,
+        _: OpenWriterRequest<'a>,
+    ) -> SpiFuture<'a, FsResult<OpenedAsyncWriter>> {
         Box::pin(async { Err(unused()) })
     }
 
@@ -533,19 +548,36 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
         Box::pin(async { Err(unused()) })
     }
 
-    fn delete_file<'a>(&'a self, _: DeleteFileRequest<'a>) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
+    fn delete_file<'a>(
+        &'a self,
+        _: DeleteFileRequest<'a>,
+    ) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
         Box::pin(async { Err(unused()) })
     }
 
-    fn delete_directory<'a>(&'a self, _: DeleteDirectoryRequest<'a>) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
+    fn delete_directory<'a>(
+        &'a self,
+        _: DeleteDirectoryRequest<'a>,
+    ) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
         Box::pin(async { Err(unused()) })
     }
 
-    fn rename<'a>(&'a self, _: RenameRequest<'a>) -> SpiFuture<'a, Result<RenameOutcome, SpiRenameFailure>> {
-        Box::pin(async { Err(SpiRenameFailure::new(unused(), RenameFailureState::Unchanged)) })
+    fn rename<'a>(
+        &'a self,
+        _: RenameRequest<'a>,
+    ) -> SpiFuture<'a, Result<RenameOutcome, SpiRenameFailure>> {
+        Box::pin(async {
+            Err(SpiRenameFailure::new(
+                unused(),
+                RenameFailureState::Unchanged,
+            ))
+        })
     }
 
-    fn create_temp_file<'a>(&'a self, _: CreateTempFileRequest) -> SpiFuture<'a, FsResult<OpenedAsyncTempFile>> {
+    fn create_temp_file<'a>(
+        &'a self,
+        _: CreateTempFileRequest,
+    ) -> SpiFuture<'a, FsResult<OpenedAsyncTempFile>> {
         Box::pin(async { Err(unused()) })
     }
 
@@ -572,7 +604,11 @@ pub(crate) fn sync_resolution_with_decoded_path(
         path_semantics: semantics,
     })
     .expect("valid fixture facade");
-    FileSystemResolution::try_new(filesystem, path, Uri::parse("registry-test:///resource").expect("URI"))
+    FileSystemResolution::try_new(
+        filesystem,
+        path,
+        Uri::parse("registry-test:///resource").expect("URI"),
+    )
 }
 
 /// Builds a resolution with independently selected facade and decoded-path
@@ -591,5 +627,9 @@ pub(crate) fn async_resolution_with_decoded_path(
         path_semantics: semantics,
     })
     .expect("valid fixture facade");
-    AsyncFileSystemResolution::try_new(filesystem, path, Uri::parse("registry-test:///resource").expect("URI"))
+    AsyncFileSystemResolution::try_new(
+        filesystem,
+        path,
+        Uri::parse("registry-test:///resource").expect("URI"),
+    )
 }
