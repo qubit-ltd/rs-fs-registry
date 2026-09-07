@@ -93,7 +93,6 @@ impl FileSystemRegistryError {
     ///
     /// The code is safe to record in structured diagnostics and does not
     /// include configuration, credential, or provider payloads.
-    #[inline]
     #[must_use]
     pub const fn reason_code(&self) -> &'static str {
         match self {
@@ -119,7 +118,9 @@ impl FileSystemRegistryError {
             .literal("filesystem registry error: code=")
             .field("reason_code", self.reason_code());
         let composer = match self {
-            Self::InvalidConfiguration { message } => composer.literal(", detail=").field("password", message),
+            Self::InvalidConfiguration { message } => {
+                composer.literal(", detail=").field("password", message)
+            }
             Self::CredentialSourceConflict => composer,
             Self::Registration(error) => composer
                 .literal(", selector=")
@@ -129,7 +130,10 @@ impl FileSystemRegistryError {
                 .literal(", provider=")
                 .field("provider_id", error.provider()),
             Self::Selection(_error) => composer,
-            Self::SelectionConflict { requested, configured } => composer
+            Self::SelectionConflict {
+                requested,
+                configured,
+            } => composer
                 .literal(", requested=")
                 .field("selection", &DebugDisplay::new(requested))
                 .literal(", configured=")
@@ -141,7 +145,9 @@ impl FileSystemRegistryError {
                         .literal(", selector_count=")
                         .field("selector_count", &selectors.len());
                     for selector in selectors.iter().take(8) {
-                        composer = composer.literal(", selector=").field("selector", selector.as_str());
+                        composer = composer
+                            .literal(", selector=")
+                            .field("selector", selector.as_str());
                     }
                 }
                 composer
@@ -156,9 +162,15 @@ impl FileSystemRegistryError {
                     .literal(", provider=")
                     .field("provider_id", decisive.provider_id().as_str())
                     .literal(", failure_kind=")
-                    .field("failure_kind", &DebugDisplay::new(&decisive.failure().kind()))
+                    .field(
+                        "failure_kind",
+                        &DebugDisplay::new(&decisive.failure().kind()),
+                    )
                     .literal(", fs_error_kind=")
-                    .field("fs_error_kind", &DebugDisplay::new(&decisive.failure().error().kind()))
+                    .field(
+                        "fs_error_kind",
+                        &DebugDisplay::new(&decisive.failure().error().kind()),
+                    )
             }
         };
         composer.finish()
@@ -175,6 +187,7 @@ impl fmt::Display for FileSystemRegistryError {
     /// # Returns
     ///
     /// The formatter result.
+    #[inline]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = Redactor::standard();
         let output = self.redacted_output(&redactor);
@@ -192,6 +205,7 @@ impl fmt::Debug for FileSystemRegistryError {
     /// # Returns
     ///
     /// The formatter result.
+    #[inline(always)]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "FileSystemRegistryError({self})")
     }
@@ -297,17 +311,21 @@ impl From<FileSystemRegistryError> for FsError {
     /// A filesystem provider-operation error retaining `error` as its source.
     fn from(error: FileSystemRegistryError) -> Self {
         let (kind, message, provider) = match &error {
-            FileSystemRegistryError::InvalidConfiguration { .. } => {
-                (FsErrorKind::InvalidOptions, "filesystem configuration is invalid", None)
-            }
+            FileSystemRegistryError::InvalidConfiguration { .. } => (
+                FsErrorKind::InvalidOptions,
+                "filesystem configuration is invalid",
+                None,
+            ),
             FileSystemRegistryError::CredentialSourceConflict => (
                 FsErrorKind::InvalidOptions,
                 "filesystem credential sources conflict",
                 None,
             ),
-            FileSystemRegistryError::Registration(_) => {
-                (FsErrorKind::Conflict, "filesystem provider registration failed", None)
-            }
+            FileSystemRegistryError::Registration(_) => (
+                FsErrorKind::Conflict,
+                "filesystem provider registration failed",
+                None,
+            ),
             FileSystemRegistryError::Selection(_) => (
                 FsErrorKind::InvalidUri,
                 "filesystem provider selection is invalid",

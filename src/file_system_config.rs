@@ -216,6 +216,7 @@ impl Debug for FileSystemConfig {
     /// # Returns
     ///
     /// The formatter result.
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("FileSystemConfig")
             .field("uri", &self.uri)
