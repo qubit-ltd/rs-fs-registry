@@ -2,6 +2,8 @@
 //    Copyright (c) 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Regression tests for resolution path validation delegation.
 
@@ -16,7 +18,7 @@ use qubit_fs::path::PathSemantics;
 use super::common;
 
 #[test]
-fn synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
+fn test_synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
     let error = common::sync_resolution_with_path_properties(
         "path-contract",
         "resource",
@@ -43,7 +45,7 @@ fn synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
 }
 
 #[test]
-fn synchronous_resolution_accepts_relative_and_literal_object_key_paths() {
+fn test_synchronous_resolution_accepts_relative_and_literal_object_key_paths() {
     let relative = common::sync_resolution_with_path_semantics(
         "relative-provider",
         "dir/file",
@@ -73,7 +75,7 @@ fn synchronous_resolution_accepts_relative_and_literal_object_key_paths() {
 
 #[cfg(feature = "async")]
 #[test]
-fn asynchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
+fn test_asynchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
     let error = common::async_resolution_with_path_properties(
         "path-contract",
         "resource",
@@ -101,7 +103,7 @@ fn asynchronous_resolution_rejects_paths_outside_the_filesystem_contract() {
 
 #[cfg(feature = "async")]
 #[test]
-fn asynchronous_resolution_accepts_relative_and_literal_object_key_paths() {
+fn test_asynchronous_resolution_accepts_relative_and_literal_object_key_paths() {
     let relative = common::async_resolution_with_path_semantics(
         "relative-provider",
         "dir/file",
@@ -122,4 +124,66 @@ fn asynchronous_resolution_accepts_relative_and_literal_object_key_paths() {
     .expect("literal object-key paths accepted by object filesystem");
     assert_eq!("bucket//./object", literal.path().as_str());
     assert_eq!(PathSemantics::ObjectKey, literal.path().semantics());
+}
+
+/// Exact byte limits are inclusive, and decoded path semantics must match the
+/// facade.
+
+#[test]
+fn test_sync_resolution_exact_limit_and_semantics_boundary() {
+    let limits = FileSystemLimits::unknown().with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let accepted = common::sync_resolution_with_decoded_path(
+        Path::parse("/abc").expect("path"),
+        PathSemantics::Hierarchical,
+        limits,
+    )
+    .expect("exact limit is accepted");
+    assert_eq!(accepted.path().as_str(), "/abc");
+    let error = common::sync_resolution_with_decoded_path(
+        Path::parse("/abcd").expect("path"),
+        PathSemantics::Hierarchical,
+        limits,
+    )
+    .expect_err("one byte beyond limit");
+    assert_eq!(error.kind(), FsErrorKind::ResourceLimitExceeded);
+    assert_eq!(error.operation(), FsOperation::ParsePath);
+    assert_eq!(error.provider(), Some("path-boundary"));
+    let error = common::sync_resolution_with_decoded_path(
+        Path::parse_literal("abc").expect("literal path"),
+        PathSemantics::Hierarchical,
+        FileSystemLimits::unknown(),
+    )
+    .expect_err("mismatched path semantics");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+}
+
+/// Exact byte limits are inclusive, and decoded path semantics must match the
+/// facade.
+#[cfg(feature = "async")]
+#[test]
+fn test_async_resolution_exact_limit_and_semantics_boundary() {
+    let limits = FileSystemLimits::unknown().with_max_path_text_bytes(FileSystemLimit::Maximum(4));
+    let accepted = common::async_resolution_with_decoded_path(
+        Path::parse("/abc").expect("path"),
+        PathSemantics::Hierarchical,
+        limits,
+    )
+    .expect("exact limit is accepted");
+    assert_eq!(accepted.path().as_str(), "/abc");
+    let error = common::async_resolution_with_decoded_path(
+        Path::parse("/abcd").expect("path"),
+        PathSemantics::Hierarchical,
+        limits,
+    )
+    .expect_err("one byte beyond limit");
+    assert_eq!(error.kind(), FsErrorKind::ResourceLimitExceeded);
+    assert_eq!(error.operation(), FsOperation::ParsePath);
+    assert_eq!(error.provider(), Some("path-boundary"));
+    let error = common::async_resolution_with_decoded_path(
+        Path::parse_literal("abc").expect("literal path"),
+        PathSemantics::Hierarchical,
+        FileSystemLimits::unknown(),
+    )
+    .expect_err("mismatched path semantics");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
 }

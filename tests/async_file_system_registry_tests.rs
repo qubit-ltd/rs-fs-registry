@@ -6,10 +6,15 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::task::Context;
+use std::task::Poll;
 
+use futures::channel::oneshot;
+use futures::task::noop_waker;
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -29,6 +34,7 @@ use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderFailure;
 
 use super::common;
+use crate::support::provider_fixtures::ObservedProvider;
 
 /// Cloned asynchronous registries share providers and default selection state.
 #[test]
@@ -329,4 +335,102 @@ impl AsyncServiceProvider<FileSystemSpec> for AsyncFailingProvider {
             )))
         })
     }
+}
+
+/// Pending creation keeps owned inputs and the original snapshot without
+/// blocking catalog writes.
+#[test]
+fn test_pending_creation_outlives_registry_and_catalog_changes() {
+    fn require_send_static<F: Future + Send + 'static>(future: F) -> F {
+        future
+    }
+    let registry = AsyncFileSystemRegistry::default();
+    let provider = ObservedProvider::new("original");
+    let calls = Arc::clone(&provider.calls);
+    let (release_tx, release_rx) = oneshot::channel();
+    *provider.release.lock().expect("release control") = Some(release_rx);
+    registry.register(provider).expect("register");
+    registry.set_default_selection(ProviderSelection::named("original").expect("selection"));
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+    let mut future = Box::pin(require_send_static(registry.resolve_default_config(config.clone())));
+    assert!(calls.lock().expect("calls").is_empty());
+    let waker = noop_waker();
+    assert!(matches!(
+        future.as_mut().poll(&mut Context::from_waker(&waker)),
+        Poll::Pending
+    ));
+    assert_eq!(*calls.lock().expect("calls"), vec![config.clone()]);
+    registry
+        .register(ObservedProvider::new("new"))
+        .expect("register while pending");
+    registry.set_default_selection(ProviderSelection::named("new").expect("new selection"));
+    let new = common::block_on(registry.resolve_default_config(config)).expect("new default");
+    assert_eq!(new.file_system().properties().info().provider_id(), "new");
+    drop(registry);
+    release_tx.send(()).expect("release");
+    let old = common::block_on(future).expect("original snapshot completes");
+    assert_eq!(old.file_system().properties().info().provider_id(), "original");
+}
+
+/// Dropping any unpolled owned-config future never creates a provider.
+#[test]
+fn test_unpolled_entry_points_do_not_create_provider() {
+    let registry = AsyncFileSystemRegistry::default();
+    let provider = ObservedProvider::new("lazy");
+    let calls = Arc::clone(&provider.calls);
+    registry.register(provider).expect("register");
+    let selection = ProviderSelection::named("lazy").expect("selection");
+    registry.set_default_selection(selection.clone());
+    let uri = ConnectionUri::parse("lazy:///resource").expect("URI");
+    drop(registry.resolve_config(FileSystemConfig::new(uri.clone())));
+    drop(registry.resolve_selected_config(selection, FileSystemConfig::new(uri.clone())));
+    drop(registry.resolve_default_config(FileSystemConfig::new(uri.clone())));
+    drop(registry.resolve_uri(uri));
+    assert!(calls.lock().expect("calls").is_empty());
+}
+
+/// All async config entry points enforce the same pre-creation credential
+/// boundary.
+#[test]
+fn test_all_async_entry_points_validate_credentials_before_creation() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let selection = ProviderSelection::named("s3").expect("selection");
+    registry.set_default_selection(selection.clone());
+    for uri in ["s3://user:password@bucket/key", "s3://bucket/key?token=secret"] {
+        let config =
+            FileSystemConfig::new(ConnectionUri::parse(uri).expect("URI")).with_credential(CredentialRef::DefaultChain);
+        for result in [
+            common::block_on(registry.resolve_config(config.clone())),
+            common::block_on(registry.resolve_selected_config(selection.clone(), config.clone())),
+            common::block_on(registry.resolve_default_config(config)),
+        ] {
+            let error = result.expect_err("conflict");
+            assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+            assert_eq!(error.reason_code(), "credential_source_conflict");
+        }
+    }
+    assert!(calls.lock().expect("calls").is_empty());
+    let username = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI"))
+        .with_credential(CredentialRef::DefaultChain);
+    let resolution = common::block_on(registry.resolve_config(username.clone())).expect("username is allowed");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "s3");
+    assert_eq!(*calls.lock().expect("calls"), vec![username]);
+}
+
+/// An asynchronous provider cannot change the identity captured at
+/// registration.
+#[test]
+fn test_async_registration_binds_original_descriptor() {
+    let provider = ObservedProvider::new("original");
+    let descriptor = Arc::clone(&provider.descriptor);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("register");
+    *descriptor.lock().expect("descriptor") = ProviderDescriptor::new(ProviderId::new("changed").expect("ID"));
+    let resolution = common::block_on(registry.resolve_uri(ConnectionUri::parse("original:///resource").expect("URI")))
+        .expect("original identity");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "original");
+    assert_eq!(registry.provider_ids()[0].as_str(), "original");
 }
