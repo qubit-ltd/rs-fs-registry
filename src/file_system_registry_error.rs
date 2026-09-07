@@ -24,12 +24,29 @@ use qubit_spi::error::RegistrationError;
 
 /// Result returned by filesystem registry operations.
 ///
+/// Failures retain the typed registration, selection, creation, or
+/// configuration boundary through [`FileSystemRegistryError`]. Successful
+/// resolution returns [`crate::FileSystemResolution`] (or
+/// `AsyncFileSystemResolution` with the `async` feature).
+///
 /// # Type Parameters
 ///
 /// - `T`: Successful registry operation output.
 pub type FileSystemRegistryResult<T> = Result<T, FileSystemRegistryError>;
 
 /// Error returned by filesystem-provider registration, selection, and creation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_registry::FileSystemRegistryError;
+/// let error = FileSystemRegistryError::CredentialSourceConflict;
+/// assert_eq!(error.reason_code(), "credential_source_conflict");
+/// let filesystem_error: qubit_fs::FsError = error.into();
+/// assert_eq!(filesystem_error.kind(), qubit_fs::error::FsErrorKind::InvalidOptions);
+/// assert!(std::error::Error::source(&filesystem_error).is_some());
+/// ```
+#[must_use]
 #[non_exhaustive]
 pub enum FileSystemRegistryError {
     /// Configuration violates a registry-level safety invariant.
@@ -72,6 +89,29 @@ pub enum FileSystemRegistryError {
 }
 
 impl FileSystemRegistryError {
+    /// Returns the stable reason code for this registry error.
+    ///
+    /// The code is safe to record in structured diagnostics and does not
+    /// include configuration, credential, or provider payloads.
+    #[inline]
+    #[must_use]
+    pub const fn reason_code(&self) -> &'static str {
+        match self {
+            Self::InvalidConfiguration { .. } => "invalid_configuration",
+            Self::CredentialSourceConflict => "credential_source_conflict",
+            Self::Registration(_) => "registration_conflict",
+            Self::Selection(_) => "invalid_selection",
+            Self::SelectionConflict { .. } => "selection_conflict",
+            Self::Resolution(error) => match error {
+                ProviderResolutionError::UnknownProviders { .. } => "unknown_providers",
+                ProviderResolutionError::NoCandidates { .. } => "no_candidates",
+                ProviderResolutionError::EmptyRegistry => "empty_registry",
+                _ => "resolution_failed",
+            },
+            Self::Creation(_) => "provider_creation_failed",
+        }
+    }
+
     /// Builds one bounded diagnostic event with an explicit redactor snapshot.
     fn redacted_output(&self, redactor: &Redactor) -> RedactionTextOutput {
         let composer = redactor
@@ -122,29 +162,6 @@ impl FileSystemRegistryError {
             }
         };
         composer.finish()
-    }
-
-    /// Returns the stable reason code for this registry error.
-    ///
-    /// The code is safe to record in structured diagnostics and does not
-    /// include configuration, credential, or provider payloads.
-    #[inline]
-    #[must_use]
-    pub const fn reason_code(&self) -> &'static str {
-        match self {
-            Self::InvalidConfiguration { .. } => "invalid_configuration",
-            Self::CredentialSourceConflict => "credential_source_conflict",
-            Self::Registration(_) => "registration_conflict",
-            Self::Selection(_) => "invalid_selection",
-            Self::SelectionConflict { .. } => "selection_conflict",
-            Self::Resolution(error) => match error {
-                ProviderResolutionError::UnknownProviders { .. } => "unknown_providers",
-                ProviderResolutionError::NoCandidates { .. } => "no_candidates",
-                ProviderResolutionError::EmptyRegistry => "empty_registry",
-                _ => "resolution_failed",
-            },
-            Self::Creation(_) => "provider_creation_failed",
-        }
     }
 }
 

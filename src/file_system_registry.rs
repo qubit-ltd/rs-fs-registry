@@ -32,6 +32,24 @@ use crate::internal::validate_credentials;
 ///
 /// Clones share the same provider catalog and default selection. Each
 /// resolution captures a provider snapshot before creation begins.
+///
+/// The initial default selection is [`ProviderSelection::auto()`], with
+/// [`qubit_spi::FallbackPolicy::OnAbsence`]. Only `resolve_default_config`
+/// uses this default; config and URI entry points follow their own routing.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs::path::ConnectionUri;
+/// use qubit_fs_registry::FileSystemRegistry;
+/// use qubit_fs_registry::FileSystemRegistryError;
+/// let registry = FileSystemRegistry::default();
+/// assert!(registry.is_empty());
+/// let uri = ConnectionUri::parse("missing:///report.csv")?;
+/// let error = registry.resolve_uri(&uri).expect_err("no provider registered");
+/// assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct FileSystemRegistry {
     /// Shared SPI registry storing synchronous providers and default

@@ -15,8 +15,8 @@ use crate::FileSystemRegistryResult;
 
 /// Validates that only one credential source occupies the configuration slot.
 ///
-/// The unredacted text is inspected only inside `ConnectionUri`'s closure and
-/// is never returned, stored, or formatted.
+/// Uses `ConnectionUri::has_embedded_secret()` without extracting, storing,
+/// or formatting the raw connection text.
 ///
 /// # Parameters
 ///

@@ -16,4 +16,9 @@ use super::file_system_spec::FileSystemSpec;
 /// Implementations expose both filesystem creation behavior and the stable
 /// descriptor used when registering them in a
 /// [`FileSystemRegistry`](crate::FileSystemRegistry).
+///
+/// The [`ProviderDefinition`] combines provider metadata with configured
+/// creation. [`FileSystemSpec`] fixes the configuration, resolution, and
+/// filesystem error types; [`FileSystemRegistry`](crate::FileSystemRegistry)
+/// validates returned identities.
 pub type FileSystemProvider = dyn ProviderDefinition<FileSystemSpec>;

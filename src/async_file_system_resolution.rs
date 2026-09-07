@@ -19,6 +19,173 @@ use qubit_fs::error::FsOperation;
 use qubit_fs::path::Uri;
 
 /// A configured asynchronous facade paired with its decoded location.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[cfg(feature = "async")]
+/// # {
+/// use qubit_fs_registry::AsyncFileSystemResolution;
+/// # use qubit_fs::AsyncFileSystem;
+/// # use qubit_fs::FileSystem;
+/// # use qubit_fs::FsError;
+/// # use qubit_fs::FsResult;
+/// # use qubit_fs::Path;
+/// # use qubit_fs::directory::CreateDirectoryOutcome;
+/// # use qubit_fs::directory::DeleteOutcome;
+/// # use qubit_fs::error::FsErrorKind;
+/// # use qubit_fs::error::FsOperation;
+/// # use qubit_fs::metadata::FileSystemCapabilities;
+/// # use qubit_fs::metadata::FileSystemId;
+/// # use qubit_fs::metadata::FileSystemInfo;
+/// # use qubit_fs::metadata::FileSystemLimits;
+/// # use qubit_fs::metadata::SymlinkPolicy;
+/// # use qubit_fs::path::PathConstraints;
+/// # use qubit_fs::path::PathSemantics;
+/// # use qubit_fs::path::Uri;
+/// # use qubit_fs::rename::RenameFailureState;
+/// # use qubit_fs::rename::RenameOutcome;
+/// # use qubit_fs::spi::AsyncFileSystemSpi;
+/// # use qubit_fs::spi::CreateDirectoryRequest;
+/// # use qubit_fs::spi::CreateTempDirectoryRequest;
+/// # use qubit_fs::spi::CreateTempFileRequest;
+/// # use qubit_fs::spi::DeleteDirectoryRequest;
+/// # use qubit_fs::spi::DeleteFileRequest;
+/// # use qubit_fs::spi::FileSystemSpi;
+/// # use qubit_fs::spi::ListRequest;
+/// # use qubit_fs::spi::OpenReaderRequest;
+/// # use qubit_fs::spi::OpenWriterRequest;
+/// # use qubit_fs::spi::OpenedAsyncDirectoryStream;
+/// # use qubit_fs::spi::OpenedAsyncReader;
+/// # use qubit_fs::spi::OpenedAsyncTempDirectory;
+/// # use qubit_fs::spi::OpenedAsyncTempFile;
+/// # use qubit_fs::spi::OpenedAsyncWriter;
+/// # use qubit_fs::spi::OpenedDirectoryStream;
+/// # use qubit_fs::spi::OpenedReader;
+/// # use qubit_fs::spi::OpenedTempDirectory;
+/// # use qubit_fs::spi::OpenedTempFile;
+/// # use qubit_fs::spi::OpenedWriter;
+/// # use qubit_fs::spi::ProviderOperations;
+/// # use qubit_fs::spi::ProviderProperties;
+/// # use qubit_fs::spi::RenameRequest;
+/// # use qubit_fs::spi::SpiFuture;
+/// # use qubit_fs::spi::SpiRenameFailure;
+/// # use qubit_fs::spi::StatRequest;
+/// # use qubit_fs::spi::StatResponse;
+/// # fn properties(
+/// #     provider_id: &'static str,
+/// #     scheme: Option<&str>,
+/// #     limits: FileSystemLimits,
+/// #     path_constraints: PathConstraints,
+/// #     path_semantics: PathSemantics,
+/// # ) -> ProviderProperties {
+/// #     let mut info = FileSystemInfo::new(
+/// #         FileSystemId::new("registry-test-fs").expect("valid filesystem ID"),
+/// #         provider_id,
+/// #         path_semantics,
+/// #     );
+/// #     if let Some(scheme) = scheme {
+/// #         info = info.with_scheme(scheme).expect("valid test scheme");
+/// #     }
+/// #     ProviderProperties::new(
+/// #         info,
+/// #         ProviderOperations::new(),
+/// #         FileSystemCapabilities::new(),
+/// #         limits,
+/// #         path_constraints,
+/// #         SymlinkPolicy::Reject,
+/// #     )
+/// #     .expect("valid test properties")
+/// # }
+/// # fn unused() -> FsError {
+/// #     FsError::new(
+/// #         FsErrorKind::UnsupportedOperation,
+/// #         FsOperation::Other,
+/// #         "unused test operation",
+/// #     )
+/// # }
+/// # struct AsyncPropertiesOnlySpi {
+/// #     provider_id: &'static str,
+/// #     scheme: Option<&'static str>,
+/// #     limits: FileSystemLimits,
+/// #     path_constraints: PathConstraints,
+/// #     path_semantics: PathSemantics,
+/// # }
+/// # impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
+/// #     fn properties(&self) -> ProviderProperties {
+/// #         properties(
+/// #             self.provider_id,
+/// #             self.scheme,
+/// #             self.limits,
+/// #             self.path_constraints.clone(),
+/// #             self.path_semantics,
+/// #         )
+/// #     }
+/// #
+/// #     fn stat<'a>(&'a self, _: StatRequest<'a>) -> SpiFuture<'a, FsResult<StatResponse>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn list<'a>(&'a self, _: ListRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncDirectoryStream>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn open_reader<'a>(&'a self, _: OpenReaderRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncReader>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn open_writer<'a>(&'a self, _: OpenWriterRequest<'a>) -> SpiFuture<'a, FsResult<OpenedAsyncWriter>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn create_directory<'a>(
+/// #         &'a self,
+/// #         _: CreateDirectoryRequest<'a>,
+/// #     ) -> SpiFuture<'a, FsResult<CreateDirectoryOutcome>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn delete_file<'a>(&'a self, _: DeleteFileRequest<'a>) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn delete_directory<'a>(&'a self, _: DeleteDirectoryRequest<'a>) -> SpiFuture<'a, FsResult<DeleteOutcome>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn rename<'a>(&'a self, _: RenameRequest<'a>) -> SpiFuture<'a, Result<RenameOutcome, SpiRenameFailure>> {
+/// #         Box::pin(async { Err(SpiRenameFailure::new(unused(), RenameFailureState::Unchanged)) })
+/// #     }
+/// #
+/// #     fn create_temp_file<'a>(&'a self, _: CreateTempFileRequest) -> SpiFuture<'a, FsResult<OpenedAsyncTempFile>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// #
+/// #     fn create_temp_directory<'a>(
+/// #         &'a self,
+/// #         _: CreateTempDirectoryRequest,
+/// #     ) -> SpiFuture<'a, FsResult<OpenedAsyncTempDirectory>> {
+/// #         Box::pin(async { Err(unused()) })
+/// #     }
+/// # }
+/// # let filesystem = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
+/// #     provider_id: "example", scheme: Some("file"), limits: FileSystemLimits::unknown(),
+/// #     path_constraints: PathConstraints::absolute(), path_semantics: PathSemantics::Hierarchical,
+/// # })?;
+/// let resolution = AsyncFileSystemResolution::try_new(
+///     filesystem, Path::parse("/report.csv")?, Uri::parse("file:///report.csv")?,
+/// )?;
+/// assert_eq!(resolution.path().as_str(), "/report.csv");
+/// assert_eq!(resolution.canonical_uri().scheme(), "file");
+/// let (filesystem, path, uri) = resolution.into_parts();
+/// assert_eq!(filesystem.properties().info().provider_id(), "example");
+/// assert_eq!(path.as_str(), "/report.csv");
+/// assert_eq!(uri.as_str(), "file:///report.csv");
+/// # }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 #[must_use]
 pub struct AsyncFileSystemResolution {
@@ -33,9 +200,10 @@ pub struct AsyncFileSystemResolution {
 impl AsyncFileSystemResolution {
     /// Validates and creates a resolution from one provider result.
     ///
-    /// The path must satisfy the facade constraints and limits. When the
-    /// facade advertises schemes, the canonical URI scheme must be one of
-    /// them.
+    /// The path must satisfy the facade semantics, constraints and limits.
+    /// The facade must advertise the canonical URI scheme; an empty scheme
+    /// list is rejected. Validation reads properties only and performs no IO.
+    /// URI-to-path interpretation remains the provider's responsibility.
     ///
     /// # Parameters
     ///

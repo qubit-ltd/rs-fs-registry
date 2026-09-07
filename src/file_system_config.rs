@@ -19,6 +19,21 @@ use qubit_spi::ProviderSelection;
 use crate::CredentialRef;
 
 /// Complete configuration passed to a filesystem provider factory.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs::path::ConnectionUri;
+/// use qubit_fs_registry::CredentialRef;
+/// use qubit_fs_registry::FileSystemConfig;
+/// use qubit_spi::ProviderSelection;
+/// let config = FileSystemConfig::new(ConnectionUri::parse("s3://bucket/report.csv")?)
+///     .with_selection(ProviderSelection::named("archive")?)
+///     .with_credential(CredentialRef::DefaultChain);
+/// assert_eq!(config.uri().scheme(), "s3");
+/// assert_eq!(config.credential(), Some(&CredentialRef::DefaultChain));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, PartialEq)]
 #[must_use]
 pub struct FileSystemConfig {
@@ -55,6 +70,7 @@ impl FileSystemConfig {
             metadata: NonSensitiveMetadata::new(),
         }
     }
+
     /// Returns the redacting connection URI.
     ///
     /// # Returns
@@ -65,6 +81,7 @@ impl FileSystemConfig {
     pub const fn uri(&self) -> &ConnectionUri {
         &self.uri
     }
+
     /// Returns the explicit provider selection, when present.
     ///
     /// # Returns
@@ -76,6 +93,41 @@ impl FileSystemConfig {
     pub const fn selection(&self) -> Option<&ProviderSelection> {
         self.selection.as_ref()
     }
+
+    /// Returns validated non-sensitive factory options.
+    ///
+    /// # Returns
+    ///
+    /// The provider factory options.
+    #[inline(always)]
+    #[must_use]
+    pub const fn options(&self) -> &NonSensitiveMetadata {
+        &self.options
+    }
+
+    /// Returns the external credential reference, when configured.
+    ///
+    /// # Returns
+    ///
+    /// `Some` with the external credential reference, or `None` when the
+    /// configuration does not select an external credential source.
+    #[inline(always)]
+    #[must_use]
+    pub const fn credential(&self) -> Option<&CredentialRef> {
+        self.credential.as_ref()
+    }
+
+    /// Returns validated non-sensitive provider metadata.
+    ///
+    /// # Returns
+    ///
+    /// The provider metadata.
+    #[inline(always)]
+    #[must_use]
+    pub const fn metadata(&self) -> &NonSensitiveMetadata {
+        &self.metadata
+    }
+
     /// Replaces the provider selection.
     ///
     /// # Parameters
@@ -90,16 +142,7 @@ impl FileSystemConfig {
         self.selection = Some(selection);
         self
     }
-    /// Returns validated non-sensitive factory options.
-    ///
-    /// # Returns
-    ///
-    /// The provider factory options.
-    #[inline(always)]
-    #[must_use]
-    pub const fn options(&self) -> &NonSensitiveMetadata {
-        &self.options
-    }
+
     /// Replaces validated factory options.
     ///
     /// # Parameters
@@ -114,17 +157,7 @@ impl FileSystemConfig {
         self.options = options;
         self
     }
-    /// Returns the external credential reference, when configured.
-    ///
-    /// # Returns
-    ///
-    /// `Some` with the external credential reference, or `None` when the
-    /// configuration does not select an external credential source.
-    #[inline(always)]
-    #[must_use]
-    pub const fn credential(&self) -> Option<&CredentialRef> {
-        self.credential.as_ref()
-    }
+
     /// Sets an external credential reference.
     ///
     /// # Parameters
@@ -139,16 +172,7 @@ impl FileSystemConfig {
         self.credential = Some(credential);
         self
     }
-    /// Returns validated non-sensitive provider metadata.
-    ///
-    /// # Returns
-    ///
-    /// The provider metadata.
-    #[inline(always)]
-    #[must_use]
-    pub const fn metadata(&self) -> &NonSensitiveMetadata {
-        &self.metadata
-    }
+
     /// Replaces validated provider metadata.
     ///
     /// # Parameters
