@@ -48,10 +48,7 @@ impl ValidatingAsyncFileSystemProvider {
     #[inline]
     pub(crate) fn new(provider: Arc<AsyncFileSystemProvider>) -> Self {
         let descriptor = provider.descriptor();
-        Self {
-            descriptor,
-            provider,
-        }
+        Self { descriptor, provider }
     }
 }
 

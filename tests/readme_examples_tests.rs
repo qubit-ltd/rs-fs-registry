@@ -43,12 +43,10 @@ fn test_install_commands_follow_manifest() {
     let fs_version = input["dependencies"]["qubit-fs"]["version"]
         .as_str()
         .expect("qubit-fs version must be a string");
-    let local_version =
-        input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
-            .as_str()
-            .expect("qubit-fs-local version must be a string");
-    let sync_command =
-        format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
+    let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
+        .as_str()
+        .expect("qubit-fs-local version must be a string");
+    let sync_command = format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
     let local_command = format!("cargo add qubit-fs-local@{local_version} --features registry");
     let async_command = format!("cargo add qubit-fs-registry@{registry_version} --features async");
 
@@ -58,8 +56,7 @@ fn test_install_commands_follow_manifest() {
         "doc/user_guide.md",
         "doc/user_guide.zh_CN.md",
     ] {
-        let source =
-            std::fs::read_to_string(root.join(relative)).expect("documentation must be readable");
+        let source = std::fs::read_to_string(root.join(relative)).expect("documentation must be readable");
         assert!(
             source.contains(&sync_command),
             "{relative} must contain `{sync_command}`"
@@ -70,8 +67,7 @@ fn test_install_commands_follow_manifest() {
         );
     }
     for relative in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
-        let source =
-            std::fs::read_to_string(root.join(relative)).expect("user guide must be readable");
+        let source = std::fs::read_to_string(root.join(relative)).expect("user guide must be readable");
         assert!(
             source.contains(&async_command),
             "{relative} must contain `{async_command}`"
@@ -95,11 +91,7 @@ fn test_documentation_versions_follow_manifest() {
         input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
     );
     assert!(output["dependencies"]["qubit-fs"].get("path").is_none());
-    assert!(
-        output["dependencies"]["qubit-fs-local"]
-            .get("path")
-            .is_none()
-    );
+    assert!(output["dependencies"]["qubit-fs-local"].get("path").is_none());
     assert!(output["dependencies"].get("futures").is_none());
     assert_eq!(
         output["dependencies"]["qubit-fs-registry"]["features"]
@@ -138,10 +130,8 @@ fn test_documentation_rejects_malformed_fences() {
     ] {
         assert!(snippets(source).is_err(), "must reject {source:?}");
     }
-    let result = snippets(
-        "```rust\nfn main() {}\n```\n<!-- registry-example: async -->\n```rust\nfn main() {}\n```",
-    )
-    .expect("valid examples");
+    let result = snippets("```rust\nfn main() {}\n```\n<!-- registry-example: async -->\n```rust\nfn main() {}\n```")
+        .expect("valid examples");
     assert_eq!(result.len(), 2);
     assert!(!result[0].asynchronous);
     assert!(result[1].asynchronous);
@@ -151,8 +141,5 @@ fn test_documentation_rejects_malformed_fences() {
 /// Each example is compiled and run with its documented minimum features.
 #[test]
 fn test_shipped_markdown_rust_examples_run() {
-    check_documents(
-        Path::new(env!("CARGO_MANIFEST_DIR")),
-        cfg!(feature = "async"),
-    );
+    check_documents(Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(feature = "async"));
 }

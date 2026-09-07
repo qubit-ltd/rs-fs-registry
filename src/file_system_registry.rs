@@ -108,10 +108,7 @@ impl FileSystemRegistry {
     ///
     /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline(always)]
-    pub fn register_shared(
-        &self,
-        provider: Arc<FileSystemProvider>,
-    ) -> FileSystemRegistryResult<()> {
+    pub fn register_shared(&self, provider: Arc<FileSystemProvider>) -> FileSystemRegistryResult<()> {
         self.providers
             .register(ValidatingFileSystemProvider::new(provider))
             .map_err(Into::into)
@@ -189,10 +186,7 @@ impl FileSystemRegistry {
     /// Returns a structured error when credential sources conflict, the
     /// selection is invalid or unavailable, or provider creation fails.
     #[inline]
-    pub fn resolve_config(
-        &self,
-        config: &FileSystemConfig,
-    ) -> FileSystemRegistryResult<FileSystemResolution> {
+    pub fn resolve_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
         let selection = selection_for_config(config)?;
         self.resolve_selected(&selection)?
@@ -213,10 +207,7 @@ impl FileSystemRegistry {
     ///
     /// Returns the same errors as [`Self::resolve_config`].
     #[inline(always)]
-    pub fn resolve_uri(
-        &self,
-        uri: &ConnectionUri,
-    ) -> FileSystemRegistryResult<FileSystemResolution> {
+    pub fn resolve_uri(&self, uri: &ConnectionUri) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))
     }
     /// Resolves `config` through `selection`, rejecting a conflicting embedded
@@ -261,10 +252,7 @@ impl FileSystemRegistry {
     ///
     /// Returns the same errors as [`Self::resolve_selected_config`].
     #[inline(always)]
-    pub fn resolve_default_config(
-        &self,
-        config: &FileSystemConfig,
-    ) -> FileSystemRegistryResult<FileSystemResolution> {
+    pub fn resolve_default_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
         let (selection, resolver) = self.providers.resolve_default_snapshot();
         ensure_selection_matches_config(&selection, config)?;
@@ -293,8 +281,6 @@ impl FileSystemRegistry {
         &self,
         selection: &ProviderSelection,
     ) -> FileSystemRegistryResult<ResolvingServiceProvider<FileSystemSpec>> {
-        self.providers
-            .resolve_selected(selection)
-            .map_err(Into::into)
+        self.providers.resolve_selected(selection).map_err(Into::into)
     }
 }
