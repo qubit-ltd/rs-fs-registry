@@ -1,8 +1,9 @@
 # Registry 合约迁移说明
 
-本文面向从旧版 `qubit-fs-registry` 迁移的应用和 provider 作者，记录 filesystem
-facade/SPI 重构后的可观察合约。它补充[中文用户手册](user_guide.zh_CN.md)，重点
-说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界。
+本文面向采用 `qubit-fs-registry` 0.3 filesystem facade/SPI 合约的应用和 provider
+作者，说明这些已实现合约的可观察行为。它补充[中文用户手册](user_guide.zh_CN.md)，
+重点说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界；
+本文不引入新的公开 API，也不改变 selection/fallback 语义。
 
 ## 1. 凭据来源冲突
 
@@ -111,10 +112,10 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 
 ## 8. 当前版本与验证
 
-本文适用于 registry 0.2、fs 0.3、local provider 0.2、spi 0.11。本轮文档和测试更正没有改变公开 API、
-选择优先级或回退行为。用户名本身不是内嵌秘密，可以与外部引用共存。异步方法返回 future 前取得
-快照，首次轮询才开始创建；返回身份不符按 InitializationFailed/ProviderContractViolation 分类。
-空 schemes 不能构造 resolution，URI 的安全结构由 `Uri` 类型保证。
+本文适用于 registry 0.3、fs 0.4、local provider 0.3、spi 0.11。用户名本身不是内嵌秘密，
+可以与外部引用共存。异步方法返回 future 前取得快照，首次轮询才开始创建；返回身份不符按
+InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
+安全结构由 `Uri` 类型保证。
 
 相关示例应统一依赖版本，并运行 `check-published-docs.sh` 验证隔离的发布依赖环境；
 开发期间带本地补丁的打包成功不能替代这一验证。

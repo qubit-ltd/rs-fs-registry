@@ -1,6 +1,6 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.2、`qubit-fs` 0.3 与 `qubit-spi` 0.11。
+> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.3、`qubit-fs` 0.4 与 `qubit-spi` 0.11。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
@@ -115,7 +115,7 @@ Provider 构造 resolution 时必须同时满足：
 1. `file_system.properties().info().provider_id()` 与选中的 provider 一致；
 2. decoded `Path` 符合 filesystem 的 `PathSemantics`、limits 与
    `PathConstraints`；
-3. canonical URI 的 scheme/authority 与 provider resolution 一致；
+3. canonical URI 的 scheme 必须属于返回 filesystem facade 声明的 schemes；
 4. canonical URI 不含 credential；
 5. URI path 与 decoded path 的 provider-specific 关系由 provider 明确建立；
 6. configuration 中的显式 selection 不与外部 selection 冲突；
