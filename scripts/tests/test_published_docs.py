@@ -1,6 +1,7 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +11,37 @@ spec.loader.exec_module(checker)
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_packaging_uses_isolated_cwd_when_source_has_parent_cargo_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            source = temporary / "user" / "project"
+            source.mkdir(parents=True)
+            cargo_config = temporary / ".cargo"
+            cargo_config.mkdir()
+            (cargo_config / "config.toml").write_text("[build]\ntarget-dir = 'inherited'\n")
+            workspace = temporary / "isolated"
+            workspace.mkdir()
+            environment = {"CARGO_HOME": str(workspace / "cargo-home")}
+
+            with patch.object(checker, "run", return_value="") as run:
+                checker.package_source("cargo", source, workspace, environment)
+
+            command_cwd = workspace / "cargo-command"
+            self.assertTrue(command_cwd.is_dir())
+            run.assert_called_once_with(
+                "cargo",
+                [
+                    "package",
+                    "--manifest-path",
+                    str(source / "Cargo.toml"),
+                    "--allow-dirty",
+                    "--no-verify",
+                ],
+                command_cwd,
+                environment,
+                workspace / "package.log",
+            )
+
     def test_environment_drops_inherited_build_overrides(self):
         with patch.dict("os.environ", {"CARGO_HOME": "/old", "CARGO_ENCODED_RUSTFLAGS": "unsafe", "RUSTFLAGS": "unsafe", "CARGO_REGISTRIES_CRATES_IO_INDEX": "local", "RUSTC_WRAPPER": "wrapper"}):
             env = checker.isolated_environment(Path("/isolated"))

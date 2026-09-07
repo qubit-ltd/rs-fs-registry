@@ -72,12 +72,27 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
     return process.stdout
 
 
+def package_source(cargo: str, root: Path, workspace: Path, environment: dict[str, str]) -> None:
+    """Package a source manifest without discovering Cargo config above it."""
+    command_cwd = workspace / "cargo-command"
+    command_cwd.mkdir()
+    run(
+        cargo,
+        [
+            "package",
+            "--manifest-path",
+            str(root / "Cargo.toml"),
+            "--allow-dirty",
+            "--no-verify",
+        ],
+        command_cwd,
+        environment,
+        workspace / "package.log",
+    )
+
+
 def check(root: Path, workspace: Path) -> None:
     """Produce a normalized archive with Cargo, unpack it, and run the shipped examples."""
-    for parent in (root, *root.parents):
-        for name in ("config", "config.toml"):
-            if (parent / ".cargo" / name).exists():
-                raise ValueError(f"inherited Cargo configuration must be absent: {parent / '.cargo' / name}")
     manifest = tomllib.loads((root / "Cargo.toml").read_text())
     if "patch" in manifest or "replace" in manifest:
         raise ValueError("source manifest has local overrides; published checks cannot use them")
@@ -88,7 +103,7 @@ def check(root: Path, workspace: Path) -> None:
     if cargo is None:
         raise RuntimeError("cargo is required")
     # --no-verify skips only the redundant package build, not dependency resolution.
-    run(cargo, ["package", "--allow-dirty", "--no-verify"], root, environment, workspace / "package.log")
+    package_source(cargo, root, workspace, environment)
     archive = workspace / "target" / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
