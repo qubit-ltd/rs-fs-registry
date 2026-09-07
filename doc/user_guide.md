@@ -6,7 +6,7 @@
 
 This guide is for application and provider authors who need to bind
 `qubit-fs` to runtime-registered filesystem providers. It covers the current
-`qubit-fs-registry` 0.2 API, including synchronous and asynchronous resolution.
+`qubit-fs-registry` 0.3 API, including synchronous and asynchronous resolution.
 
 ## Conceptual Model
 
