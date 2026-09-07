@@ -16,7 +16,7 @@ Business code can operate on that result without knowing the provider factory.
 
 ```bash
 cargo add qubit-fs@0.4 qubit-fs-registry@0.3
-cargo add qubit-fs-local@0.3 --features registry
+cargo add qubit-fs-local@0.4 --features registry
 ```
 
 The default feature set is synchronous. For asynchronous providers, enable
@@ -30,19 +30,38 @@ Run this complete program in a new, empty working directory. It writes
 and verifies the report's size. The output is `file:///report.csv: 22 bytes`.
 
 ```rust
+use std::time::Duration;
+
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+
+fn bounded_policy() -> Result<LocalResourcePolicy, Box<dyn std::error::Error>> {
+    Ok(LocalResourcePolicy::bounded(
+        LocalListResourceLimits::new(16, 10_000, 8_388_608, 32, Duration::from_secs(30))?,
+        LocalCopyResourceLimits::new(
+            16,
+            10_000,
+            1_073_741_824,
+            32,
+            Duration::from_secs(30),
+        )?,
+        LocalDeleteResourceLimits::new(16, 10_000, 8_388_608, Duration::from_secs(30)),
+    ))
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::current_dir()?;
     std::fs::write(root.join("report.csv"), b"name,total\nexample,42\n")?;
     let registry = FileSystemRegistry::default();
     registry.register(LocalFileSystemProvider::rooted(
-        FileSystemId::new("reports")?, &root, LocalResourcePolicy::unbounded(),
+        FileSystemId::new("reports")?, &root, bounded_policy()?,
     )?)?;
     let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?);
     let resolution = registry.resolve_config(&config)?;
