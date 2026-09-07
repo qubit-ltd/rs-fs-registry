@@ -4,8 +4,8 @@
 
 ## 手册目标与读者
 
-本手册面向应用开发者和文件系统提供者作者，介绍如何通过运行时注册表接入 `qubit-fs`，覆盖
-`qubit-fs-registry` 0.2 的同步与异步 API。
+本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，覆盖当前
+`qubit-fs-registry` 0.3 API，包括同步与异步 resolution。
 
 ## 概念模型
 
