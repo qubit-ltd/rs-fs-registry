@@ -30,9 +30,9 @@ fn release_line(version: &str) -> String {
     format!("{major}.{minor}")
 }
 
-/// User-facing installation commands must match Cargo's version facts.
+/// User-facing installation commands must match the supported release lines.
 #[test]
-fn test_install_commands_follow_manifest() {
+fn test_documentation_commands_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
     let registry_version = release_line(
@@ -46,6 +46,9 @@ fn test_install_commands_follow_manifest() {
     let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
         .as_str()
         .expect("qubit-fs-local version must be a string");
+    assert_eq!(fs_version, "0.4", "qubit-fs release line must remain explicit");
+    assert_eq!(registry_version, "0.3", "registry release line must follow the package");
+    assert_eq!(local_version, "0.4", "local provider release line must remain explicit");
     let sync_command = format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
     let local_command = format!("cargo add qubit-fs-local@{local_version} --features registry");
     let async_command = format!("cargo add qubit-fs-registry@{registry_version} --features async");
