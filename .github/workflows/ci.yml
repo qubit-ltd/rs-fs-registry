@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      verify_published_dependencies:
+        description: Verify packaged documentation against published dependencies
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,6 +19,18 @@ permissions:
   id-token: write
 
 jobs:
+  published-documentation:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_published_dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the documented Rust toolchain
+        run: rustup toolchain install 1.94 --profile minimal
+      - name: Verify isolated published documentation
+        run: ./check-published-docs.sh
   rust-ci:
     uses: qubit-ltd/rs-ci/.github/workflows/rust-ci.yml@main
     with:

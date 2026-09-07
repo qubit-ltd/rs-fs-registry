@@ -108,3 +108,15 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
    userinfo 或 query 当成 selection。
 6. 只把 credential-free canonical URI 用作本次 resolution 的安全定位结果，并由
    provider 负责其 URI/path 语义。
+
+## 8. 当前版本与验证
+
+本文适用于 registry 0.2、fs 0.3、local provider 0.2、spi 0.11。本轮文档和测试更正没有改变公开 API、
+选择优先级或回退行为。用户名本身不是内嵌秘密，可以与外部引用共存。异步方法返回 future 前取得
+快照，首次轮询才开始创建；返回身份不符按 InitializationFailed/ProviderContractViolation 分类。
+空 schemes 不能构造 resolution，URI 的安全结构由 `Uri` 类型保证。
+
+相关示例应统一依赖版本，并运行 `check-published-docs.sh` 验证隔离的发布依赖环境；
+开发期间带本地补丁的打包成功不能替代这一验证。
+
+[English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)

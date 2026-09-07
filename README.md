@@ -7,99 +7,78 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
-`qubit-fs-registry` is the runtime boundary between a `qubit-fs` application
-and provider crates. Register synchronous or asynchronous providers during
-application assembly, resolve a complete filesystem configuration, and receive
-the filesystem together with its decoded path and canonical URI.
+`qubit-fs-registry` binds application configuration to runtime-registered filesystem
+providers. Register factories during startup, then resolve each connection into
+a filesystem facade, its decoded path, and a credential-free canonical URI.
+Business code can operate on that result without knowing the provider factory.
 
 ## Installation
 
 ```bash
-cargo add qubit-fs qubit-fs-registry
+cargo add qubit-fs@0.3 qubit-fs-registry@0.2
+cargo add qubit-fs-local@0.2 --features registry
 ```
 
-The registry is synchronous by default. Add the async feature to
-qubit-fs-registry when registering asynchronous providers.
-
-A local provider is supplied by its own crate:
-
-```bash
-cargo add qubit-fs-local --features registry
-```
+The default feature set is synchronous. For asynchronous providers, enable
+`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.11`
+dependency; this crate does not re-export them.
 
 ## Quick Start
 
-An application opening a local report can register its provider once and
-resolve a `file:` configuration at the boundary:
+Run this complete program in a new, empty working directory. It writes
+`report.csv`, registers a provider rooted in that directory, resolves the URI,
+and verifies the report's size. The output is `file:///report.csv: 22 bytes`.
 
 ```rust
-use qubit_fs::error::FsResult;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
-use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
-use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
 
-fn open_local_report() -> FsResult<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::current_dir()?;
+    std::fs::write(root.join("report.csv"), b"name,total\nexample,42\n")?;
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
-
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
+    registry.register(LocalFileSystemProvider::rooted(
+        FileSystemId::new("reports")?, &root, LocalResourcePolicy::unbounded(),
+    )?)?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?);
     let resolution = registry.resolve_config(&config)?;
-    let _metadata = resolution.file_system().stat(resolution.path())?;
-    println!("{}", resolution.canonical_uri());
+    let metadata = resolution.file_system().stat(resolution.path())?;
+    assert_eq!(metadata.len(), Some(22));
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///report.csv");
+    println!("{}: {} bytes", resolution.canonical_uri(), metadata.len().unwrap());
     Ok(())
 }
 ```
 
 ## What It Provides
 
-- `FileSystemRegistry` and `AsyncFileSystemRegistry` register providers and
-  resolve synchronous or asynchronous configurations.
-- `FileSystemConfig` carries a URI, optional selection, non-sensitive options
-  and metadata, and an optional `CredentialRef`.
-- Each resolution pairs a filesystem with its provider-decoded path and a
-  secret-free canonical URI.
+- Synchronous and asynchronous registries with shared catalogs and owned resolution snapshots.
+- Configuration carrying a connection URI, selection, non-sensitive options/metadata, and credential references.
+- Validated filesystem/path/canonical-URI results, plus typed selection and creation errors.
 
-Formatted registry errors include only applicable safe selector and provider context. Registry
-`Display` and `Debug` use the immutable built-in policy from
-`qubit_redact::Redactor::standard()`; they do not read or follow later changes
-to the process-wide application-default redactor, recursively expand a
-provider source, or emit an internal message as unredacted text.
+`resolve_config` uses the configured selection or the URI scheme. Only
+`resolve_default_config` uses the registry default. Conflicting selections and
+embedded-secret/external-reference combinations fail before provider creation.
+`CredentialRef` identifies a source; never store secret values in it.
 
-Selection is configuration-first: `resolve_config` uses an explicit selection,
-then the URI scheme; it does not fall back to the registry default.
-`resolve_selected_config` and `resolve_default_config` reject a conflicting
-selection embedded in the configuration.
+Resolution validates declared properties; it does not prove a file exists.
+Providers own URI decoding and storage operations. A canonical URI is scoped to
+the returned filesystem and is not a cross-provider identity or a sufficient cache key.
 
-`CredentialRef` identifies a credential source such as a profile, environment
-variable names, or external provider ID; it is not a place to store a token,
-password, private key, or other secret. `ProviderSelection`, `ProviderId`, and
-`ProviderDescriptor` are owned by `qubit-spi` and are intentionally not
-re-exported. Add `qubit-spi` directly when using those types.
-
-If an embedded URI credential and a `CredentialRef` occupy the same credential
-slot, resolution fails before provider creation with
-`FileSystemRegistryError::CredentialSourceConflict`. Its stable
-`reason_code()` is `credential_source_conflict`; the code contains no
-URI or credential payload.
-
-URI scheme selection accepts only a nonempty ASCII token with alphanumeric
-endpoints and the separators `-`, `_`, `.`, and `+` in its body. The selector
-parser trims surrounding whitespace and lowercases ASCII letters. Fallback
-classifies provider failures as `Unsupported`, `Unavailable`,
-`InvalidConfiguration`, or `InitializationFailed`; the default
-`OnAbsence` policy continues only after the first two. A default resolution
-uses one atomic catalog snapshot for its selection and candidate providers.
-The canonical URI is the selected provider's credential-free location for that
-resolution and is scoped to the returned filesystem facade's advertised
-schemes.
+Error `Display`/`Debug` use the immutable `Redactor::standard()` policy and do
+not recursively format provider sources. Use `reason_code()` and typed errors
+for programmatic handling. Application-default redactor changes do not alter this policy.
 
 ## Learn More
 
-- [English user guide](doc/user_guide.md)
-- [中文用户手册](doc/user_guide.zh_CN.md)
-- [Registry 合约迁移说明](doc/registry_contract_migration.zh_CN.md)
-- [API documentation](https://docs.rs/qubit-fs-registry)
-- [中文 README](README.zh_CN.md)
+- [English user guide](doc/user_guide.md) · [中文用户手册](doc/user_guide.zh_CN.md)
+- [Design](doc/file_system_registry_design.md) · [中文设计](doc/file_system_registry_design.zh_CN.md)
+- [Migration](doc/registry_contract_migration.md) · [中文迁移说明](doc/registry_contract_migration.zh_CN.md)
+- [API documentation](https://docs.rs/qubit-fs-registry) · [中文 README](README.zh_CN.md)
 
 ## Testing
 

@@ -1,6 +1,6 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，已按最终版 `qubit-fs` 的 URI、Path 与门面边界复核。
+> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.2、`qubit-fs` 0.3 与 `qubit-spi` 0.11。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
@@ -69,7 +69,7 @@ Provider creation 的最终产物必须包含由 `FileSystem::from_spi` 构造�
 
 删除公开泛型 `FileSystemResolution<F: ?Sized>`，改成两个具体类型：
 
-```rust
+```text
 #[derive(Clone)]
 pub struct FileSystemResolution {
     file_system: FileSystem,
@@ -87,7 +87,7 @@ pub struct AsyncFileSystemResolution {
 
 公开 API：
 
-```rust
+```text
 impl FileSystemResolution {
     pub fn try_new(
         file_system: FileSystem,
@@ -127,8 +127,8 @@ Provider 构造 resolution 时必须同时满足：
 `try_new` 是同步与异步 resolution 共用的验证边界：两者都必须统一检查 decoded
 `Path` 的 `PathSemantics`、路径形式约束（`PathConstraints`）和 limits。该检查只读取
 filesystem facade 已声明的 properties，不调用 `stat`，不访问后端，也不保证目标已经
-存在；目标存在性和其他资源状态仍由后续 operation 检查。`try_new` 还检查 canonical
-URI 的 secret-free 结构以及已声明的 scheme 支持，但不能仅凭三个值复核 provider
+存在；目标存在性和其他资源状态仍由后续 operation 检查。canonical URI 的安全结构由 `Uri` 类型构造保证。`try_new` 还检查
+已声明的 scheme 支持（空 schemes 同样拒绝），但不能仅凭三个值复核 provider
 identity 或重新推导所有 provider-specific URI ↔ Path 关系。provider identity 由
 registry 的 adapter 在 construction boundary 复核；URI ↔ Path 关系由选中的 provider
 建立。registry 还负责保证 resolution 来自该 provider 且没有在之后替换其中任一部分。
@@ -141,7 +141,7 @@ resolution 的 clone getter；需要 URI 定位结果时保留完整 resolution�
 
 `FileSystemRegistry` 继续组织所有同步 registry 能力：
 
-```rust
+```text
 impl FileSystemRegistry {
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>;
 
@@ -164,7 +164,7 @@ Registry 不提供会静默丢弃 resolution path/canonical URI 的 `file_system
 
 `AsyncFileSystemRegistry` 使用同名 inherent method，返回标准 `Future`：
 
-```rust
+```text
 pub fn resolve_config(
     &self,
     config: FileSystemConfig,
@@ -332,17 +332,20 @@ canonical URI 的作用域是一次 provider resolution 的安全定位结果。
 
 ## 11. Error 模型
 
-`FileSystemRegistryError` 保留以下类别：
+顶层错误与下层诊断分工如下：
 
-- registration conflict；
-- invalid selection；
-- provider unavailable；
-- invalid configuration；
-- credential resolution；
-- credential source conflict（含稳定 `reason_code`）；
-- resolution failure；
-- provider creation；
-- exhausted fallback。
+| 顶层变体 | 下层内容 | 转换后的 FsErrorKind |
+| --- | --- | --- |
+| InvalidConfiguration | 静态配置说明 | InvalidOptions |
+| CredentialSourceConflict | 无底层 source | InvalidOptions |
+| Registration | RegistrationError | Conflict |
+| Selection | ProviderSelectionBuildError | InvalidUri |
+| SelectionConflict | requested/configured selection | InvalidOptions |
+| Resolution | UnknownProviders、NoCandidates、EmptyRegistry 等 | ProviderUnavailable |
+| Creation | 有序 attempts、termination、decisive attempt | 决定性叶错误的 kind |
+
+Unavailable、凭据解析失败、耗尽回退等概念由下层分类表达，并非额外的顶层变体。
+创建失败转换为 FsError 时，provider ID 来自决定性 attempt；其他变体没有凭空生成的 provider ID。
 
 错误必须携带：
 
@@ -381,7 +384,7 @@ Operation SPI 的 `ProviderContractViolation` 不由 registry 改写为 registry
 
 `FileSystemSpec` 的 service output 改为 concrete resolution：
 
-```rust
+```text
 impl SyncServiceSpec for FileSystemSpec {
     type Output = FileSystemResolution;
 }
@@ -410,6 +413,8 @@ Registry 不直接构造 `LocalFileSystemSpi`，也不调用 `qubit-local-files`
 
 ```text
 src/
+├── lib.rs
+├── credential_ref.rs
 ├── file_system_config.rs
 ├── file_system_resolution.rs
 ├── async_file_system_resolution.rs
@@ -420,11 +425,15 @@ src/
 ├── file_system_spec.rs
 ├── file_system_registry_error.rs
 └── internal/
-    └── registry_support.rs
+    ├── mod.rs
+    ├── registry_support.rs
+    ├── provider_adapter.rs
+    ├── validating_file_system_provider.rs
+    └── validating_async_file_system_provider.rs
 ```
 
 同步与异步公开类型分开；共享 selection、validation 和 error aggregation 可以放入私有
-helper 类型。Helper 由类型方法组织，不暴露 public free function。
+helper 类型。共享无状态验证 helper 保持私有自由函数，不暴露为 public API。
 
 ## 15. 验证策略
 
@@ -452,3 +461,22 @@ helper 类型。Helper 由类型方法组织，不暴露 public free function。
 - async future 可以 outlive registry/config 参数；
 - sync/async concrete resolution 对称；
 - registry error 到 `FsError` 的分类、context 和 source 保留。
+
+## 16. 文档与发布验证
+
+示例版本来自 Cargo.toml 的正常依赖和 `package.metadata.documentation.dependencies`，不在测试源码重复维护。
+README 与指南的 Rust 代码块是完整程序，默认运行同步块；`<!-- registry-example: async -->` 标记的块
+另在最小异步依赖工程中执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
+
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖；`published` 仅允许被测 crate 的本地来源，
+其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
+是否引用当前被测 registry。`check-published-docs.sh` 需要 Python 3.12 或更新版本和 Rust 1.94，
+在隔离 Cargo 环境中生成规范化包、解包并验证，
+不继承本地补丁；缺少已发布依赖时明确失败，不自动改用相邻源码。
+
+契约回归通过信号控制创建期间的目录修改与异步 Pending，检查未轮询 future 不触发创建、
+注册 descriptor 保持快照、身份失败遵守 fallback，以及路径字节数与语义边界。CI 的覆盖率与
+机械风格检查不能替代这些语义断言或逐项 Rustdoc 审查。
+
+[English design](file_system_registry_design.md) · [中文用户手册](user_guide.zh_CN.md) ·
+[迁移说明](registry_contract_migration.zh_CN.md)
