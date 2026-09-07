@@ -33,6 +33,32 @@ use crate::internal::validate_credentials;
 ///
 /// Clones share the same provider catalog and default selection. Each
 /// resolution captures a provider snapshot before returning its future.
+///
+/// The initial default selection is [`ProviderSelection::auto()`], with
+/// [`qubit_spi::FallbackPolicy::OnAbsence`]. Only `resolve_default_config`
+/// uses this default; config and URI entry points follow their own routing.
+/// Provider creation remains lazy until the returned future is polled.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[cfg(feature = "async")]
+/// # {
+/// use qubit_fs::path::ConnectionUri;
+/// use qubit_fs_registry::AsyncFileSystemRegistry;
+/// use qubit_fs_registry::FileSystemRegistryError;
+/// let registry = AsyncFileSystemRegistry::default();
+/// assert!(registry.is_empty());
+/// let uri = ConnectionUri::parse("missing:///report.csv")?;
+/// let future = registry.resolve_uri(uri);
+/// drop(registry);
+/// let error = futures::executor::block_on(future).expect_err("no provider registered");
+/// assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+/// # }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct AsyncFileSystemRegistry {
     /// Shared SPI registry storing asynchronous providers and default

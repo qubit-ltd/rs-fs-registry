@@ -7,11 +7,23 @@
 // =============================================================================
 //! Credential references used by filesystem provider configuration.
 
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+
 /// Reference to credentials that must not contain secret material.
 ///
 /// Each value must identify a provider-recognized credential source, such as a
 /// profile name, environment-variable name, or external provider ID. It must
 /// not contain a credential, token, password, private key, or other secret.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_registry::CredentialRef;
+/// let reference = CredentialRef::Profile { name: "reports-profile".to_owned() };
+/// assert_eq!(format!("{reference:?}"), "CredentialRef::Profile(<redacted>)");
+/// ```
 #[derive(Clone, Eq, PartialEq)]
 #[must_use]
 #[non_exhaustive]
@@ -37,7 +49,7 @@ pub enum CredentialRef {
     },
 }
 
-impl std::fmt::Debug for CredentialRef {
+impl Debug for CredentialRef {
     /// Formats only the credential source kind and redacts every payload.
     ///
     /// # Parameters
@@ -47,7 +59,7 @@ impl std::fmt::Debug for CredentialRef {
     /// # Returns
     ///
     /// The formatter result.
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::DefaultChain => formatter.write_str("CredentialRef::DefaultChain"),
             Self::Profile { .. } => formatter.write_str("CredentialRef::Profile(<redacted>)"),

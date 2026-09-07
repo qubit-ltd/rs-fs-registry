@@ -19,6 +19,20 @@ use crate::FileSystemConfig;
 use crate::FileSystemResolution;
 
 /// Service specification for filesystem providers.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs::path::ConnectionUri;
+/// use qubit_fs_registry::FileSystemConfig;
+/// use qubit_fs_registry::FileSystemSpec;
+/// use qubit_spi::ServiceSpec;
+/// let _specification = FileSystemSpec;
+/// let config: <FileSystemSpec as ServiceSpec>::Config =
+///     FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?);
+/// assert_eq!(config.uri().scheme(), "file");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug)]
 pub struct FileSystemSpec;
 

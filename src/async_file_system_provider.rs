@@ -16,4 +16,10 @@ use crate::FileSystemSpec;
 /// Implementations expose filesystem creation behavior and the stable
 /// descriptor used when registering them in an
 /// [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry).
+///
+/// The [`AsyncProviderDefinition`] combines provider metadata with configured
+/// creation. [`FileSystemSpec`] fixes the configuration, resolution, and
+/// filesystem error
+/// types; [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry) validates
+/// returned identities.
 pub type AsyncFileSystemProvider = dyn AsyncProviderDefinition<FileSystemSpec>;
