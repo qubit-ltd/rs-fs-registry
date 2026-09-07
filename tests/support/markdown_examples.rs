@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::Value as Json;
@@ -85,6 +86,7 @@ pub fn manifest(root: &Path) -> Value {
 /// Builds a minimal example manifest; only the tested package may be patched in
 /// published mode.
 pub fn documentation_manifest(root: &Path, input: &Value, published: bool, asynchronous: bool) -> Value {
+    let package_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
@@ -113,7 +115,10 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
             input["package"]["version"].as_str().expect("package version")
         )),
     );
-    current.insert("path".into(), Value::String(root.to_str().expect("UTF-8 root").into()));
+    current.insert(
+        "path".into(),
+        Value::String(package_root.to_str().expect("UTF-8 root").into()),
+    );
     current.insert("default-features".into(), Value::Boolean(false));
     let features = if package == "qubit-fs-local" {
         vec![Value::String("registry".into())]
@@ -131,7 +136,7 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
         .insert("dependencies".into(), Value::Table(dependencies));
     let patch: Value = format!(
         "[crates-io.{package}]\npath={}\n",
-        Value::String(root.to_str().expect("UTF-8 root").into())
+        Value::String(package_root.to_str().expect("UTF-8 root").into())
     )
     .parse()
     .expect("self patch");
@@ -157,8 +162,18 @@ fn dependency(root: &Path, value: &Value, published: bool) -> Value {
     table.remove("optional");
     table.remove("async-only");
     if let Some(path) = table.remove("path") {
-        let path = root.join(path.as_str().expect("dependency path"));
+        let declared_path = Path::new(path.as_str().expect("dependency path"));
+        let path = if let Some(sibling_root) = std::env::var_os("QUBIT_FS_SIBLING_ROOT") {
+            PathBuf::from(sibling_root).join(
+                declared_path
+                    .file_name()
+                    .expect("dependency path must name a sibling crate"),
+            )
+        } else {
+            root.join(declared_path)
+        };
         if !published && path.join("Cargo.toml").is_file() {
+            let path = path.canonicalize().expect("dependency path must resolve");
             table.insert(
                 "path".into(),
                 Value::String(path.to_str().expect("UTF-8 dependency path").into()),
