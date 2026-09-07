@@ -79,6 +79,24 @@ fn test_credential_source_conflict_has_safe_reason_code() {
     assert!(error.source().is_none());
 }
 
+/// Credential source conflicts convert into provider-operation errors while
+/// retaining the typed registry error as their source.
+#[test]
+fn test_credential_source_conflict_converts_with_exact_filesystem_context() {
+    let error = FileSystemRegistryError::CredentialSourceConflict;
+
+    let fs_error: FsError = error.into();
+
+    assert_eq!(fs_error.kind(), FsErrorKind::InvalidOptions);
+    assert_eq!(fs_error.operation(), FsOperation::Provider);
+    assert_eq!(fs_error.provider(), None);
+    let source = std::error::Error::source(&fs_error).expect("registry error must be retained");
+    let source = source
+        .downcast_ref::<FileSystemRegistryError>()
+        .expect("filesystem error source must retain registry error type");
+    assert_eq!(source.reason_code(), "credential_source_conflict");
+}
+
 /// Typed registry errors expose stable category codes independent of text.
 #[test]
 fn test_registry_error_reason_codes_preserve_typed_categories() {
