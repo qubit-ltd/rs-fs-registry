@@ -38,7 +38,7 @@ resolution = filesystem + decoded path + canonical URI
 
 ```bash
 cargo add qubit-fs@0.4 qubit-fs-registry@0.3
-cargo add qubit-fs-local@0.3 --features registry
+cargo add qubit-fs-local@0.4 --features registry
 ```
 
 需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.11` 添加直接依赖；
@@ -49,19 +49,38 @@ cargo add qubit-fs-local@0.3 --features registry
 请在空工作目录中运行；程序会自行创建 `report.csv`，并验证文件大小。
 
 ```rust
+use std::time::Duration;
+
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+
+fn bounded_policy() -> Result<LocalResourcePolicy, Box<dyn std::error::Error>> {
+    Ok(LocalResourcePolicy::bounded(
+        LocalListResourceLimits::new(16, 10_000, 8_388_608, 32, Duration::from_secs(30))?,
+        LocalCopyResourceLimits::new(
+            16,
+            10_000,
+            1_073_741_824,
+            32,
+            Duration::from_secs(30),
+        )?,
+        LocalDeleteResourceLimits::new(16, 10_000, 8_388_608, Duration::from_secs(30)),
+    ))
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::current_dir()?;
     std::fs::write(root.join("report.csv"), b"name,total\nexample,42\n")?;
     let registry = FileSystemRegistry::default();
     registry.register(LocalFileSystemProvider::rooted(
-        FileSystemId::new("reports")?, &root, LocalResourcePolicy::unbounded(),
+        FileSystemId::new("reports")?, &root, bounded_policy()?,
     )?)?;
     let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?);
     let resolution = registry.resolve_config(&config)?;
@@ -165,16 +184,35 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 下面两个根目录具有相同规范 URI，但内容不同，因此业务代码应始终一起保留门面和路径。
 
 ```rust
+use std::time::Duration;
+
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs::read::ReadOptions;
+use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderSelection;
+
+fn bounded_policy() -> Result<LocalResourcePolicy, Box<dyn std::error::Error>> {
+    Ok(LocalResourcePolicy::bounded(
+        LocalListResourceLimits::new(16, 10_000, 8_388_608, 32, Duration::from_secs(30))?,
+        LocalCopyResourceLimits::new(
+            16,
+            10_000,
+            1_073_741_824,
+            32,
+            Duration::from_secs(30),
+        )?,
+        LocalDeleteResourceLimits::new(16, 10_000, 8_388_608, Duration::from_secs(30)),
+    ))
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::current_dir()?;
@@ -185,7 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(directory.join("report.csv"), contents)?;
         registry.register(LocalFileSystemProvider::rooted_with_descriptor(
             ProviderDescriptor::new(ProviderId::new(id)?),
-            FileSystemId::new(id)?, &directory, LocalResourcePolicy::unbounded(),
+            FileSystemId::new(id)?, &directory, bounded_policy()?,
         )?)?;
     }
     let uri = ConnectionUri::parse("file:///report.csv")?;
@@ -210,10 +248,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 注册表随后校验提供者身份。
 
 ```rust
+use std::time::Duration;
+
 use qubit_fs::FsError;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
@@ -224,6 +267,20 @@ use qubit_spi::ProviderId;
 use qubit_spi::ProviderMetadata;
 use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
+
+fn bounded_policy() -> Result<LocalResourcePolicy, Box<dyn std::error::Error>> {
+    Ok(LocalResourcePolicy::bounded(
+        LocalListResourceLimits::new(16, 10_000, 8_388_608, 32, Duration::from_secs(30))?,
+        LocalCopyResourceLimits::new(
+            16,
+            10_000,
+            1_073_741_824,
+            32,
+            Duration::from_secs(30),
+        )?,
+        LocalDeleteResourceLimits::new(16, 10_000, 8_388_608, Duration::from_secs(30)),
+    ))
+}
 
 struct ReportProvider { local: LocalFileSystemProvider }
 impl ProviderMetadata for ReportProvider {
@@ -240,7 +297,7 @@ impl ServiceProvider<FileSystemSpec> for ReportProvider {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = ReportProvider { local: LocalFileSystemProvider::rooted_with_descriptor(
         ProviderDescriptor::new(ProviderId::new("report-storage")?).with_aliases(["file"])?,
-        FileSystemId::new("report-root")?, &std::env::current_dir()?, LocalResourcePolicy::unbounded(),
+        FileSystemId::new("report-root")?, &std::env::current_dir()?, bounded_policy()?,
     )? };
     let registry = FileSystemRegistry::default();
     registry.register(provider)?;
