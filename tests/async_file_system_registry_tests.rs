@@ -20,6 +20,7 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::AsyncFileSystemRegistry;
+use qubit_fs_registry::AsyncFileSystemProvider;
 use qubit_fs_registry::AsyncFileSystemResolution;
 use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
@@ -35,6 +36,31 @@ use qubit_spi::error::ProviderFailure;
 
 use super::common;
 use crate::support::provider_fixtures::ObservedProvider;
+
+/// Shared asynchronous providers can be registered through their public
+/// trait-object contract.
+#[test]
+fn test_async_registry_register_shared_accepts_arc_trait_object() {
+    let provider = ObservedProvider::new("async-shared-trait-object");
+    let calls = Arc::clone(&provider.calls);
+    let provider: Arc<AsyncFileSystemProvider> = Arc::new(provider);
+    let registry = AsyncFileSystemRegistry::default();
+    registry
+        .register_shared(provider)
+        .expect("register shared trait object");
+
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("async-shared-trait-object:///resource").expect("URI should parse"),
+    );
+    let resolution = common::block_on(registry.resolve_config(config.clone()))
+        .expect("resolve shared provider");
+
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "async-shared-trait-object"
+    );
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
 
 /// Cloned asynchronous registries share providers and default selection state.
 #[test]

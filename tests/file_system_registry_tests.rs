@@ -19,6 +19,7 @@ use qubit_fs::error::FsOperation;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemProvider;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemResolution;
@@ -32,6 +33,32 @@ use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
 
 use crate::support::provider_fixtures::ObservedProvider;
+
+/// Shared synchronous providers can be registered through their public
+/// trait-object contract.
+#[test]
+fn test_registry_register_shared_accepts_arc_trait_object() {
+    let provider = ObservedProvider::new("shared-trait-object");
+    let calls = Arc::clone(&provider.calls);
+    let provider: Arc<FileSystemProvider> = Arc::new(provider);
+    let registry = FileSystemRegistry::default();
+    registry
+        .register_shared(provider)
+        .expect("register shared trait object");
+
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("shared-trait-object:///resource").expect("URI should parse"),
+    );
+    let resolution = registry
+        .resolve_config(&config)
+        .expect("resolve shared provider");
+
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "shared-trait-object"
+    );
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
 
 /// Cloned synchronous registries share providers and default selection state.
 #[test]
