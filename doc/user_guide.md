@@ -44,8 +44,8 @@ when the application needs resource state.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.2
-cargo add qubit-fs-local@0.2 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.3
+cargo add qubit-fs-local@0.3 --features registry
 ```
 
 Provider crates that create explicit SPI selections or use low-level provider
@@ -389,7 +389,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Owning an asynchronous resolution
 
 ```bash
-cargo add qubit-fs-registry@0.2 --features async
+cargo add qubit-fs-registry@0.3 --features async
 cargo add futures@0.3
 ```
 

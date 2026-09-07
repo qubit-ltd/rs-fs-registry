@@ -14,8 +14,8 @@
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.2
-cargo add qubit-fs-local@0.2 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.3
+cargo add qubit-fs-local@0.3 --features registry
 ```
 
 默认仅启用同步接口。接入异步提供者时，需要开启 `qubit-fs-registry/async`。

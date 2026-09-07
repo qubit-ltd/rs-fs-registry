@@ -37,8 +37,8 @@ resolution = filesystem + decoded path + canonical URI
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.2
-cargo add qubit-fs-local@0.2 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.3
+cargo add qubit-fs-local@0.3 --features registry
 ```
 
 需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.11` 添加直接依赖；
@@ -349,7 +349,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 异步解析的所有权
 
 ```bash
-cargo add qubit-fs-registry@0.2 --features async
+cargo add qubit-fs-registry@0.3 --features async
 cargo add futures@0.3
 ```
 
