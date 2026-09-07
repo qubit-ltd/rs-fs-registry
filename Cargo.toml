@@ -53,5 +53,5 @@ tempfile = "3"
 futures = "0.3"
 
 [package.metadata.documentation.dependencies]
-qubit-fs-local = { version = "0.2", path = "../rs-fs-local", features = ["registry"] }
+qubit-fs-local = { version = "0.3", path = "../rs-fs-local", features = ["registry"] }
 futures = { version = "0.3", async-only = true }
