@@ -44,9 +44,7 @@ fn test_provider_adapter_rejects_mismatched_provider_identity() {
     registry
         .register(MismatchedProvider)
         .expect("register mismatched provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-sync:///resource").expect("valid URI"),
-    );
+    let config = FileSystemConfig::new(ConnectionUri::parse("registered-sync:///resource").expect("valid URI"));
 
     let error = registry
         .resolve_config(&config)
@@ -69,12 +67,9 @@ fn test_provider_adapter_rejects_mismatched_async_provider_identity() {
     registry
         .register(MismatchedAsyncProvider)
         .expect("register mismatched provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource").expect("valid URI"),
-    );
+    let config = FileSystemConfig::new(ConnectionUri::parse("registered-async:///resource").expect("valid URI"));
 
-    let error = common::block_on(registry.resolve_config(config))
-        .expect_err("mismatched provider identity must fail");
+    let error = common::block_on(registry.resolve_config(config)).expect_err("mismatched provider identity must fail");
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected provider creation error")
     };
@@ -94,10 +89,7 @@ impl ProviderMetadata for MismatchedProvider {
 }
 
 impl ServiceProvider<FileSystemSpec> for MismatchedProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Ok(common::sync_resolution("reported-sync"))
     }
 }
@@ -142,8 +134,7 @@ fn test_identity_failure_respects_fallback_policy() {
             let selection = ProviderSelection::chain(["first", "second"])
                 .expect("chain")
                 .with_fallback_policy(policy);
-            let config =
-                FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+            let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
             let result = registry.resolve_selected_config(&selection, &config);
             assert_eq!(first_calls.lock().expect("calls").len(), 1);
             if policy == FallbackPolicy::OnAbsence {
@@ -191,16 +182,10 @@ fn test_identity_failure_respects_fallback_policy() {
                         ProviderFailureKind::Unavailable
                     );
                     assert_eq!(error.decisive_attempt().provider_id().as_str(), "second");
-                    assert!(
-                        std::error::Error::source(error.decisive_attempt().failure().error())
-                            .is_some()
-                    );
+                    assert!(std::error::Error::source(error.decisive_attempt().failure().error()).is_some());
                 } else {
                     let resolution = result.expect("any-error reaches second provider");
-                    assert_eq!(
-                        resolution.file_system().properties().info().provider_id(),
-                        "second"
-                    );
+                    assert_eq!(resolution.file_system().properties().info().provider_id(), "second");
                 }
             }
         }
@@ -226,8 +211,7 @@ fn test_async_identity_failure_respects_fallback_policy() {
             let selection = ProviderSelection::chain(["first", "second"])
                 .expect("chain")
                 .with_fallback_policy(policy);
-            let config =
-                FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+            let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
             let result = common::block_on(registry.resolve_selected_config(selection, config));
             assert_eq!(first_calls.lock().expect("calls").len(), 1);
             if policy == FallbackPolicy::OnAbsence {
@@ -275,16 +259,10 @@ fn test_async_identity_failure_respects_fallback_policy() {
                         ProviderFailureKind::Unavailable
                     );
                     assert_eq!(error.decisive_attempt().provider_id().as_str(), "second");
-                    assert!(
-                        std::error::Error::source(error.decisive_attempt().failure().error())
-                            .is_some()
-                    );
+                    assert!(std::error::Error::source(error.decisive_attempt().failure().error()).is_some());
                 } else {
                     let resolution = result.expect("any-error reaches second provider");
-                    assert_eq!(
-                        resolution.file_system().properties().info().provider_id(),
-                        "second"
-                    );
+                    assert_eq!(resolution.file_system().properties().info().provider_id(), "second");
                 }
             }
         }
