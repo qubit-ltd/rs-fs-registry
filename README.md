@@ -15,8 +15,8 @@ Business code can operate on that result without knowing the provider factory.
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.2
-cargo add qubit-fs-local@0.2 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.3
+cargo add qubit-fs-local@0.3 --features registry
 ```
 
 The default feature set is synchronous. For asynchronous providers, enable
