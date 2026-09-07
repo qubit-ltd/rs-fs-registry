@@ -7,81 +7,72 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-`qubit-fs-registry` 是 `qubit-fs` 应用与 provider crate 之间的运行时边界。在应用组装阶段
-注册同步或异步 provider，解析完整的文件系统配置，并取得文件系统、已解码路径和 canonical URI。
+`qubit-fs-registry` 将应用配置交给运行时注册的文件系统提供者。在启动阶段注册工厂后，
+应用即可将连接配置解析为文件系统门面、已解码路径和不含凭据的规范 URI，
+业务代码直接使用解析结果，无需了解提供者的创建过程。
 
 ## 安装
 
 ```bash
-cargo add qubit-fs qubit-fs-registry
+cargo add qubit-fs@0.3 qubit-fs-registry@0.2
+cargo add qubit-fs-local@0.2 --features registry
 ```
 
-本地 provider 由独立 crate 提供：
-
-```bash
-cargo add qubit-fs-local --features registry
-```
+默认仅启用同步接口。接入异步提供者时，需要开启 `qubit-fs-registry/async`。
+使用 SPI 选择类型时，直接添加 `qubit-spi@0.11`；本 crate 不重新导出这些类型。
 
 ## 快速开始
 
-打开本地报表的应用可注册一次 provider，并在边界处解析 `file:` 配置：
+在一个新建的空工作目录中运行下面的完整程序。程序写入 `report.csv`，注册以该目录为根的
+提供者，解析文件 URI，再查询并核对报表大小。预期输出为 `file:///report.csv: 22 bytes`。
 
 ```rust
-use qubit_fs::error::FsResult;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
-use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
-use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
 
-fn open_local_report() -> FsResult<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::current_dir()?;
+    std::fs::write(root.join("report.csv"), b"name,total\nexample,42\n")?;
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
-
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
+    registry.register(LocalFileSystemProvider::rooted(
+        FileSystemId::new("reports")?, &root, LocalResourcePolicy::unbounded(),
+    )?)?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?);
     let resolution = registry.resolve_config(&config)?;
-    let _metadata = resolution.file_system().stat(resolution.path())?;
-    println!("{}", resolution.canonical_uri());
+    let metadata = resolution.file_system().stat(resolution.path())?;
+    assert_eq!(metadata.len(), Some(22));
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///report.csv");
+    println!("{}: {} bytes", resolution.canonical_uri(), metadata.len().unwrap());
     Ok(())
 }
 ```
 
 ## 提供的能力
 
-- `FileSystemRegistry` 与 `AsyncFileSystemRegistry` 注册 provider，并解析同步或异步配置。
-- `FileSystemConfig` 包含 URI、可选 selection、非敏感 options 与 metadata，以及可选的
-  `CredentialRef`。
-- 每个 resolution 将文件系统与 provider 解码路径、无 secret 的 canonical URI 配对。
+- 同步与异步注册表；克隆共享目录，每次解析持有自己的候选快照。
+- 完整配置：连接 URI、选择规则、非敏感选项与元数据，以及外部凭据引用。
+- 经过校验的文件系统、路径和规范 URI，以及可按类型处理的选择与创建错误。
 
-格式化 registry error 只会在适用时包含安全的 selector 和 provider 上下文。registry 的 `Display` 与 `Debug`
-使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
-application-default redactor，不递归展开 provider source，也不会将内部 message 作为未脱敏文本输出。
+`resolve_config` 使用配置中的选择规则，缺省时使用 URI 协议；只有 `resolve_default_config`
+使用注册表默认值。选择规则冲突，或内嵌秘密与外部凭据引用并存时，会在创建提供者之前报错。
+`CredentialRef` 仅标识凭据来源，不能存放秘密值。
 
-selection 以配置为先：`resolve_config` 先使用显式 selection，再使用 URI scheme；它不会回退到
-registry 默认 selection。`resolve_selected_config` 和 `resolve_default_config` 会拒绝配置中与其
-冲突的内嵌 selection。
+解析只校验声明的属性，不证明文件已存在。URI 解码和存储操作由提供者负责。
+规范 URI 的含义取决于返回的文件系统，不能单独作为跨提供者身份或缓存键。
 
-`CredentialRef` 标识凭据来源，例如 profile、环境变量名称或外部 provider ID；它不用于存储
-token、password、private key 或其他 secret。`ProviderSelection`、`ProviderId` 与
-`ProviderDescriptor` 由 `qubit-spi` 所有，本 crate 有意不重新导出它们。使用这些类型时需直接
-添加 `qubit-spi` 依赖。
-
-如果 embedded URI credential 与 `CredentialRef` 占用同一个 credential slot，resolution 会在
-provider 创建前返回 `FileSystemRegistryError::CredentialSourceConflict`。其稳定的
-`reason_code()` 为 `credential_source_conflict`，不包含 URI 或 credential 内容。
-
-URI scheme selection 只接受非空 ASCII token：首尾为字母或数字，正文分隔符仅限 `-`、`_`、`.` 和
-`+`。selector parser 会去除首尾空白并将 ASCII 字母转为小写。provider failure 分为
-`Unsupported`、`Unavailable`、`InvalidConfiguration` 和 `InitializationFailed`；默认的
-`OnAbsence` 只在前两类失败后继续。default resolution 使用同一个原子 catalog 快照读取 selection
-和候选 provider。canonical URI 是选中 provider 针对本次 resolution 生成的无凭据定位结果，其
-scheme 必须属于返回 filesystem facade 声明的 schemes。
+错误的 `Display`/`Debug` 使用不可变的 `Redactor::standard()` 策略，不递归格式化提供者错误源。
+程序应使用 `reason_code()` 和类型化错误进行判断；替换应用默认脱敏器不会改变这里的策略。
 
 ## 延伸阅读
 
-- [English user guide](doc/user_guide.md)
-- [中文用户手册](doc/user_guide.zh_CN.md)
-- [Registry 合约迁移说明](doc/registry_contract_migration.zh_CN.md)
-- [API 文档](https://docs.rs/qubit-fs-registry)
-- [English README](README.md)
+- [中文用户手册](doc/user_guide.zh_CN.md) · [English user guide](doc/user_guide.md)
+- [中文设计](doc/file_system_registry_design.zh_CN.md) · [Design](doc/file_system_registry_design.md)
+- [中文迁移说明](doc/registry_contract_migration.zh_CN.md) · [Migration](doc/registry_contract_migration.md)
+- [API 文档](https://docs.rs/qubit-fs-registry) · [English README](README.md)
 
 ## 测试
 
