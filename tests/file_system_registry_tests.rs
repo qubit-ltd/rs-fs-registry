@@ -9,6 +9,9 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
@@ -27,6 +30,8 @@ use qubit_spi::ProviderMetadata;
 use qubit_spi::ProviderSelection;
 use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
+
+use crate::support::provider_fixtures::ObservedProvider;
 
 /// Cloned synchronous registries share providers and default selection state.
 #[test]
@@ -65,7 +70,7 @@ fn test_registry_allows_username_only_connection_uri_with_credential_reference()
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("empty registry should fail after credential validation");
-    assert!(!matches!(error, FileSystemRegistryError::InvalidConfiguration { .. }));
+    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
 }
 
 /// Provider creation failures preserve provider registration order.
@@ -215,23 +220,6 @@ fn test_registry_rejects_credential_conflict_before_provider_creation() {
     assert_eq!(create_calls.load(Ordering::SeqCst), 0);
 }
 
-/// A synchronous default resolution keeps its captured resolver after a later
-/// default selection change.
-#[test]
-fn test_registry_default_config_captures_resolver_before_default_changes() {
-    let registry = FileSystemRegistry::default();
-    registry
-        .register(FailingProvider::new("captured-default"))
-        .expect("register provider");
-    registry.set_default_selection(ProviderSelection::named("captured-default").expect("selection should parse"));
-    let result = registry.resolve_default_config(&FileSystemConfig::new(
-        ConnectionUri::parse("captured-default:///resource").expect("URI should parse"),
-    ));
-    registry.set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"));
-
-    assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
-}
-
 /// An explicit configuration selection takes precedence over the URI scheme.
 #[test]
 fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
@@ -308,4 +296,99 @@ impl ServiceProvider<FileSystemSpec> for FailingProvider {
             "unavailable",
         )))
     }
+}
+
+/// A resolution already inside its first provider keeps its chain after
+/// concurrent catalog changes.
+#[test]
+fn test_default_snapshot_survives_changes_during_creation() {
+    let registry = FileSystemRegistry::default();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let release_rx = Arc::new(std::sync::Mutex::new(release_rx));
+    let mut first = ObservedProvider::new("first");
+    first.fail = true;
+    first.on_create = Some(Arc::new(move || {
+        entered_tx.send(()).expect("entry signal");
+        release_rx
+            .lock()
+            .expect("release receiver")
+            .recv_timeout(Duration::from_secs(10))
+            .expect("release signal");
+    }));
+    registry.register(first).expect("first");
+    registry.register(ObservedProvider::new("old")).expect("old");
+    registry.set_default_selection(ProviderSelection::chain(["first", "old"]).expect("chain"));
+    let worker_registry = registry.clone();
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+    let worker_config = config.clone();
+    let worker = thread::spawn(move || worker_registry.resolve_default_config(&worker_config));
+    entered_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("provider entered");
+    registry
+        .register(ObservedProvider::new("new"))
+        .expect("register during creation");
+    registry.set_default_selection(ProviderSelection::named("new").expect("new default"));
+    release_tx.send(()).expect("release");
+    let old = worker.join().expect("worker").expect("old resolution");
+    assert_eq!(old.file_system().properties().info().provider_id(), "old");
+    let new = registry.resolve_default_config(&config).expect("new resolution");
+    assert_eq!(new.file_system().properties().info().provider_id(), "new");
+}
+
+/// Username-only URIs actually reach a provider with the complete referenced
+/// configuration.
+#[test]
+fn test_username_and_reference_reach_provider_unchanged() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let config = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI"))
+        .with_credential(CredentialRef::DefaultChain);
+    let resolution = registry.resolve_config(&config).expect("username does not conflict");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "s3");
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
+
+/// Each entry point rejects credential conflicts without invoking a provider.
+#[test]
+fn test_all_entry_points_validate_credentials_before_creation() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let selection = ProviderSelection::named("s3").expect("selection");
+    registry.set_default_selection(selection.clone());
+    for uri in ["s3://user:password@bucket/key", "s3://bucket/key?token=secret"] {
+        let config =
+            FileSystemConfig::new(ConnectionUri::parse(uri).expect("URI")).with_credential(CredentialRef::DefaultChain);
+        for result in [
+            registry.resolve_config(&config),
+            registry.resolve_selected_config(&selection, &config),
+            registry.resolve_default_config(&config),
+        ] {
+            let error = result.expect_err("conflict");
+            assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+            assert_eq!(error.reason_code(), "credential_source_conflict");
+        }
+    }
+    assert!(calls.lock().expect("calls").is_empty());
+}
+
+/// Registration snapshots metadata even if the provider later reports another
+/// descriptor.
+#[test]
+fn test_registration_binds_original_descriptor() {
+    let provider = ObservedProvider::new("original");
+    let descriptor = Arc::clone(&provider.descriptor);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("register");
+    *descriptor.lock().expect("descriptor") = ProviderDescriptor::new(ProviderId::new("changed").expect("ID"));
+    let resolution = registry
+        .resolve_uri(&ConnectionUri::parse("original:///resource").expect("URI"))
+        .expect("original identity");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "original");
+    assert_eq!(registry.provider_ids()[0].as_str(), "original");
 }

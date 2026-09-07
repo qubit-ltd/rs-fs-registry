@@ -11,12 +11,6 @@
 
 #[cfg(feature = "async")]
 use std::future::Future;
-#[cfg(feature = "async")]
-use std::pin::pin;
-#[cfg(feature = "async")]
-use std::task::Context;
-#[cfg(feature = "async")]
-use std::task::Poll;
 
 #[cfg(feature = "async")]
 use qubit_fs::AsyncFileSystem;
@@ -90,15 +84,7 @@ use qubit_fs_registry::FileSystemResolution;
 /// The future's completed output.
 #[cfg(feature = "async")]
 pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = std::task::Waker::noop();
-    let mut context = Context::from_waker(waker);
-    let mut future = pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => std::thread::yield_now(),
-        }
-    }
+    futures::executor::block_on(future)
 }
 
 /// Creates a synchronous resolution fixture for `provider_id`.
@@ -569,4 +555,41 @@ impl AsyncFileSystemSpi for AsyncPropertiesOnlySpi {
     ) -> SpiFuture<'a, FsResult<OpenedAsyncTempDirectory>> {
         Box::pin(async { Err(unused()) })
     }
+}
+
+/// Builds a resolution with independently selected facade and decoded-path
+/// semantics.
+pub(crate) fn sync_resolution_with_decoded_path(
+    path: Path,
+    semantics: PathSemantics,
+    limits: FileSystemLimits,
+) -> Result<FileSystemResolution, FsError> {
+    let filesystem = FileSystem::from_spi(SyncPropertiesOnlySpi {
+        provider_id: "path-boundary",
+        scheme: Some("registry-test"),
+        limits,
+        path_constraints: PathConstraints::either(),
+        path_semantics: semantics,
+    })
+    .expect("valid fixture facade");
+    FileSystemResolution::try_new(filesystem, path, Uri::parse("registry-test:///resource").expect("URI"))
+}
+
+/// Builds a resolution with independently selected facade and decoded-path
+/// semantics.
+#[cfg(feature = "async")]
+pub(crate) fn async_resolution_with_decoded_path(
+    path: Path,
+    semantics: PathSemantics,
+    limits: FileSystemLimits,
+) -> Result<AsyncFileSystemResolution, FsError> {
+    let filesystem = AsyncFileSystem::from_spi(AsyncPropertiesOnlySpi {
+        provider_id: "path-boundary",
+        scheme: Some("registry-test"),
+        limits,
+        path_constraints: PathConstraints::either(),
+        path_semantics: semantics,
+    })
+    .expect("valid fixture facade");
+    AsyncFileSystemResolution::try_new(filesystem, path, Uri::parse("registry-test:///resource").expect("URI"))
 }
