@@ -27,7 +27,8 @@ fn test_file_system_spec_associated_types() {
 /// - `S`: Service specification whose associated types are checked.
 fn assert_sync_file_system_spec<S>()
 where
-    S: ServiceSpec<Config = FileSystemConfig, Error = FsError> + SyncServiceSpec<Output = FileSystemResolution>,
+    S: ServiceSpec<Config = FileSystemConfig, Error = FsError>
+        + SyncServiceSpec<Output = FileSystemResolution>,
 {
 }
 
@@ -53,6 +54,7 @@ fn test_file_system_spec_async_associated_type() {
 #[cfg(feature = "async")]
 fn assert_async_file_system_spec<S>()
 where
-    S: ServiceSpec<Config = FileSystemConfig, Error = FsError> + AsyncServiceSpec<Output = AsyncFileSystemResolution>,
+    S: ServiceSpec<Config = FileSystemConfig, Error = FsError>
+        + AsyncServiceSpec<Output = AsyncFileSystemResolution>,
 {
 }
