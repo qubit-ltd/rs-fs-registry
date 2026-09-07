@@ -85,7 +85,12 @@ pub fn manifest(root: &Path) -> Value {
 
 /// Builds a minimal example manifest; only the tested package may be patched in
 /// published mode.
-pub fn documentation_manifest(root: &Path, input: &Value, published: bool, asynchronous: bool) -> Value {
+pub fn documentation_manifest(
+    root: &Path,
+    input: &Value,
+    published: bool,
+    asynchronous: bool,
+) -> Value {
     let package_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
@@ -98,7 +103,10 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
         .get("metadata")
         .and_then(|m| m.get("documentation"))
         .and_then(|d| d.get("dependencies"));
-    assert!(extra.is_some(), "documentation dependency metadata is required");
+    assert!(
+        extra.is_some(),
+        "documentation dependency metadata is required"
+    );
     if let Some(extra) = extra {
         for (name, value) in extra.as_table().expect("documentation dependencies table") {
             if value.get("async-only").and_then(Value::as_bool) == Some(true) && !asynchronous {
@@ -112,7 +120,9 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
         "version".into(),
         Value::String(format!(
             "={}",
-            input["package"]["version"].as_str().expect("package version")
+            input["package"]["version"]
+                .as_str()
+                .expect("package version")
         )),
     );
     current.insert(
@@ -151,7 +161,9 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
 /// sources.
 fn dependency(root: &Path, value: &Value, published: bool) -> Value {
     let mut table = match value {
-        Value::String(version) => Table::from_iter([("version".into(), Value::String(version.clone()))]),
+        Value::String(version) => {
+            Table::from_iter([("version".into(), Value::String(version.clone()))])
+        }
         Value::Table(table) => table.clone(),
         _ => panic!("dependency must declare a version"),
     };
@@ -211,9 +223,13 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, published: bool)
     let mut ids = BTreeMap::new();
     for entry in metadata["packages"].as_array().expect("metadata packages") {
         let name = entry["name"].as_str().expect("package name");
-        if matches!(name, "qubit-fs" | "qubit-fs-registry" | "qubit-spi" | "qubit-fs-local") {
+        if matches!(
+            name,
+            "qubit-fs" | "qubit-fs-registry" | "qubit-spi" | "qubit-fs-local"
+        ) {
             assert!(
-                ids.insert(name, entry["id"].as_str().expect("package ID")).is_none(),
+                ids.insert(name, entry["id"].as_str().expect("package ID"))
+                    .is_none(),
                 "duplicate package identity: {name}"
             );
             if name == package {
@@ -221,17 +237,22 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, published: bool)
                     Path::new(entry["manifest_path"].as_str().expect("manifest path"))
                         .canonicalize()
                         .expect("manifest exists"),
-                    root.join("Cargo.toml").canonicalize().expect("tested manifest exists")
+                    root.join("Cargo.toml")
+                        .canonicalize()
+                        .expect("tested manifest exists")
                 );
             } else if published {
                 assert!(
-                    entry["source"].as_str().is_some_and(|s| s.starts_with("registry+")),
+                    entry["source"]
+                        .as_str()
+                        .is_some_and(|s| s.starts_with("registry+")),
                     "published dependency uses a local source: {name}"
                 );
             }
         }
     }
-    if let (Some(local), Some(registry)) = (ids.get("qubit-fs-local"), ids.get("qubit-fs-registry")) {
+    if let (Some(local), Some(registry)) = (ids.get("qubit-fs-local"), ids.get("qubit-fs-registry"))
+    {
         let node = metadata["resolve"]["nodes"]
             .as_array()
             .expect("resolved nodes")
@@ -281,7 +302,9 @@ pub fn check_documents(root: &Path, include_async: bool) {
         if asynchronous && !include_async {
             continue;
         }
-        let project = workspace.path().join(if asynchronous { "async" } else { "sync" });
+        let project = workspace
+            .path()
+            .join(if asynchronous { "async" } else { "sync" });
         fs::create_dir_all(project.join("src/bin")).expect("create example sources");
         let mut programs = Vec::new();
         for (document_index, document) in [
@@ -302,7 +325,11 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 .filter(|(_, s)| s.asynchronous == asynchronous)
             {
                 let name = format!("document_{document_index}_{index}");
-                fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source).expect("write program");
+                fs::write(
+                    project.join("src/bin").join(format!("{name}.rs")),
+                    snippet.source,
+                )
+                .expect("write program");
                 programs.push((name, snippet.run));
             }
         }
@@ -311,18 +338,32 @@ pub fn check_documents(root: &Path, include_async: bool) {
         }
         fs::write(
             project.join("Cargo.toml"),
-            to_string(&documentation_manifest(root, &input, published, asynchronous)).expect("serialize manifest"),
+            to_string(&documentation_manifest(
+                root,
+                &input,
+                published,
+                asynchronous,
+            ))
+            .expect("serialize manifest"),
         )
         .expect("write example manifest");
         cargo(&project, &target, &["generate-lockfile"]);
-        let metadata = cargo(&project, &target, &["metadata", "--locked", "--format-version", "1"]);
+        let metadata = cargo(
+            &project,
+            &target,
+            &["metadata", "--locked", "--format-version", "1"],
+        );
         check_graph(
             &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
             package,
             root,
             published,
         );
-        cargo(&project, &target, &["build", "--locked", "--bins", "--quiet"]);
+        cargo(
+            &project,
+            &target,
+            &["build", "--locked", "--bins", "--quiet"],
+        );
         for (name, run) in programs {
             if !run {
                 continue;
