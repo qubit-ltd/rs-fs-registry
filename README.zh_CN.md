@@ -14,12 +14,12 @@
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.4 qubit-fs-registry@0.3
-cargo add qubit-fs-local@0.4 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.4
+cargo add qubit-fs-local@0.6 --features registry
 ```
 
 默认仅启用同步接口。接入异步提供者时，需要开启 `qubit-fs-registry/async`。
-使用 SPI 选择类型时，直接添加 `qubit-spi@0.11`；本 crate 不重新导出这些类型。
+使用 SPI 选择类型时，直接添加 `qubit-spi@0.12`；本 crate 不重新导出这些类型。
 
 ## 快速开始
 
