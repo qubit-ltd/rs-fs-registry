@@ -32,7 +32,9 @@ jobs:
       - name: Verify isolated published documentation
         run: ./check-published-docs.sh
   rust-ci:
-    uses: qubit-ltd/rs-ci/.github/workflows/rust-ci.yml@main
+    uses: qubit-ltd/rs-local-files/.github/workflows/repository-ci.yml@main
     with:
-      coverage_enforce_thresholds: "1"
+      repository: rs-fs-registry
+      revision: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
+
