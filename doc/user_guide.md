@@ -6,7 +6,7 @@
 
 This guide is for application and provider authors who need to bind
 `qubit-fs` to runtime-registered filesystem providers. It covers the current
-`qubit-fs-registry` 0.4 API, including synchronous and asynchronous resolution.
+`qubit-fs-registry` 0.5 API, including synchronous and asynchronous resolution.
 
 ## Conceptual Model
 
@@ -44,8 +44,8 @@ when the application needs resource state.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.4 qubit-fs-registry@0.4
-cargo add qubit-fs-local@0.6 --features registry
+cargo add qubit-fs@0.5 qubit-fs-registry@0.5
+cargo add qubit-fs-local@0.7 --features registry
 ```
 
 Provider crates that create explicit SPI selections or use low-level provider
@@ -446,7 +446,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Owning an asynchronous resolution
 
 ```bash
-cargo add qubit-fs-registry@0.4 --features async
+cargo add qubit-fs-registry@0.5 --features async
 cargo add futures@0.3
 ```
 

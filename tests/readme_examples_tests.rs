@@ -30,11 +30,8 @@ fn release_line(version: &str) -> String {
     format!("{major}.{minor}")
 }
 
-/// User-facing installation commands must match the supported release lines.
-#[test]
-fn test_documentation_commands_follow_manifest() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input = manifest(root);
+/// Builds user-facing installation commands from the selected manifest only.
+fn installation_commands(input: &toml::Value) -> (String, String, String) {
     let registry_version = release_line(
         input["package"]["version"]
             .as_str()
@@ -46,12 +43,38 @@ fn test_documentation_commands_follow_manifest() {
     let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
         .as_str()
         .expect("qubit-fs-local version must be a string");
-    assert_eq!(fs_version, "0.4", "qubit-fs release line must remain explicit");
-    assert_eq!(registry_version, "0.4", "registry release line must follow the package");
-    assert_eq!(local_version, "0.6", "local provider release line must remain explicit");
     let sync_command = format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
     let local_command = format!("cargo add qubit-fs-local@{local_version} --features registry");
     let async_command = format!("cargo add qubit-fs-registry@{registry_version} --features async");
+
+    (sync_command, local_command, async_command)
+}
+
+/// Future release lines change documented installation commands automatically.
+#[test]
+fn test_installation_commands_follow_changed_manifest_versions() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut input = manifest(root);
+    input["package"]["version"] = toml::Value::String("0.99.1".into());
+    input["dependencies"]["qubit-fs"]["version"] = toml::Value::String("0.98".into());
+    input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"] =
+        toml::Value::String("0.97".into());
+    assert_eq!(
+        installation_commands(&input),
+        (
+            "cargo add qubit-fs@0.98 qubit-fs-registry@0.99".into(),
+            "cargo add qubit-fs-local@0.97 --features registry".into(),
+            "cargo add qubit-fs-registry@0.99 --features async".into(),
+        )
+    );
+}
+
+/// User-facing installation commands must match the supported release lines.
+#[test]
+fn test_documentation_commands_follow_manifest() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let (sync_command, local_command, async_command) = installation_commands(&input);
 
     for relative in [
         "README.md",
