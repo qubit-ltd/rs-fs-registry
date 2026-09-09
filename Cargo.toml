@@ -40,7 +40,7 @@ path = "tests/mod.rs"
 
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.4", default-features = false }
-qubit-redact = { version = "0.8", path = "../rs-redact" }
+qubit-redact = { version = "0.8" }
 qubit-spi = { path = "../rs-spi", version = "0.12" }
 
 [lints.rust]
