@@ -15,12 +15,12 @@ Business code can operate on that result without knowing the provider factory.
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.4 qubit-fs-registry@0.3
-cargo add qubit-fs-local@0.4 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.4
+cargo add qubit-fs-local@0.6 --features registry
 ```
 
 The default feature set is synchronous. For asynchronous providers, enable
-`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.11`
+`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.12`
 dependency; this crate does not re-export them.
 
 ## Quick Start

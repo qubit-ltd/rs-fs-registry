@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，覆盖当前
-`qubit-fs-registry` 0.3 API，包括同步与异步 resolution。
+`qubit-fs-registry` 0.4 API，包括同步与异步 resolution。
 
 ## 概念模型
 
@@ -37,11 +37,11 @@ resolution = filesystem + decoded path + canonical URI
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.4 qubit-fs-registry@0.3
-cargo add qubit-fs-local@0.4 --features registry
+cargo add qubit-fs@0.4 qubit-fs-registry@0.4
+cargo add qubit-fs-local@0.6 --features registry
 ```
 
-需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.11` 添加直接依赖；
+需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.12` 添加直接依赖；
 本 crate 不重新导出这些属于 SPI 的类型。
 
 ## 核心工作流
@@ -175,7 +175,7 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 ## 提供者接入实战
 
 文件系统示例应在空工作目录中运行；程序会自行创建报表文件和子目录。
-使用选择规则时，执行 `cargo add qubit-spi@0.11` 添加直接依赖。
+使用选择规则时，执行 `cargo add qubit-spi@0.12` 添加直接依赖。
 
 ### 相同 URI，不同根目录
 
@@ -406,7 +406,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 异步解析的所有权
 
 ```bash
-cargo add qubit-fs-registry@0.3 --features async
+cargo add qubit-fs-registry@0.4 --features async
 cargo add futures@0.3
 ```
 
