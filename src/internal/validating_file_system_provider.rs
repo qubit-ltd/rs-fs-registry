@@ -46,10 +46,7 @@ impl ValidatingFileSystemProvider {
     #[inline]
     pub(crate) fn new(provider: Arc<FileSystemProvider>) -> Self {
         let descriptor = provider.descriptor();
-        Self {
-            descriptor,
-            provider,
-        }
+        Self { descriptor, provider }
     }
 }
 
@@ -81,10 +78,7 @@ impl ServiceProvider<FileSystemSpec> for ValidatingFileSystemProvider {
     /// Returns the provider's creation failure or a contract violation for a
     /// mismatched filesystem identity.
     #[inline]
-    fn create_configured(
-        &self,
-        config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         let resolution = self.provider.create_configured(config)?;
         validate_sync_resolution(&self.descriptor, resolution)
     }
