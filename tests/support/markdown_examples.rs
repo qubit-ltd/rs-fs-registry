@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::absolute;
 use std::process::Command;
 
 use serde_json::Value as Json;
@@ -165,7 +166,7 @@ fn dependency(root: &Path, value: &Value, published: bool) -> Value {
         let declared_path = Path::new(path.as_str().expect("dependency path"));
         let path = resolve_dependency_path(root, declared_path);
         if !published && path.join("Cargo.toml").is_file() {
-            let path = path.canonicalize().expect("dependency path must resolve");
+            let path = absolute(path).expect("dependency path must be absolute");
             table.insert(
                 "path".into(),
                 Value::String(path.to_str().expect("UTF-8 dependency path").into()),

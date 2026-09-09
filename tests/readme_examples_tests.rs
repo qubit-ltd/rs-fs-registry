@@ -169,3 +169,29 @@ fn test_documentation_rejects_malformed_fences() {
 fn test_shipped_markdown_rust_examples_run() {
     check_documents(Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(feature = "async"));
 }
+
+/// Direct dependency paths retain the identity used by sibling transitive
+/// edges.
+#[cfg(unix)]
+#[test]
+fn test_documentation_manifest_preserves_sibling_symlinks() {
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut input = manifest(root);
+    let workspace = tempfile::tempdir().unwrap();
+    let target = workspace.path().join("source");
+    let alias = workspace.path().join("linked-spi");
+    fs::create_dir_all(&target).unwrap();
+    fs::write(
+        target.join("Cargo.toml"),
+        "[package]\nname = 'qubit-spi'\nversion = '0.12.0'\n",
+    )
+    .unwrap();
+    symlink(&target, &alias).unwrap();
+    input["dependencies"]["qubit-spi"]["path"] = toml::Value::String(alias.to_str().unwrap().into());
+    let output = documentation_manifest(root, &input, false, false);
+    assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
+    assert_ne!(alias, alias.canonicalize().unwrap());
+}
