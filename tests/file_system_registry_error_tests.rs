@@ -75,11 +75,7 @@ fn test_credential_source_conflict_has_safe_reason_code() {
     let error = FileSystemRegistryError::CredentialSourceConflict;
 
     assert_eq!(error.reason_code(), "credential_source_conflict");
-    assert!(
-        error
-            .to_string()
-            .contains("code=credential_source_conflict")
-    );
+    assert!(error.to_string().contains("code=credential_source_conflict"));
     assert!(error.source().is_none());
 }
 
@@ -126,17 +122,13 @@ fn test_registry_error_reason_codes_preserve_typed_categories() {
     let no_candidates = FileSystemRegistry::default()
         .resolve_selected_config(
             &ProviderSelection::chain_allowing_missing(["missing"]).expect("selector should parse"),
-            &FileSystemConfig::new(
-                ConnectionUri::parse("file:///resource").expect("URI should parse"),
-            ),
+            &FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI should parse")),
         )
         .expect_err("lenient missing provider must have no candidates");
     let empty_registry = FileSystemRegistry::default()
         .resolve_selected_config(
             &ProviderSelection::auto(),
-            &FileSystemConfig::new(
-                ConnectionUri::parse("file:///resource").expect("URI should parse"),
-            ),
+            &FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI should parse")),
         )
         .expect_err("automatic selection from an empty registry must fail");
     let selection_conflict = FileSystemRegistryError::SelectionConflict {
@@ -238,9 +230,7 @@ fn test_resolution_display_is_bounded_and_structured() {
     let error = FileSystemRegistry::default()
         .resolve_selected_config(
             &selection,
-            &FileSystemConfig::new(
-                ConnectionUri::parse("file:///resource").expect("URI should parse"),
-            ),
+            &FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI should parse")),
         )
         .expect_err("missing providers must fail resolution");
 
@@ -270,9 +260,7 @@ fn test_creation_display_is_structured_without_leaf_message() {
     let error = registry
         .resolve_selected_config(
             &selection,
-            &FileSystemConfig::new(
-                ConnectionUri::parse("first:///resource").expect("URI should parse"),
-            ),
+            &FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI should parse")),
         )
         .expect_err("provider must fail creation");
 
@@ -331,10 +319,7 @@ impl ProviderMetadata for InvalidConfigurationProvider {
 }
 
 impl ServiceProvider<FileSystemSpec> for InvalidConfigurationProvider {
-    fn create_configured(
-        &self,
-        _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::invalid_configuration(FsError::new(
             FsErrorKind::InvalidOptions,
             FsOperation::Provider,

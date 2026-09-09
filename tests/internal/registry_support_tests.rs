@@ -14,9 +14,7 @@ use qubit_fs_registry::FileSystemRegistryError;
 /// grammar; that failure does not fall back to the registry default.
 #[test]
 fn test_valid_uri_scheme_outside_selector_grammar_does_not_use_default() {
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("invalid-:///resource").expect("URI should parse"),
-    );
+    let config = FileSystemConfig::new(ConnectionUri::parse("invalid-:///resource").expect("URI should parse"));
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("an invalid selector should not use the default");

@@ -53,14 +53,10 @@ pub(crate) fn validate_credentials(config: &FileSystemConfig) -> FileSystemRegis
 /// Returns [`FileSystemRegistryError::Selection`] when the URI scheme cannot
 /// form a provider selection.
 #[inline]
-pub(crate) fn selection_for_config(
-    config: &FileSystemConfig,
-) -> FileSystemRegistryResult<ProviderSelection> {
+pub(crate) fn selection_for_config(config: &FileSystemConfig) -> FileSystemRegistryResult<ProviderSelection> {
     match config.selection() {
         Some(selection) => Ok(selection.clone()),
-        None => {
-            ProviderSelection::named(config.uri().scheme()).map_err(FileSystemRegistryError::from)
-        }
+        None => ProviderSelection::named(config.uri().scheme()).map_err(FileSystemRegistryError::from),
     }
 }
 
