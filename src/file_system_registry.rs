@@ -138,8 +138,8 @@ impl FileSystemRegistry {
         self.providers.seal();
     }
 
-    #[must_use]
     /// Returns whether this registry is sealed.
+    #[must_use]
     pub fn is_sealed(&self) -> bool {
         self.providers.is_sealed()
     }
