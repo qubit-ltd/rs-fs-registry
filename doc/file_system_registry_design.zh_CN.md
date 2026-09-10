@@ -1,6 +1,6 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.5、`qubit-fs` 0.5 与 `qubit-spi` 0.12。
+> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.6、`qubit-fs` 0.6 与 `qubit-spi` 0.12。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
