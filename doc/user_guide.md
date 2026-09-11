@@ -157,56 +157,7 @@ owned-config `resolve_config`, `resolve_uri`, `resolve_selected_config`, or
 `resolve_default_config` future. The resulting `AsyncFileSystemResolution`
 has the same filesystem/path/canonical-URI shape.
 
-## Errors and Diagnostics
-
-Registry operations return `FileSystemRegistryResult` and preserve structured
-registration, selection, resolution, and provider-creation diagnostics in
-`FileSystemRegistryError`. Provider creation may fail after a provider has
-been selected; inspect the typed error rather than replacing it with a generic
-message. A registry error can convert to `FsError` while retaining the typed
-registry error as its source.
-Formatted registry errors include only applicable safe selector and provider context. Their
-fields are rendered with the immutable built-in standard policy from
-`qubit_redact::Redactor::standard()`; registry `Display` and `Debug` do not read
-or follow later replacements of the process-wide application-default redactor.
-They do not recursively expand a provider `source()` or emit an internal
-message as unredacted text. Use the typed `Error::source()` chain explicitly
-when structured error handling needs it.
-
-Provider creation failures retain their SPI classification:
-`Unsupported`, `Unavailable`, `InvalidConfiguration`, or
-`InitializationFailed`. The default `FallbackPolicy::OnAbsence` continues only
-after `Unsupported` and `Unavailable`; `Never` always stops, and `OnAnyError`
-continues after every leaf failure. Named selections never fall back. Resolution
-errors raised before a provider is called do not create provider attempts.
-
-The canonical URI is the selected provider's credential-free location for this
-resolution. It is not a universal URI normalization or a replacement for the
-connection URI. Its scheme must be advertised by the returned filesystem
-facade; provider-specific authority, path normalization, and URI-to-path
-semantics remain the provider's responsibility. Do not treat it as a
-cross-provider global identity.
-
-## Troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| No provider resolves a URI | Register the provider and use a URI scheme compatible with its selection. |
-| `resolve_config` ignores the default | This is expected; provide a configuration selection or use `resolve_default_config`. |
-| Selection conflict | Remove the different embedded selection or call the configuration-owned `resolve_config` path. |
-| Credential configuration is rejected | Use a `CredentialRef` reference only; remove embedded/query credential material and secret-like options. |
-| Cannot name a selection type | Add a direct `qubit-spi` dependency. |
-
-## Limitations and Best Practices
-
-- The registry does not implement a storage backend; a registered provider
-  creates the filesystem facade.
-- Provider-specific URI decoding, path rules, capabilities, and secret source
-  interpretation remain provider responsibilities.
-- Keep configuration non-sensitive. `CredentialRef` is a reference boundary,
-  not secret storage.
-
-## Provider Integration Tutorials
+### Provider integration tutorials
 
 Run filesystem examples from an empty working directory; they create their own
 report files and subdirectories. Add SPI types with `cargo add qubit-spi@0.12`.
@@ -662,6 +613,55 @@ provider work runs outside catalog locks. The registry adds neither automatic
 blocking adapters nor a configured-filesystem cache. Credential references alone
 are not sufficient cache identities: principal, scope and credential rotation
 must be accounted for by a provider before sharing authenticated resources.
+
+## Errors and Diagnostics
+
+Registry operations return `FileSystemRegistryResult` and preserve structured
+registration, selection, resolution, and provider-creation diagnostics in
+`FileSystemRegistryError`. Provider creation may fail after a provider has
+been selected; inspect the typed error rather than replacing it with a generic
+message. A registry error can convert to `FsError` while retaining the typed
+registry error as its source.
+Formatted registry errors include only applicable safe selector and provider context. Their
+fields are rendered with the immutable built-in standard policy from
+`qubit_redact::Redactor::standard()`; registry `Display` and `Debug` do not read
+or follow later replacements of the process-wide application-default redactor.
+They do not recursively expand a provider `source()` or emit an internal
+message as unredacted text. Use the typed `Error::source()` chain explicitly
+when structured error handling needs it.
+
+Provider creation failures retain their SPI classification:
+`Unsupported`, `Unavailable`, `InvalidConfiguration`, or
+`InitializationFailed`. The default `FallbackPolicy::OnAbsence` continues only
+after `Unsupported` and `Unavailable`; `Never` always stops, and `OnAnyError`
+continues after every leaf failure. Named selections never fall back. Resolution
+errors raised before a provider is called do not create provider attempts.
+
+The canonical URI is the selected provider's credential-free location for this
+resolution. It is not a universal URI normalization or a replacement for the
+connection URI. Its scheme must be advertised by the returned filesystem
+facade; provider-specific authority, path normalization, and URI-to-path
+semantics remain the provider's responsibility. Do not treat it as a
+cross-provider global identity.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| No provider resolves a URI | Register the provider and use a URI scheme compatible with its selection. |
+| `resolve_config` ignores the default | This is expected; provide a configuration selection or use `resolve_default_config`. |
+| Selection conflict | Remove the different embedded selection or call the configuration-owned `resolve_config` path. |
+| Credential configuration is rejected | Use a `CredentialRef` reference only; remove embedded/query credential material and secret-like options. |
+| Cannot name a selection type | Add a direct `qubit-spi` dependency. |
+
+## Limitations and Best Practices
+
+- The registry does not implement a storage backend; a registered provider
+  creates the filesystem facade.
+- Provider-specific URI decoding, path rules, capabilities, and secret source
+  interpretation remain provider responsibilities.
+- Keep configuration non-sensitive. `CredentialRef` is a reference boundary,
+  not secret storage.
 
 ## Further Reading
 

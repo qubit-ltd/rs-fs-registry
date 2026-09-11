@@ -137,42 +137,7 @@ secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_co
 `resolve_config`、`resolve_uri`、`resolve_selected_config` 或 `resolve_default_config` future。所得
 `AsyncFileSystemResolution` 同样包含 filesystem/path/canonical-URI。
 
-## 错误与诊断
-
-registry 操作返回 `FileSystemRegistryResult`，并在 `FileSystemRegistryError` 中保留结构化的注册、
-selection、resolution 和 provider 创建诊断。provider 被选中后创建仍可能失败；应检查 typed error，
-而非将其替换为笼统消息。registry error 可转换为 `FsError`，同时保留 typed registry error 作为 source。
-格式化 registry error 只会在适用时包含安全的 selector 和 provider 上下文；registry 的 `Display` 与 `Debug`
-使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
-application-default redactor。它们不会递归展开 provider `source()`，也不会把内部 message 作为未脱敏
-文本输出。需要结构化错误处理时，应显式使用 typed `Error::source()` 链。
-
-provider 创建失败会保留 SPI 分类：`Unsupported`、`Unavailable`、`InvalidConfiguration` 或
-`InitializationFailed`。默认 `FallbackPolicy::OnAbsence` 只在 `Unsupported` 与 `Unavailable` 后继续；
-`Never` 始终停止，`OnAnyError` 在所有叶失败后继续。named selection 不会 fallback。provider 尚未被
-调用前产生的 resolution error 不会创建 provider attempt。
-
-canonical URI 是选中 provider 针对本次 resolution 生成的无凭据定位结果，不是通用 URI 规范化结果，
-也不替代 connection URI。其 scheme 必须由返回的 filesystem facade 声明；authority、path 规范化和
-URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider 的全局 identity。
-
-## 排障
-
-| 现象 | 检查项 |
-| --- | --- |
-| URI 没有 provider 可解析 | 注册 provider，并使用与其 selection 兼容的 URI scheme。 |
-| `resolve_config` 忽略默认值 | 这是预期行为；提供 config selection，或使用 `resolve_default_config`。 |
-| 出现 selection conflict | 移除不同的内嵌 selection，或使用由配置决定的 `resolve_config`。 |
-| 凭据配置被拒绝 | 仅使用 `CredentialRef` 引用；移除内嵌/query 凭据和 secret-like options。 |
-| 无法使用 selection 类型 | 直接添加 `qubit-spi` 依赖。 |
-
-## 限制与最佳实践
-
-- registry 不实现存储后端；已注册 provider 负责创建文件系统门面。
-- provider 特有的 URI 解码、路径规则、capability 和 secret 来源解释仍是 provider 的职责。
-- 保持配置非敏感。`CredentialRef` 是引用边界，而不是 secret 存储。
-
-## 提供者接入实战
+### 提供者接入实战
 
 文件系统示例应在空工作目录中运行；程序会自行创建报表文件和子目录。
 使用选择规则时，执行 `cargo add qubit-spi@0.12` 添加直接依赖。
@@ -617,6 +582,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 注册和替换默认值是同步操作，提供者工作在目录锁之外执行。注册表不自动把阻塞操作转换成异步，
 也没有配置后文件系统缓存。外部凭据引用不能单独证明资源可共享；提供者必须先明确主体、权限范围
 和凭据轮换规则，才能安全复用认证资源。
+
+## 错误与诊断
+
+registry 操作返回 `FileSystemRegistryResult`，并在 `FileSystemRegistryError` 中保留结构化的注册、
+selection、resolution 和 provider 创建诊断。provider 被选中后创建仍可能失败；应检查 typed error，
+而非将其替换为笼统消息。registry error 可转换为 `FsError`，同时保留 typed registry error 作为 source。
+格式化 registry error 只会在适用时包含安全的 selector 和 provider 上下文；registry 的 `Display` 与 `Debug`
+使用 `qubit_redact::Redactor::standard()` 提供的不可变内置策略，不读取或跟随之后替换的进程级
+application-default redactor。它们不会递归展开 provider `source()`，也不会把内部 message 作为未脱敏
+文本输出。需要结构化错误处理时，应显式使用 typed `Error::source()` 链。
+
+provider 创建失败会保留 SPI 分类：`Unsupported`、`Unavailable`、`InvalidConfiguration` 或
+`InitializationFailed`。默认 `FallbackPolicy::OnAbsence` 只在 `Unsupported` 与 `Unavailable` 后继续；
+`Never` 始终停止，`OnAnyError` 在所有叶失败后继续。named selection 不会 fallback。provider 尚未被
+调用前产生的 resolution error 不会创建 provider attempt。
+
+canonical URI 是选中 provider 针对本次 resolution 生成的无凭据定位结果，不是通用 URI 规范化结果，
+也不替代 connection URI。其 scheme 必须由返回的 filesystem facade 声明；authority、path 规范化和
+URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider 的全局 identity。
+
+## 排障
+
+| 现象 | 检查项 |
+| --- | --- |
+| URI 没有 provider 可解析 | 注册 provider，并使用与其 selection 兼容的 URI scheme。 |
+| `resolve_config` 忽略默认值 | 这是预期行为；提供 config selection，或使用 `resolve_default_config`。 |
+| 出现 selection conflict | 移除不同的内嵌 selection，或使用由配置决定的 `resolve_config`。 |
+| 凭据配置被拒绝 | 仅使用 `CredentialRef` 引用；移除内嵌/query 凭据和 secret-like options。 |
+| 无法使用 selection 类型 | 直接添加 `qubit-spi` 依赖。 |
+
+## 限制与最佳实践
+
+- registry 不实现存储后端；已注册 provider 负责创建文件系统门面。
+- provider 特有的 URI 解码、路径规则、capability 和 secret 来源解释仍是 provider 的职责。
+- 保持配置非敏感。`CredentialRef` 是引用边界，而不是 secret 存储。
 
 ## 延伸阅读
 
