@@ -73,6 +73,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Why This Project Exists
+
+Applications configure filesystem access through connection URIs and often need
+different backends per deployment. Calling a concrete provider factory directly
+couples business code to that backend's registration and URI rules.
+`qubit-fs-registry` is the assembly boundary: register providers during startup,
+then pass `FileSystemConfig` or a `ConnectionUri` and receive a validated
+filesystem, decoded path, and credential-free canonical URI. It composes with
+`qubit-spi` for selection and fallback instead of reimplementing a service
+catalog.
+
+The crate does not implement storage operations, resolve credential secrets, or
+discover providers automatically.
+
 ## What It Provides
 
 - Synchronous and asynchronous registries with shared catalogs and owned resolution snapshots.
