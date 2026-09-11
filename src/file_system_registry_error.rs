@@ -93,6 +93,11 @@ impl FileSystemRegistryError {
     ///
     /// The code is safe to record in structured diagnostics and does not
     /// include configuration, credential, or provider payloads.
+    ///
+    /// # Returns
+    ///
+    /// A static identifier such as `credential_source_conflict` or
+    /// `provider_creation_failed`.
     #[must_use]
     pub const fn reason_code(&self) -> &'static str {
         match self {
@@ -118,6 +123,14 @@ impl FileSystemRegistryError {
     }
 
     /// Builds one bounded diagnostic event with an explicit redactor snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `redactor`: Redaction policy applied to every formatted field.
+    ///
+    /// # Returns
+    ///
+    /// One text output whose byte length respects the redactor limits.
     fn redacted_output(&self, redactor: &Redactor) -> RedactionTextOutput {
         let composer = redactor
             .text_composer()
