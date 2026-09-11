@@ -137,17 +137,33 @@ impl AsyncFileSystemRegistry {
     /// # Parameters
     ///
     /// - `selection`: Provider selection to install as the default.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the default selection is updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation)
+    /// when the registry is sealed.
     #[inline(always)]
     pub fn set_default_selection(&self, selection: ProviderSelection) -> FileSystemRegistryResult<()> {
         self.providers.set_default_selection(selection).map_err(Into::into)
     }
 
     /// Seals this registry against further mutation.
+    ///
+    /// Subsequent registration or default-selection updates fail with
+    /// [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation).
     pub fn seal(&self) {
         self.providers.seal();
     }
 
     /// Returns whether this registry is sealed.
+    ///
+    /// # Returns
+    ///
+    /// `true` when [`Self::seal`] has been called and mutation is rejected.
     #[must_use]
     pub fn is_sealed(&self) -> bool {
         self.providers.is_sealed()
@@ -163,6 +179,10 @@ impl AsyncFileSystemRegistry {
         self.providers.descriptors()
     }
     /// Returns canonical provider IDs in registration order.
+    ///
+    /// # Returns
+    ///
+    /// Owned canonical IDs in registration order.
     #[inline(always)]
     #[must_use]
     pub fn provider_ids(&self) -> Vec<ProviderId> {
