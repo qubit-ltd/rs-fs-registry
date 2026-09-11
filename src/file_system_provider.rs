@@ -9,7 +9,7 @@
 
 use qubit_spi::ProviderDefinition;
 
-use super::file_system_spec::FileSystemSpec;
+use crate::FileSystemSpec;
 
 /// Self-described filesystem provider trait object type.
 ///
@@ -21,4 +21,16 @@ use super::file_system_spec::FileSystemSpec;
 /// creation. [`FileSystemSpec`] fixes the configuration, resolution, and
 /// filesystem error types; [`FileSystemRegistry`](crate::FileSystemRegistry)
 /// validates returned identities.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_registry::FileSystemProvider;
+/// use qubit_fs_registry::FileSystemRegistry;
+///
+/// let registry = FileSystemRegistry::default();
+/// fn accepts(_provider: &FileSystemProvider) {}
+/// assert!(registry.is_empty());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub type FileSystemProvider = dyn ProviderDefinition<FileSystemSpec>;

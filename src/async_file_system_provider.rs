@@ -22,4 +22,21 @@ use crate::FileSystemSpec;
 /// filesystem error
 /// types; [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry) validates
 /// returned identities.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # #[cfg(feature = "async")]
+/// # {
+/// use qubit_fs_registry::AsyncFileSystemProvider;
+/// use qubit_fs_registry::AsyncFileSystemRegistry;
+///
+/// let registry = AsyncFileSystemRegistry::default();
+/// fn accepts(_provider: &AsyncFileSystemProvider) {}
+/// assert!(registry.is_empty());
+/// # }
+/// # Ok(())
+/// # }
+/// ```
 pub type AsyncFileSystemProvider = dyn AsyncProviderDefinition<FileSystemSpec>;
