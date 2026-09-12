@@ -44,8 +44,8 @@ when the application needs resource state.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.7 qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.8 --features registry
+cargo add qubit-fs@0.8 qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.9 --features registry
 ```
 
 Provider crates that create explicit SPI selections or use low-level provider
