@@ -39,9 +39,9 @@ name = "integration_tests"
 path = "tests/mod.rs"
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", version = "0.8", default-features = false }
-qubit-redact = { version = "0.8" }
-qubit-spi = { path = "../rs-spi", version = "0.12" }
+qubit-fs = { path = "../rs-fs", default-features = false }
+qubit-redact = { version = "0.9" }
+qubit-spi = { version = "0.12" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
