@@ -19,6 +19,7 @@ use serde_json::from_slice;
 use tempfile::TempDir;
 use toml::Table;
 use toml::Value;
+use toml::from_str;
 use toml::to_string;
 
 /// One complete Markdown program and its minimum feature requirement.
@@ -78,10 +79,8 @@ pub fn snippets(text: &str) -> Result<Vec<Snippet>, String> {
 
 /// Reads the package manifest, failing explicitly on missing version metadata.
 pub fn manifest(root: &Path) -> Value {
-    fs::read_to_string(root.join("Cargo.toml"))
-        .expect("read package manifest")
-        .parse()
-        .expect("parse package manifest")
+    let source = fs::read_to_string(root.join("Cargo.toml")).expect("read package manifest");
+    from_str(&source).expect("parse package manifest")
 }
 
 /// Builds a minimal example manifest; only the tested package may be patched in
@@ -130,17 +129,16 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
     };
     current.insert("features".into(), Value::Array(features));
     dependencies.insert(package.into(), Value::Table(current));
-    let mut output: Value = "[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\nedition='2024'\npublish=false\n[workspace]\n".parse().expect("static manifest");
+    let mut output: Value = from_str("[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\nedition='2024'\npublish=false\n[workspace]\n").expect("static manifest");
     output
         .as_table_mut()
         .expect("manifest table")
         .insert("dependencies".into(), Value::Table(dependencies));
-    let patch: Value = format!(
+    let patch_source = format!(
         "[crates-io.{package}]\npath={}\n",
         Value::String(package_root.to_str().expect("UTF-8 root").into())
-    )
-    .parse()
-    .expect("self patch");
+    );
+    let patch: Value = from_str(&patch_source).expect("self patch");
     output
         .as_table_mut()
         .expect("manifest table")
@@ -150,16 +148,26 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
 
 /// Keeps version/feature requirements while choosing local or published
 /// sources.
-fn dependency(root: &Path, value: &Value, published: bool) -> Value {
+pub(crate) fn dependency(root: &Path, value: &Value, published: bool) -> Value {
     let mut table = match value {
         Value::String(version) => Table::from_iter([("version".into(), Value::String(version.clone()))]),
         Value::Table(table) => table.clone(),
         _ => panic!("dependency must declare a version"),
     };
-    assert!(
-        table.get("version").and_then(Value::as_str).is_some(),
-        "dependency version is required"
-    );
+    if table.get("version").and_then(Value::as_str).is_none() {
+        let declared_path = table
+            .get("path")
+            .and_then(Value::as_str)
+            .expect("dependency requires a path or version");
+        let sibling = resolve_dependency_path(root, Path::new(declared_path));
+        let source = fs::read_to_string(sibling.join("Cargo.toml"))
+            .expect("path-only dependency requires an available sibling manifest");
+        let manifest: Value = from_str(&source).expect("parse sibling manifest");
+        let version = manifest["package"]["version"]
+            .as_str()
+            .expect("sibling package version");
+        table.insert("version".into(), Value::String(version.to_owned()));
+    }
     table.remove("optional");
     table.remove("async-only");
     if let Some(path) = table.remove("path") {
@@ -193,7 +201,7 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
     }
     let package = fs::read_to_string(declared_path.join("Cargo.toml"))
         .ok()
-        .and_then(|source| source.parse::<Value>().ok())
+        .and_then(|source| from_str::<Value>(&source).ok())
         .and_then(|value| value["package"]["name"].as_str().map(str::to_owned));
     if let Some(package) = package
         && let Some(suffix) = package.strip_prefix("qubit-")

@@ -10,6 +10,7 @@
 use std::path::Path;
 
 use crate::support::markdown_examples::check_documents;
+use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
 use crate::support::markdown_examples::manifest;
 use crate::support::markdown_examples::snippets;
@@ -31,15 +32,17 @@ fn release_line(version: &str) -> String {
 }
 
 /// Builds user-facing installation commands from the selected manifest only.
-fn installation_commands(input: &toml::Value) -> (String, String, String) {
+fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, String) {
     let registry_version = release_line(
         input["package"]["version"]
             .as_str()
             .expect("package version must be a string"),
     );
-    let fs_version = input["dependencies"]["qubit-fs"]["version"]
+    let filesystem = dependency(root, &input["dependencies"]["qubit-fs"], true);
+    let fs_version = filesystem["version"]
         .as_str()
         .expect("qubit-fs version must be a string");
+    let fs_version = fs_version.split('.').take(2).collect::<Vec<_>>().join(".");
     let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
         .as_str()
         .expect("qubit-fs-local version must be a string");
@@ -56,11 +59,14 @@ fn test_installation_commands_follow_changed_manifest_versions() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut input = manifest(root);
     input["package"]["version"] = toml::Value::String("0.99.1".into());
-    input["dependencies"]["qubit-fs"]["version"] = toml::Value::String("0.98".into());
+    input["dependencies"]["qubit-fs"]
+        .as_table_mut()
+        .expect("filesystem dependency table")
+        .insert("version".into(), toml::Value::String("0.98".into()));
     input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"] =
         toml::Value::String("0.97".into());
     assert_eq!(
-        installation_commands(&input),
+        installation_commands(root, &input),
         (
             "cargo add qubit-fs@0.98 qubit-fs-registry@0.99".into(),
             "cargo add qubit-fs-local@0.97 --features registry".into(),
@@ -74,7 +80,7 @@ fn test_installation_commands_follow_changed_manifest_versions() {
 fn test_documentation_commands_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let (sync_command, local_command, async_command) = installation_commands(&input);
+    let (sync_command, local_command, async_command) = installation_commands(root, &input);
 
     for relative in [
         "README.md",
@@ -134,6 +140,21 @@ fn test_documentation_versions_follow_manifest() {
     assert!(asynchronous["dependencies"].get("futures").is_some());
 }
 
+/// A path-only workspace edge still renders the sibling's release requirement.
+#[test]
+fn test_path_only_filesystem_dependency_uses_sibling_release() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut input = manifest(root);
+    input["dependencies"]["qubit-fs"]
+        .as_table_mut()
+        .expect("filesystem dependency table")
+        .remove("version");
+    let output = documentation_manifest(root, &input, false, false);
+
+    assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.8.0"));
+    assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
+}
+
 /// Missing metadata must fail explicitly instead of silently omitting
 /// dependencies.
 #[test]
@@ -190,7 +211,10 @@ fn test_documentation_manifest_preserves_sibling_symlinks() {
     )
     .unwrap();
     symlink(&target, &alias).unwrap();
-    input["dependencies"]["qubit-spi"]["path"] = toml::Value::String(alias.to_str().unwrap().into());
+    input["dependencies"]["qubit-spi"]
+        .as_table_mut()
+        .expect("SPI dependency table")
+        .insert("path".into(), toml::Value::String(alias.to_str().unwrap().into()));
     let output = documentation_manifest(root, &input, false, false);
     assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
     assert_ne!(alias, alias.canonicalize().unwrap());
