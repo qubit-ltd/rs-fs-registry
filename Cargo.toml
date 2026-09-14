@@ -47,11 +47,11 @@ qubit-spi = { version = "0.12" }
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
 
 [dev-dependencies]
-toml = "0.8"
-serde_json = "1"
-tempfile = "3"
-futures = "0.3"
+toml = "^0.9"
+serde_json = "^1.0"
+tempfile = "^3.27"
+futures = "^0.3"
 
 [package.metadata.documentation.dependencies]
 qubit-fs-local = { version = "0.9", path = "../rs-fs-local", features = ["registry"] }
-futures = { version = "0.3", async-only = true }
+futures = { version = "^0.3", async-only = true }
