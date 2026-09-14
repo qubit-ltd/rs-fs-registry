@@ -39,7 +39,7 @@ name = "integration_tests"
 path = "tests/mod.rs"
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", default-features = false }
+qubit-fs = { version = "0.8", path = "../rs-fs", default-features = false }
 qubit-redact = { version = "0.9" }
 qubit-spi = { version = "0.12" }
 
