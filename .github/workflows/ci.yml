@@ -45,6 +45,8 @@ jobs:
 
   verify:
     runs-on: ${{ matrix.os }}
+    env:
+      QUBIT_FS_SIBLING_ROOT: ${{ github.workspace }}/..
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +108,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare-feature-matrix.outputs.matrix) }}
     env:
       CARGO_TARGET_DIR: target/feature-matrix/${{ matrix.name }}
+      QUBIT_FS_SIBLING_ROOT: ${{ github.workspace }}/..
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Prepare local path dependencies
@@ -148,6 +151,8 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    env:
+      QUBIT_FS_SIBLING_ROOT: ${{ github.workspace }}/..
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Prepare local path dependencies
