@@ -1,3 +1,6 @@
 /target/
 __pycache__/
 .worktrees/
+
+# Locally installed pinned rs-infra tools
+.infra/tools/bin/
