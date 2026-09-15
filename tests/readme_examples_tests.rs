@@ -43,10 +43,12 @@ fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, S
         .as_str()
         .expect("qubit-fs version must be a string");
     let fs_version = fs_version.split('.').take(2).collect::<Vec<_>>().join(".");
-    let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
-        .as_str()
-        .expect("qubit-fs-local version must be a string");
-    let sync_command = format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
+    let local_version =
+        input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
+            .as_str()
+            .expect("qubit-fs-local version must be a string");
+    let sync_command =
+        format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
     let local_command = format!("cargo add qubit-fs-local@{local_version} --features registry");
     let async_command = format!("cargo add qubit-fs-registry@{registry_version} --features async");
 
@@ -88,7 +90,8 @@ fn test_documentation_commands_follow_manifest() {
         "doc/user_guide.md",
         "doc/user_guide.zh_CN.md",
     ] {
-        let source = std::fs::read_to_string(root.join(relative)).expect("documentation must be readable");
+        let source =
+            std::fs::read_to_string(root.join(relative)).expect("documentation must be readable");
         assert!(
             source.contains(&sync_command),
             "{relative} must contain `{sync_command}`"
@@ -99,7 +102,8 @@ fn test_documentation_commands_follow_manifest() {
         );
     }
     for relative in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
-        let source = std::fs::read_to_string(root.join(relative)).expect("user guide must be readable");
+        let source =
+            std::fs::read_to_string(root.join(relative)).expect("user guide must be readable");
         assert!(
             source.contains(&async_command),
             "{relative} must contain `{async_command}`"
@@ -123,7 +127,11 @@ fn test_documentation_versions_follow_manifest() {
         input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
     );
     assert!(output["dependencies"]["qubit-fs"].get("path").is_none());
-    assert!(output["dependencies"]["qubit-fs-local"].get("path").is_none());
+    assert!(
+        output["dependencies"]["qubit-fs-local"]
+            .get("path")
+            .is_none()
+    );
     assert!(output["dependencies"].get("futures").is_none());
     assert_eq!(
         output["dependencies"]["qubit-fs-registry"]["features"]
@@ -151,8 +159,15 @@ fn test_path_only_filesystem_dependency_uses_sibling_release() {
         .remove("version");
     let output = documentation_manifest(root, &input, false, false);
 
-    assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.8.0"));
-    assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
+    assert_eq!(
+        output["dependencies"]["qubit-fs"]["version"].as_str(),
+        Some("0.8.0")
+    );
+    assert!(
+        output["dependencies"]["qubit-fs"]["path"]
+            .as_str()
+            .is_some()
+    );
 }
 
 /// Missing metadata must fail explicitly instead of silently omitting
@@ -177,8 +192,10 @@ fn test_documentation_rejects_malformed_fences() {
     ] {
         assert!(snippets(source).is_err(), "must reject {source:?}");
     }
-    let result = snippets("```rust\nfn main() {}\n```\n<!-- registry-example: async -->\n```rust\nfn main() {}\n```")
-        .expect("valid examples");
+    let result = snippets(
+        "```rust\nfn main() {}\n```\n<!-- registry-example: async -->\n```rust\nfn main() {}\n```",
+    )
+    .expect("valid examples");
     assert_eq!(result.len(), 2);
     assert!(!result[0].asynchronous);
     assert!(result[1].asynchronous);
@@ -188,7 +205,10 @@ fn test_documentation_rejects_malformed_fences() {
 /// Each example is compiled and run with its documented minimum features.
 #[test]
 fn test_shipped_markdown_rust_examples_run() {
-    check_documents(Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(feature = "async"));
+    check_documents(
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        cfg!(feature = "async"),
+    );
 }
 
 /// Direct dependency paths retain the identity used by sibling transitive
@@ -214,8 +234,14 @@ fn test_documentation_manifest_preserves_sibling_symlinks() {
     input["dependencies"]["qubit-spi"]
         .as_table_mut()
         .expect("SPI dependency table")
-        .insert("path".into(), toml::Value::String(alias.to_str().unwrap().into()));
+        .insert(
+            "path".into(),
+            toml::Value::String(alias.to_str().unwrap().into()),
+        );
     let output = documentation_manifest(root, &input, false, false);
-    assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
+    assert_eq!(
+        output["dependencies"]["qubit-spi"]["path"].as_str(),
+        alias.to_str()
+    );
     assert_ne!(alias, alias.canonicalize().unwrap());
 }
