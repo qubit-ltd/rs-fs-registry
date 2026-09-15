@@ -93,7 +93,10 @@ impl ProviderMetadata for ObservedProvider {
 impl ServiceProvider<FileSystemSpec> for ObservedProvider {
     /// Records the input and returns either a failure or properties-only
     /// facade.
-    fn create_configured(&self, config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(
+        &self,
+        config: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         self.record(config);
         if self.fail {
             Err(self.failure())
