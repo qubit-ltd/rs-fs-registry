@@ -30,7 +30,7 @@ use qubit_spi::ProviderMetadata;
 use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
 
-use crate::common;
+use crate::support::common;
 
 /// Shared controls record exact configurations and permit deterministic
 /// scheduling.

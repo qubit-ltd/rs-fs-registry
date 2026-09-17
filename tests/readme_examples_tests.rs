@@ -143,15 +143,26 @@ fn test_documentation_versions_follow_manifest() {
 /// A path-only workspace edge still renders the sibling's release requirement.
 #[test]
 fn test_path_only_filesystem_dependency_uses_sibling_release() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut input = manifest(root);
-    input["dependencies"]["qubit-fs"]
+    let original_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut input = manifest(original_root);
+    let workspace = tempfile::tempdir().expect("temporary fixture");
+    let registry = workspace.path().join("registry");
+    let sibling = workspace.path().join("fixture-fs");
+    std::fs::create_dir_all(&registry).expect("registry fixture");
+    std::fs::create_dir_all(&sibling).expect("filesystem fixture");
+    std::fs::write(
+        sibling.join("Cargo.toml"),
+        "[package]\nname = 'qubit-fs'\nversion = '0.98.7'\n",
+    )
+    .expect("sibling manifest");
+    let dependency = input["dependencies"]["qubit-fs"]
         .as_table_mut()
-        .expect("filesystem dependency table")
-        .remove("version");
-    let output = documentation_manifest(root, &input, false, false);
+        .expect("filesystem dependency table");
+    dependency.remove("version");
+    dependency.insert("path".into(), toml::Value::String("../fixture-fs".into()));
+    let output = documentation_manifest(&registry, &input, false, false);
 
-    assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.2.0"));
+    assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.98.7"));
     assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
 }
 

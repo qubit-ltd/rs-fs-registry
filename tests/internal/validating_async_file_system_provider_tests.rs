@@ -19,7 +19,7 @@ use qubit_spi::ProviderId;
 use qubit_spi::ProviderMetadata;
 use qubit_spi::error::ProviderFailure;
 
-use crate::common;
+use crate::support::common;
 
 /// An asynchronous validating wrapper preserves a provider result whose
 /// identity matches its registered descriptor.

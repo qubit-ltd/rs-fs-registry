@@ -7,5 +7,6 @@
 // =============================================================================
 //! Shared integration-test support.
 
+pub mod common;
 pub mod markdown_examples;
 pub mod provider_fixtures;

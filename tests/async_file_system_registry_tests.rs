@@ -34,7 +34,7 @@ use qubit_spi::ProviderMetadata;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderFailure;
 
-use super::common;
+use crate::support::common;
 use crate::support::provider_fixtures::ObservedProvider;
 
 /// Shared asynchronous providers can be registered through their public
@@ -75,6 +75,29 @@ fn test_async_registry_clone_shares_catalog_and_default_selection() {
         .set_default_selection(selection.clone())
         .expect("unsealed registry should accept default selection");
     assert_eq!(registry.default_selection(), selection);
+}
+
+/// Sealing is shared by asynchronous registry clones and rejects mutations.
+#[test]
+fn test_async_registry_seal_is_shared_and_rejects_mutation() {
+    let registry = AsyncFileSystemRegistry::default();
+    let clone = registry.clone();
+    let original_selection = registry.default_selection();
+    assert!(!registry.is_sealed());
+    registry.seal();
+    registry.seal();
+    assert!(registry.is_sealed());
+    assert!(clone.is_sealed());
+
+    let registration = clone.register(AsyncFailingProvider).expect_err("sealed registry");
+    assert!(matches!(&registration, FileSystemRegistryError::RegistryMutation(_)));
+    assert_eq!(registration.reason_code(), "registry_sealed");
+    let selection = ProviderSelection::named("async-failing").expect("valid selection");
+    let mutation = clone.set_default_selection(selection).expect_err("sealed registry");
+    assert!(matches!(&mutation, FileSystemRegistryError::RegistryMutation(_)));
+    assert_eq!(mutation.reason_code(), "registry_sealed");
+    assert_eq!(registry.len(), 0);
+    assert_eq!(registry.default_selection(), original_selection);
 }
 
 /// Async resolution rejects conflicting embedded and referenced credentials

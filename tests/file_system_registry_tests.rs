@@ -74,6 +74,31 @@ fn test_registry_clone_shares_catalog_and_default_selection() {
     assert_eq!(registry.default_selection(), selection);
 }
 
+/// Sealing is shared by clones and rejects every registry mutation.
+#[test]
+fn test_registry_seal_is_shared_and_rejects_mutation() {
+    let registry = FileSystemRegistry::default();
+    let clone = registry.clone();
+    let original_selection = registry.default_selection();
+    assert!(!registry.is_sealed());
+    registry.seal();
+    registry.seal();
+    assert!(registry.is_sealed());
+    assert!(clone.is_sealed());
+
+    let registration = clone
+        .register(FailingProvider::new("late"))
+        .expect_err("sealed registry");
+    assert!(matches!(&registration, FileSystemRegistryError::RegistryMutation(_)));
+    assert_eq!(registration.reason_code(), "registry_sealed");
+    let selection = ProviderSelection::named("late").expect("valid selection");
+    let mutation = clone.set_default_selection(selection).expect_err("sealed registry");
+    assert!(matches!(&mutation, FileSystemRegistryError::RegistryMutation(_)));
+    assert_eq!(mutation.reason_code(), "registry_sealed");
+    assert_eq!(registry.len(), 0);
+    assert_eq!(registry.default_selection(), original_selection);
+}
+
 /// Embedded URI secrets conflict with an external credential reference.
 #[test]
 fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution() {

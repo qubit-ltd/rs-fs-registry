@@ -12,9 +12,9 @@ use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::path::PathConstraints;
 use qubit_fs::path::Uri;
 
-use crate::common::sync_resolution;
-use crate::common::sync_resolution_with_path_properties;
-use crate::common::sync_resolution_with_scheme;
+use crate::support::common::sync_resolution;
+use crate::support::common::sync_resolution_with_path_properties;
+use crate::support::common::sync_resolution_with_scheme;
 /// Canonical resolution URIs accept no embedded credential material.
 #[test]
 fn test_resolution_boundary_uses_secret_free_uri() {
