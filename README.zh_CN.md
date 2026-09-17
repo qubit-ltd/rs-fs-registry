@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-`qubit-fs-registry` 将应用配置交给运行时注册的文件系统提供者。在启动阶段注册工厂后，
+`qubit-fs-registry` 将应用配置交给运行时注册的文件系统提供者。在启动阶段注册提供者后，
 应用即可将连接配置解析为文件系统门面、已解码路径和不含凭据的规范 URI，
 业务代码直接使用解析结果，无需了解提供者的创建过程。
 
@@ -73,12 +73,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 为什么需要这个项目
 
 应用通常用连接 URI 配置文件访问，并在不同部署环境中选用不同后端。若业务代码直接调用
-某个具体 provider 的工厂，就会与后端的注册方式和 URI 规则紧耦合。`qubit-fs-registry`
-承担装配边界：启动阶段注册 provider，之后传入 `FileSystemConfig` 或 `ConnectionUri`，
+某个具体提供者的工厂，就会与后端的注册方式和 URI 规则紧耦合。`qubit-fs-registry`
+承担装配边界：启动阶段注册提供者，之后传入 `FileSystemConfig` 或 `ConnectionUri`，
 即可得到经过校验的文件系统、已解码路径和不含凭据的规范 URI。选择与回退复用
 `qubit-spi`，不必重复实现服务目录。
 
-本 crate 不实现存储操作、不解析凭据秘密，也不自动发现 provider。
+本 crate 不实现存储操作、不解析凭据秘密，也不自动发现提供者。
 
 ## 提供的能力
 
