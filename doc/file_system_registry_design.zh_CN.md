@@ -327,7 +327,7 @@ canonical URI 的作用域是一次 provider resolution 的安全定位结果。
 根据其 URI 与 decoded `Path` 关系生成，不是对所有 provider 通用的 URI 规范化，也不
 替代原始 `ConnectionUri` 的连接输入。`FileSystemResolution::try_new` 只要求其 scheme
 属于返回 filesystem facade 声明的 schemes；authority、path 的具体规范化及 provider
-语义仍由 provider 负责。canonical URI 不得恢复 credential、userinfo 或敏感 query，
+语义仍由 provider 负责。canonical URI 不得恢复 credential、userinfo 中的 password 或敏感 query，但可以保留仅含用户名的 userinfo，
 也不能被当作跨 provider 的全局 identity。
 
 ## 11. Error 模型

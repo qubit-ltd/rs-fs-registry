@@ -1,6 +1,6 @@
 # Registry 合约迁移说明
 
-本文面向采用 `qubit-fs-registry` 0.3 filesystem facade/SPI 合约的应用和 provider
+本文面向迁移到 `qubit-fs-registry` 0.6 filesystem facade/SPI 合约的应用和 provider
 作者，说明这些已实现合约的可观察行为。它补充[中文用户手册](user_guide.zh_CN.md)，
 重点说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界；
 本文不引入新的公开 API，也不改变 selection/fallback 语义。
@@ -72,7 +72,8 @@ attempt。迁移时应根据分类和 selection policy 决定是否重试，不�
 无凭据安全定位结果。它与作为连接输入的 `ConnectionUri` 具有不同生命周期和用途：
 
 - provider 负责建立 URI 与 decoded `Path` 的 provider-specific 关系；
-- canonical URI 不含 password、userinfo、credential-like query 或其他 secret；
+- canonical URI 可以保留仅含用户名的 userinfo，但不含 password、credential-like query
+  或其他 secret；
 - `FileSystemResolution::try_new` 只验证 path 约束、limits，以及 canonical URI scheme
   是否属于返回 filesystem facade 声明的 schemes；
 - authority、path 的规范化以及 capability 语义仍由 provider 定义；
@@ -112,12 +113,13 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 
 ## 8. 当前版本与验证
 
-本文适用于 registry 0.3、fs 0.4、local provider 0.3、spi 0.11。用户名本身不是内嵌秘密，
+本文适用于 registry 0.6、fs 0.2、local provider 0.9、spi 0.12。用户名本身不是内嵌秘密，
 可以与外部引用共存。异步方法返回 future 前取得快照，首次轮询才开始创建；返回身份不符按
 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
 安全结构由 `Uri` 类型保证。
 
-相关示例应统一依赖版本，并运行 `check-published-docs.sh` 验证隔离的发布依赖环境；
+相关示例应统一依赖版本，先发布 registry 再发布 local provider，并运行
+`check-published-docs.sh` 验证隔离的发布依赖环境；
 开发期间带本地补丁的打包成功不能替代这一验证。
 
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)
