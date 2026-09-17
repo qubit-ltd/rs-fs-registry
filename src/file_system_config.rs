@@ -76,7 +76,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The URI owned by this configuration.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn uri(&self) -> &ConnectionUri {
         &self.uri
@@ -88,7 +88,7 @@ impl FileSystemConfig {
     ///
     /// `Some` with the configured selection, or `None` when resolution should
     /// derive a selection from the URI.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn selection(&self) -> Option<&ProviderSelection> {
         self.selection.as_ref()
@@ -99,7 +99,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The provider factory options.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn options(&self) -> &NonSensitiveMetadata {
         &self.options
@@ -111,7 +111,7 @@ impl FileSystemConfig {
     ///
     /// `Some` with the external credential reference, or `None` when the
     /// configuration does not select an external credential source.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn credential(&self) -> Option<&CredentialRef> {
         self.credential.as_ref()
@@ -122,7 +122,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The provider metadata.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn metadata(&self) -> &NonSensitiveMetadata {
         &self.metadata
@@ -137,7 +137,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The updated configuration.
-    #[inline(always)]
+    #[inline]
     pub fn with_selection(mut self, selection: ProviderSelection) -> Self {
         self.selection = Some(selection);
         self
@@ -152,7 +152,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The updated configuration.
-    #[inline(always)]
+    #[inline]
     pub fn with_options(mut self, options: NonSensitiveMetadata) -> Self {
         self.options = options;
         self
@@ -167,7 +167,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The updated configuration.
-    #[inline(always)]
+    #[inline]
     pub fn with_credential(mut self, credential: CredentialRef) -> Self {
         self.credential = Some(credential);
         self
@@ -182,7 +182,7 @@ impl FileSystemConfig {
     /// # Returns
     ///
     /// The updated configuration.
-    #[inline(always)]
+    #[inline]
     pub fn with_metadata(mut self, metadata: NonSensitiveMetadata) -> Self {
         self.metadata = metadata;
         self

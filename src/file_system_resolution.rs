@@ -226,7 +226,7 @@ impl FileSystemResolution {
     /// # Returns
     ///
     /// The configured synchronous filesystem.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn file_system(&self) -> &FileSystem {
         &self.file_system
@@ -236,7 +236,7 @@ impl FileSystemResolution {
     /// # Returns
     ///
     /// The validated provider-decoded path.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn path(&self) -> &Path {
         &self.path
@@ -246,7 +246,7 @@ impl FileSystemResolution {
     /// # Returns
     ///
     /// The validated canonical URI.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn canonical_uri(&self) -> &Uri {
         &self.canonical_uri
@@ -256,7 +256,7 @@ impl FileSystemResolution {
     /// # Returns
     ///
     /// The filesystem, decoded path, and canonical URI in that order.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn into_parts(self) -> (FileSystem, Path, Uri) {
         (self.file_system, self.path, self.canonical_uri)

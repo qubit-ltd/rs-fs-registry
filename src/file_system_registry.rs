@@ -81,7 +81,7 @@ impl FileSystemRegistry {
     /// # Panics
     ///
     /// Propagates a panic raised while obtaining the provider descriptor.
-    #[inline(always)]
+    #[inline]
     pub fn register<P>(&self, provider: P) -> FileSystemRegistryResult<()>
     where
         P: ProviderDefinition<FileSystemSpec>,
@@ -107,7 +107,7 @@ impl FileSystemRegistry {
     /// # Panics
     ///
     /// Propagates a panic raised while obtaining the provider descriptor.
-    #[inline(always)]
+    #[inline]
     pub fn register_shared(&self, provider: Arc<FileSystemProvider>) -> FileSystemRegistryResult<()> {
         self.providers
             .register(ValidatingFileSystemProvider::new(provider))
@@ -118,7 +118,7 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// A snapshot of the current default provider selection.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn default_selection(&self) -> ProviderSelection {
         self.providers.default_selection()
@@ -137,7 +137,7 @@ impl FileSystemRegistry {
     ///
     /// Returns [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation)
     /// when the registry is sealed.
-    #[inline(always)]
+    #[inline]
     pub fn set_default_selection(&self, selection: ProviderSelection) -> FileSystemRegistryResult<()> {
         self.providers.set_default_selection(selection).map_err(Into::into)
     }
@@ -164,7 +164,7 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// Snapshots of all registered descriptors in registration order.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
         self.providers.descriptors()
@@ -174,7 +174,7 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// Owned canonical IDs in registration order.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn provider_ids(&self) -> Vec<ProviderId> {
         self.providers.provider_ids()
@@ -184,7 +184,7 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// The number of registered providers.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn len(&self) -> usize {
         self.providers.len()
@@ -194,7 +194,7 @@ impl FileSystemRegistry {
     /// # Returns
     ///
     /// `true` when the registry contains no providers.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
@@ -237,7 +237,7 @@ impl FileSystemRegistry {
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_config`].
-    #[inline(always)]
+    #[inline]
     pub fn resolve_uri(&self, uri: &ConnectionUri) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))
     }
@@ -282,7 +282,7 @@ impl FileSystemRegistry {
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_selected_config`].
-    #[inline(always)]
+    #[inline]
     pub fn resolve_default_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
         let (selection, resolver) = self.providers.resolve_default_snapshot();
@@ -307,7 +307,7 @@ impl FileSystemRegistry {
     ///
     /// Returns a resolution error when the selection matches no registered
     /// provider.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn resolve_selected(
         &self,
         selection: &ProviderSelection,
