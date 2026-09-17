@@ -117,10 +117,7 @@ impl AsyncFileSystemRegistry {
     ///
     /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline(always)]
-    pub fn register_shared(
-        &self,
-        provider: Arc<AsyncFileSystemProvider>,
-    ) -> FileSystemRegistryResult<()> {
+    pub fn register_shared(&self, provider: Arc<AsyncFileSystemProvider>) -> FileSystemRegistryResult<()> {
         self.providers
             .register(ValidatingAsyncFileSystemProvider::new(provider))
             .map_err(Into::into)
@@ -150,13 +147,8 @@ impl AsyncFileSystemRegistry {
     /// Returns [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation)
     /// when the registry is sealed.
     #[inline(always)]
-    pub fn set_default_selection(
-        &self,
-        selection: ProviderSelection,
-    ) -> FileSystemRegistryResult<()> {
-        self.providers
-            .set_default_selection(selection)
-            .map_err(Into::into)
+    pub fn set_default_selection(&self, selection: ProviderSelection) -> FileSystemRegistryResult<()> {
+        self.providers.set_default_selection(selection).map_err(Into::into)
     }
 
     /// Seals this registry against further mutation.
@@ -239,17 +231,11 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_config(
         &self,
         config: FileSystemConfig,
-    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
-    {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
         let snapshot = validate_credentials(&config)
             .and_then(|()| selection_for_config(&config))
             .and_then(|s| self.resolve_selected(&s));
-        async move {
-            snapshot?
-                .create_configured(&config)
-                .await
-                .map_err(Into::into)
-        }
+        async move { snapshot?.create_configured(&config).await.map_err(Into::into) }
     }
     /// Resolves an owned URI-only configuration through its scheme-derived
     /// selection.
@@ -269,8 +255,7 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_uri(
         &self,
         uri: ConnectionUri,
-    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
-    {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
         self.resolve_config(FileSystemConfig::new(uri))
     }
     /// Resolves owned config through an explicit selection.
@@ -294,17 +279,11 @@ impl AsyncFileSystemRegistry {
         &self,
         selection: ProviderSelection,
         config: FileSystemConfig,
-    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
-    {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
         let snapshot = validate_credentials(&config)
             .and_then(|()| ensure_selection_matches_config(&selection, &config))
             .and_then(|()| self.resolve_selected(&selection));
-        async move {
-            snapshot?
-                .create_configured(&config)
-                .await
-                .map_err(Into::into)
-        }
+        async move { snapshot?.create_configured(&config).await.map_err(Into::into) }
     }
     /// Resolves owned config through the current default selection.
     ///
@@ -324,19 +303,13 @@ impl AsyncFileSystemRegistry {
     pub fn resolve_default_config(
         &self,
         config: FileSystemConfig,
-    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static
-    {
+    ) -> impl Future<Output = FileSystemRegistryResult<AsyncFileSystemResolution>> + Send + 'static {
         let snapshot = validate_credentials(&config).and_then(|()| {
             let (selection, resolver) = self.providers.resolve_default_snapshot();
             ensure_selection_matches_config(&selection, &config)?;
             resolver.map_err(FileSystemRegistryError::from)
         });
-        async move {
-            snapshot?
-                .create_configured(&config)
-                .await
-                .map_err(Into::into)
-        }
+        async move { snapshot?.create_configured(&config).await.map_err(Into::into) }
     }
 
     /// Resolves a selection to an owned provider snapshot.
@@ -358,8 +331,6 @@ impl AsyncFileSystemRegistry {
         &self,
         selection: &ProviderSelection,
     ) -> FileSystemRegistryResult<AsyncResolvingServiceProvider<FileSystemSpec>> {
-        self.providers
-            .resolve_selected(selection)
-            .map_err(Into::into)
+        self.providers.resolve_selected(selection).map_err(Into::into)
     }
 }
