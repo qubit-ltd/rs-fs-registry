@@ -29,21 +29,16 @@ fn test_validating_async_file_system_provider_accepts_matching_identity() {
     registry
         .register(MatchingAsyncProvider)
         .expect("register matching provider");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("registered-async:///resource").expect("valid URI"),
-    );
+    let config = FileSystemConfig::new(ConnectionUri::parse("registered-async:///resource").expect("valid URI"));
 
-    let resolution = common::block_on(registry.resolve_config(config))
-        .expect("matching provider identity must resolve");
+    let resolution =
+        common::block_on(registry.resolve_config(config)).expect("matching provider identity must resolve");
     assert_eq!(
         resolution.file_system().properties().info().provider_id(),
         "registered-async"
     );
     assert_eq!(resolution.path().as_str(), "/resource");
-    assert_eq!(
-        resolution.canonical_uri().as_str(),
-        "registry-test:///resource"
-    );
+    assert_eq!(resolution.canonical_uri().as_str(), "registry-test:///resource");
 }
 
 /// Asynchronous provider fixture whose output identity matches its descriptor.
