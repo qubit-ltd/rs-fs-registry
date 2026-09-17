@@ -8,7 +8,7 @@
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
 `qubit-fs-registry` binds application configuration to runtime-registered filesystem
-providers. Register factories during startup, then resolve each connection into
+providers. Register providers during startup, then resolve each connection into
 a filesystem facade, its decoded path, and a credential-free canonical URI.
 Business code can operate on that result without knowing the provider factory.
 
