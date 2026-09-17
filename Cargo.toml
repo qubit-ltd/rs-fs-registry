@@ -11,6 +11,7 @@ description = "Provider registry and SPI integration for qubit-fs"
 homepage = "https://github.com/qubit-ltd/rs-fs-registry"
 documentation = "https://docs.rs/qubit-fs-registry"
 readme = "README.md"
+
 include = [
   "/Cargo.toml",
   "/LICENSE",
@@ -25,6 +26,9 @@ include = [
 ]
 keywords = ["filesystem", "registry", "provider", "qubit"]
 categories = ["filesystem"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lib]
 name = "qubit_fs_registry"

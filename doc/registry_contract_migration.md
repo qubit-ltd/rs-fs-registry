@@ -1,7 +1,7 @@
 # Registry Contract Migration
 
 For application and provider authors adopting the filesystem facade/SPI contracts
-in registry 0.3. These contracts are already implemented; this guide clarifies their
+in `qubit-fs-registry` 0.6. These contracts are already implemented; this guide clarifies their
 observable behavior without introducing a new public API or changing selection/fallback semantics.
 
 [中文](registry_contract_migration.zh_CN.md) · [User guide](user_guide.md)
@@ -84,8 +84,8 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 4. Obtain a new resolution after catalog/default changes when new state is required.
 5. Use the documented selector grammar; do not route by userinfo, authority or query.
 6. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
-7. Use fs 0.4, registry 0.3, local provider 0.3 and spi 0.11 in related examples. Run
-   `check-published-docs.sh` for isolated published-dependency verification, independently
-   of the locally patched package build used during coordinated development.
+7. Use fs 0.2, registry 0.6, local provider 0.9 and spi 0.12 in related examples. Publish
+   the registry before the local provider, then run `check-published-docs.sh` for isolated
+   published-dependency verification. Do not treat unpublished packages as released.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)
