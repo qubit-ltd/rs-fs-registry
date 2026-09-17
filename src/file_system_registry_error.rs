@@ -211,7 +211,7 @@ impl fmt::Debug for FileSystemRegistryError {
     /// # Returns
     ///
     /// The formatter result.
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "FileSystemRegistryError({self})")
     }
@@ -247,7 +247,7 @@ impl From<RegistryMutationError> for FileSystemRegistryError {
     /// # Returns
     ///
     /// The registry registration error.
-    #[inline(always)]
+    #[inline]
     fn from(error: RegistryMutationError) -> Self {
         Self::RegistryMutation(error)
     }
@@ -263,7 +263,7 @@ impl From<ProviderSelectionBuildError> for FileSystemRegistryError {
     /// # Returns
     ///
     /// The registry selection error.
-    #[inline(always)]
+    #[inline]
     fn from(error: ProviderSelectionBuildError) -> Self {
         Self::Selection(error)
     }
@@ -279,7 +279,7 @@ impl From<ProviderResolutionError> for FileSystemRegistryError {
     /// # Returns
     ///
     /// The registry resolution error.
-    #[inline(always)]
+    #[inline]
     fn from(error: ProviderResolutionError) -> Self {
         Self::Resolution(error)
     }
@@ -295,7 +295,7 @@ impl From<ProviderCreationError<FsError>> for FileSystemRegistryError {
     /// # Returns
     ///
     /// The registry creation error.
-    #[inline(always)]
+    #[inline]
     fn from(error: ProviderCreationError<FsError>) -> Self {
         Self::Creation(error)
     }

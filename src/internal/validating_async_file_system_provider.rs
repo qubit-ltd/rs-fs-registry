@@ -58,7 +58,7 @@ impl ProviderMetadata for ValidatingAsyncFileSystemProvider {
     /// # Returns
     ///
     /// A clone of the captured provider descriptor.
-    #[inline(always)]
+    #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
         self.descriptor.clone()
     }
