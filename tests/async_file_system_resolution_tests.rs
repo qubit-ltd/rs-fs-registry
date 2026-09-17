@@ -11,9 +11,9 @@ use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::path::PathConstraints;
 
-use crate::common::async_resolution;
-use crate::common::async_resolution_with_path_properties;
-use crate::common::async_resolution_with_scheme;
+use crate::support::common::async_resolution;
+use crate::support::common::async_resolution_with_path_properties;
+use crate::support::common::async_resolution_with_scheme;
 
 /// An asynchronous resolution retains its facade, decoded path, and canonical
 /// URI across access and ownership transfer.

@@ -15,7 +15,7 @@ use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::path::PathConstraints;
 use qubit_fs::path::PathSemantics;
 
-use super::common;
+use crate::support::common;
 
 #[test]
 fn test_synchronous_resolution_rejects_paths_outside_the_filesystem_contract() {

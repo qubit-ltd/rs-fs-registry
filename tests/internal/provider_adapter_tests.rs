@@ -33,7 +33,7 @@ use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
 use qubit_spi::error::ProviderFailureKind;
 
-use crate::common;
+use crate::support::common;
 use crate::support::provider_fixtures::ObservedProvider;
 
 /// Provider-adapter validation rejects a resolution whose filesystem identity
