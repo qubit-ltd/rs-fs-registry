@@ -14,7 +14,7 @@
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.8 qubit-fs-registry@0.6
+cargo add qubit-fs@0.2 qubit-fs-registry@0.6
 cargo add qubit-fs-local@0.9 --features registry
 ```
 
