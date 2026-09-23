@@ -15,7 +15,7 @@
 
 ```bash
 cargo add qubit-fs@0.2 qubit-fs-registry@0.7
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 默认仅启用同步接口。接入异步提供者时，需要开启 `qubit-fs-registry/async`。

@@ -63,5 +63,5 @@ tempfile = "^3.27"
 futures = "^0.3"
 
 [package.metadata.documentation.dependencies]
-qubit-fs-local = { version = "0.9", features = ["registry"] }
+qubit-fs-local = { version = "0.10", features = ["registry"] }
 futures = { version = "^0.3", async-only = true }
