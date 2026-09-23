@@ -58,6 +58,33 @@ pub struct FileSystemRegistry {
 }
 
 impl FileSystemRegistry {
+    /// Builds an unsealed registry from linked synchronous filesystem
+    /// providers.
+    ///
+    /// Submitted factories run in stable source order. Each provider is wrapped
+    /// with the same filesystem identity validator used by explicit
+    /// registration.
+    ///
+    /// # Returns
+    ///
+    /// A new unsealed registry containing every linked synchronous provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns the submitted provider's source and registration conflict when
+    /// two discovered descriptors claim the same selector.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic from a submitted factory or descriptor callback.
+    #[cfg(feature = "inventory")]
+    pub fn from_inventory() -> FileSystemRegistryResult<Self> {
+        let providers = crate::sync_file_system_providers::build_registry_with(|provider| {
+            Arc::new(ValidatingFileSystemProvider::new(provider))
+        })?;
+        Ok(Self { providers })
+    }
+
     /// Registers a provider factory owned by this registry.
     ///
     /// # Type Parameters

@@ -1,6 +1,6 @@
 # Qubit FS Registry Design
 
-Status: implemented contract for `qubit-fs-registry` 0.6, `qubit-fs` 0.2 and `qubit-spi` 0.12.
+Status: implemented contract for `qubit-fs-registry` 0.7, `qubit-fs` 0.2 and `qubit-spi` 0.13.
 
 [中文](file_system_registry_design.zh_CN.md) · [User guide](user_guide.md)
 
@@ -8,7 +8,8 @@ Status: implemented contract for `qubit-fs-registry` 0.6, `qubit-fs` 0.2 and `qu
 
 The registry is the application assembly boundary for runtime provider registration,
 selection, complete configuration and URI resolution. It does not implement filesystem
-operations, automatically discover providers, or resolve credential values itself.
+operations or resolve credential values itself. Link-time discovery is available
+only with the optional `inventory` feature.
 
 ```text
 FileSystemConfig / ConnectionUri
@@ -97,6 +98,24 @@ and holds no catalog lock while awaiting creation. This API neither borrows secr
 input for an uncontrolled lifetime nor relies on an implicit blocking adapter.
 No custom public future type, runtime dependency, or `_async` method suffix is needed.
 
+## 7.1. Optional Provider Discovery
+
+With `inventory`, provider crates submit factories through
+`qubit_spi::submit_sync_provider!` using
+`qubit_fs_registry::sync_file_system_providers::Entry` and `FileSystemSpec`.
+`FileSystemRegistry::from_inventory()` builds an unsealed registry in stable
+submission-source order. `async` and `inventory` together expose the matching
+`async_file_system_providers::Entry` and
+`AsyncFileSystemRegistry::from_inventory()`; neither async API exists with only
+`inventory`. All discovered providers pass through the same validating adapter
+as explicit registration, including facade provider-ID checks.
+
+Duplicate IDs or aliases fail construction with
+`FileSystemRegistryError::InventoryBuild`, retaining the SPI inventory error's
+submission source and mutation error. A failed build exposes no partial registry.
+Factories run during construction; service creation remains deferred until
+resolution (and until polling for async providers).
+
 ## 8. Selection and Fallback
 
 `resolve_config` uses the embedded selection, otherwise a named URI-scheme selection.
@@ -177,6 +196,7 @@ an ordinary cache key or a raw-string getter/deref abstraction.
 | InvalidConfiguration | Static message | InvalidOptions |
 | CredentialSourceConflict | No source | InvalidOptions |
 | Registration | RegistrationError | Conflict |
+| InventoryBuild | Submission source and registration conflict | Conflict |
 | Selection | ProviderSelectionBuildError | InvalidUri |
 | SelectionConflict | Requested and configured selections | InvalidOptions |
 | Resolution | UnknownProviders, NoCandidates, EmptyRegistry, etc. | ProviderUnavailable |

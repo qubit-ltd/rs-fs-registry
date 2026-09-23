@@ -1,13 +1,13 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.6、`qubit-fs` 0.2 与 `qubit-spi` 0.12。
+> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.7、`qubit-fs` 0.2 与 `qubit-spi` 0.13。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
 
 `qubit-fs-registry` 负责运行时 provider 注册、selection、完整配置和 URI
-resolution。它是应用组装层，不是 filesystem operation 实现层，也不执行自动
-provider discovery 或 credential value resolution。
+resolution。它是应用组装层，不是 filesystem operation 实现层，也不执行
+credential value resolution。可选的 `inventory` feature 提供链接期 provider 发现。
 
 ```text
 FileSystemConfig / ConnectionUri
@@ -190,6 +190,21 @@ future，因此可以兑现以下契约：
 相同 owned-input 模式；`ConnectionUri` 在入口被消费，避免 secret-bearing 输入借用
 跨越不受控生命周期。
 
+### 可选 Provider 发现
+
+启用 `inventory` 时，provider crate 可通过 `qubit_spi::submit_sync_provider!`
+向 `qubit_fs_registry::sync_file_system_providers::Entry`（spec 为
+`FileSystemSpec`）提交工厂。`FileSystemRegistry::from_inventory()` 按提交来源的
+稳定顺序构建未封存的注册表。同时启用 `async` 与 `inventory` 时，才会开放
+`async_file_system_providers::Entry` 和
+`AsyncFileSystemRegistry::from_inventory()`。仅启用 `inventory` 不开放异步入口。
+
+发现的 provider 与显式注册一样通过 validating adapter，校验返回门面的
+provider ID。重复 ID 或别名使构建返回
+`FileSystemRegistryError::InventoryBuild`，保留提交来源及 SPI 注册错误，且不会
+暴露部分构建的注册表。构建时运行 provider 工厂；实际 service 创建仍发生在
+resolution 阶段，异步情况下发生于 future 被轮询时。
+
 ## 8. Selection 与 fallback
 
 Selection precedence 保持确定：
@@ -370,6 +385,9 @@ Unavailable、凭据解析失败、耗尽回退等概念由下层分类表达，
 - resolution 已有 path/URI 时只附加安全表示。
 
 Operation SPI 的 `ProviderContractViolation` 不由 registry 改写为 registry failure。
+
+`InventoryBuild` 保留出错 provider 的提交来源和注册冲突；转成 `FsError`
+时使用 `Conflict`，并保留原始错误作为 source。
 
 ## 12. 与 `qubit-spi` 的边界
 

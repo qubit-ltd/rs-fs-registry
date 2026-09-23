@@ -138,7 +138,19 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
         "[crates-io.{package}]\npath={}\n",
         Value::String(package_root.to_str().expect("UTF-8 root").into())
     );
-    let patch: Value = from_str(&patch_source).expect("self patch");
+    let mut patch: Value = from_str(&patch_source).expect("self patch");
+    if !published {
+        let sibling_spi = root.parent().expect("registry has a parent directory").join("rs-spi");
+        if sibling_spi.join("Cargo.toml").is_file() {
+            patch["crates-io"].as_table_mut().expect("patch table").insert(
+                "qubit-spi".into(),
+                Value::Table(Table::from_iter([(
+                    "path".into(),
+                    Value::String(sibling_spi.to_str().expect("UTF-8 SPI path").into()),
+                )])),
+            );
+        }
+    }
     output
         .as_table_mut()
         .expect("manifest table")

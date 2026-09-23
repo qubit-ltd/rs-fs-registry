@@ -18,13 +18,15 @@ use qubit_redact::RedactionTextOutput;
 use qubit_redact::Redactor;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderCreationError;
+#[cfg(feature = "inventory")]
+use qubit_spi::error::ProviderInventoryBuildError;
 use qubit_spi::error::ProviderResolutionError;
 use qubit_spi::error::ProviderSelectionBuildError;
 use qubit_spi::error::RegistryMutationError;
 
 /// Result returned by filesystem registry operations.
 ///
-/// Failures retain the typed registration, selection, creation, or
+/// Failures retain the typed registration, inventory, selection, creation, or
 /// configuration boundary through [`FileSystemRegistryError`]. Successful
 /// resolution returns [`crate::FileSystemResolution`] (or
 /// `AsyncFileSystemResolution` with the `async` feature).
@@ -63,6 +65,14 @@ pub enum FileSystemRegistryError {
     RegistryMutation(
         /// Typed SPI registration failure.
         RegistryMutationError,
+    ),
+    /// A linked provider could not be added while building an inventory
+    /// registry.
+    #[cfg(feature = "inventory")]
+    InventoryBuild(
+        /// Typed SPI error retaining submission source and registration
+        /// failure.
+        ProviderInventoryBuildError,
     ),
     /// A provider selection could not be constructed from configuration.
     Selection(
@@ -110,6 +120,8 @@ impl FileSystemRegistryError {
                     "registration_conflict"
                 }
             }
+            #[cfg(feature = "inventory")]
+            Self::InventoryBuild(_) => "inventory_registration_conflict",
             Self::Selection(_) => "invalid_selection",
             Self::SelectionConflict { .. } => "selection_conflict",
             Self::Resolution(error) => match error {
@@ -146,6 +158,12 @@ impl FileSystemRegistryError {
                 .field("provider_id", error.existing_provider().unwrap_or("<sealed>"))
                 .literal(", provider=")
                 .field("provider_id", error.provider().unwrap_or("<sealed>")),
+            #[cfg(feature = "inventory")]
+            Self::InventoryBuild(error) => composer
+                .literal(", source=")
+                .field("provider_source", &DebugDisplay::new(&error.source_location()))
+                .literal(", selector=")
+                .field("selector", error.registration_error().selector().unwrap_or("<unknown>")),
             Self::Selection(_error) => composer,
             Self::SelectionConflict { requested, configured } => composer
                 .literal(", requested=")
@@ -229,6 +247,8 @@ impl Error for FileSystemRegistryError {
             Self::InvalidConfiguration { .. } => None,
             Self::CredentialSourceConflict => None,
             Self::RegistryMutation(error) => Some(error),
+            #[cfg(feature = "inventory")]
+            Self::InventoryBuild(error) => Some(error),
             Self::Selection(error) => Some(error),
             Self::SelectionConflict { .. } => None,
             Self::Resolution(error) => Some(error),
@@ -250,6 +270,14 @@ impl From<RegistryMutationError> for FileSystemRegistryError {
     #[inline]
     fn from(error: RegistryMutationError) -> Self {
         Self::RegistryMutation(error)
+    }
+}
+
+#[cfg(feature = "inventory")]
+impl From<ProviderInventoryBuildError> for FileSystemRegistryError {
+    /// Preserves the failed inventory submission and mutation error.
+    fn from(error: ProviderInventoryBuildError) -> Self {
+        Self::InventoryBuild(error)
     }
 }
 
@@ -327,6 +355,10 @@ impl From<FileSystemRegistryError> for FsError {
             ),
             FileSystemRegistryError::RegistryMutation(_) => {
                 (FsErrorKind::Conflict, "filesystem provider registration failed", None)
+            }
+            #[cfg(feature = "inventory")]
+            FileSystemRegistryError::InventoryBuild(_) => {
+                (FsErrorKind::Conflict, "filesystem inventory registration failed", None)
             }
             FileSystemRegistryError::Selection(_) => (
                 FsErrorKind::InvalidUri,

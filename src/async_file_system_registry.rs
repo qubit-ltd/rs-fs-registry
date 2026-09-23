@@ -67,6 +67,33 @@ pub struct AsyncFileSystemRegistry {
 }
 
 impl AsyncFileSystemRegistry {
+    /// Builds an unsealed registry from linked asynchronous filesystem
+    /// providers.
+    ///
+    /// Submitted factories run in stable source order; creation futures are
+    /// not polled during construction. Each provider receives the usual
+    /// filesystem identity validator.
+    ///
+    /// # Returns
+    ///
+    /// A new unsealed registry containing every linked asynchronous provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns the submitted provider's source and registration conflict when
+    /// two discovered descriptors claim the same selector.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic from a submitted factory or descriptor callback.
+    #[cfg(feature = "inventory")]
+    pub fn from_inventory() -> FileSystemRegistryResult<Self> {
+        let providers = crate::async_file_system_providers::build_registry_with(|provider| {
+            Arc::new(ValidatingAsyncFileSystemProvider::new(provider))
+        })?;
+        Ok(Self { providers })
+    }
+
     /// Registers an asynchronous provider factory owned by this registry.
     ///
     /// # Type Parameters

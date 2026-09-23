@@ -15,12 +15,12 @@ Business code can operate on that result without knowing the provider factory.
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-registry@0.6
+cargo add qubit-fs@0.2 qubit-fs-registry@0.7
 cargo add qubit-fs-local@0.9 --features registry
 ```
 
 The default feature set is synchronous. For asynchronous providers, enable
-`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.12`
+`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.13`
 dependency; this crate does not re-export them.
 
 ## Quick Start
@@ -84,8 +84,9 @@ filesystem, decoded path, and credential-free canonical URI. It composes with
 `qubit-spi` for selection and fallback instead of reimplementing a service
 catalog.
 
-The crate does not implement storage operations, resolve credential secrets, or
-discover providers automatically.
+The crate does not implement storage operations or resolve credential secrets.
+Optional `inventory` discovers linked provider factories at startup; the default
+feature set continues to use explicit registration.
 
 ## What It Provides
 

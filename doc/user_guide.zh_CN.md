@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，覆盖当前
-`qubit-fs-registry` 0.6 API，包括同步与异步 resolution。
+`qubit-fs-registry` 0.7 API，包括同步与异步 resolution。
 
 ## 概念模型
 
@@ -37,12 +37,22 @@ resolution = filesystem + decoded path + canonical URI
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-registry@0.6
+cargo add qubit-fs@0.2 qubit-fs-registry@0.7
 cargo add qubit-fs-local@0.9 --features registry
 ```
 
-需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.12` 添加直接依赖；
+需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.13` 添加直接依赖；
 本 crate 不重新导出这些属于 SPI 的类型。
+
+### 可选的链接期 provider 发现
+
+启用 `inventory` 后可使用 `FileSystemRegistry::from_inventory()`。Provider crate
+通过 `qubit_spi::submit_sync_provider!`，以 `FileSystemSpec` 向
+`sync_file_system_providers::Entry` 提交工厂。异步发现还需要启用 `async`，使用
+`async_file_system_providers::Entry` 和
+`AsyncFileSystemRegistry::from_inventory()`。应用仍须链接提交 provider 的 crate。
+发现的 provider 与显式注册一样接受身份校验；重复 selector 返回带提交来源的
+inventory build error。
 
 ## 核心工作流
 
@@ -140,7 +150,7 @@ secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_co
 ### 提供者接入实战
 
 文件系统示例应在空工作目录中运行；程序会自行创建报表文件和子目录。
-使用选择规则时，执行 `cargo add qubit-spi@0.12` 添加直接依赖。
+使用选择规则时，执行 `cargo add qubit-spi@0.13` 添加直接依赖。
 
 ### 相同 URI，不同根目录
 
@@ -371,7 +381,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 异步解析的所有权
 
 ```bash
-cargo add qubit-fs-registry@0.6 --features async
+cargo add qubit-fs-registry@0.7 --features async
 cargo add futures@0.3
 ```
 
