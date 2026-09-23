@@ -14,12 +14,12 @@
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-registry@0.6
+cargo add qubit-fs@0.2 qubit-fs-registry@0.7
 cargo add qubit-fs-local@0.9 --features registry
 ```
 
 默认仅启用同步接口。接入异步提供者时，需要开启 `qubit-fs-registry/async`。
-使用 SPI 选择类型时，直接添加 `qubit-spi@0.12`；本 crate 不重新导出这些类型。
+使用 SPI 选择类型时，直接添加 `qubit-spi@0.13`；本 crate 不重新导出这些类型。
 
 ## 快速开始
 
@@ -78,7 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 即可得到经过校验的文件系统、已解码路径和不含凭据的规范 URI。选择与回退复用
 `qubit-spi`，不必重复实现服务目录。
 
-本 crate 不实现存储操作、不解析凭据秘密，也不自动发现提供者。
+本 crate 不实现存储操作，也不解析凭据秘密。可选的 `inventory` feature 在启动时发现
+已经链接的 provider 工厂；默认 feature 仍使用显式注册。
 
 ## 提供的能力
 

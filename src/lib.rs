@@ -59,6 +59,8 @@ mod file_system_registry_error;
 mod file_system_resolution;
 mod file_system_spec;
 mod internal;
+#[cfg(feature = "inventory")]
+mod inventory;
 
 #[cfg(feature = "async")]
 pub use async_file_system_provider::AsyncFileSystemProvider;
@@ -74,3 +76,7 @@ pub use file_system_registry_error::FileSystemRegistryError;
 pub use file_system_registry_error::FileSystemRegistryResult;
 pub use file_system_resolution::FileSystemResolution;
 pub use file_system_spec::FileSystemSpec;
+#[cfg(all(feature = "inventory", feature = "async"))]
+pub use inventory::async_file_system_providers;
+#[cfg(feature = "inventory")]
+pub use inventory::sync_file_system_providers;

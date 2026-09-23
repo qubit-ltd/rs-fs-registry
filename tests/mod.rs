@@ -12,6 +12,8 @@ mod async_file_system_registry_tests;
 mod async_file_system_resolution_tests;
 mod credential_ref_tests;
 mod file_system_config_tests;
+#[cfg(feature = "inventory")]
+mod file_system_inventory_tests;
 mod file_system_registry_error_tests;
 mod file_system_registry_tests;
 mod file_system_resolution_tests;

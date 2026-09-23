@@ -6,7 +6,7 @@
 
 This guide is for application and provider authors who need to bind
 `qubit-fs` to runtime-registered filesystem providers. It covers the current
-`qubit-fs-registry` 0.6 API, including synchronous and asynchronous resolution.
+`qubit-fs-registry` 0.7 API, including synchronous and asynchronous resolution.
 
 ## Conceptual Model
 
@@ -44,13 +44,25 @@ when the application needs resource state.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-registry@0.6
+cargo add qubit-fs@0.2 qubit-fs-registry@0.7
 cargo add qubit-fs-local@0.9 --features registry
 ```
 
 Provider crates that create explicit SPI selections or use low-level provider
-catalog types must add `qubit-spi` directly with `cargo add qubit-spi@0.12`;
+catalog types must add `qubit-spi` directly with `cargo add qubit-spi@0.13`;
 those SPI-owned types are not re-exported by this crate.
+
+### Optional linked provider discovery
+
+Enable `inventory` to make `FileSystemRegistry::from_inventory()` available.
+Provider crates submit factories to `sync_file_system_providers::Entry` with
+`FileSystemSpec` through `qubit_spi::submit_sync_provider!`. Async discovery
+requires both `async` and `inventory`, and uses
+`async_file_system_providers::Entry` and
+`AsyncFileSystemRegistry::from_inventory()`. The application must still link the
+submitting provider crate. Discovered providers receive the same identity
+validation as explicitly registered ones. Duplicate selectors return a typed
+inventory build error with the submission source.
 
 ## Core Workflow
 
@@ -160,7 +172,7 @@ has the same filesystem/path/canonical-URI shape.
 ### Provider integration tutorials
 
 Run filesystem examples from an empty working directory; they create their own
-report files and subdirectories. Add SPI types with `cargo add qubit-spi@0.12`.
+report files and subdirectories. Add SPI types with `cargo add qubit-spi@0.13`.
 
 ### Separate roots with the same URI
 
@@ -397,7 +409,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Owning an asynchronous resolution
 
 ```bash
-cargo add qubit-fs-registry@0.6 --features async
+cargo add qubit-fs-registry@0.7 --features async
 cargo add futures@0.3
 ```
 
