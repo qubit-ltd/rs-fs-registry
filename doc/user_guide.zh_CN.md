@@ -38,7 +38,7 @@ resolution = filesystem + decoded path + canonical URI
 
 ```bash
 cargo add qubit-fs@0.2 qubit-fs-registry@0.7
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.13` 添加直接依赖；
