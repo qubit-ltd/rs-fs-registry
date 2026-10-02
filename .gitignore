@@ -45,6 +45,7 @@ pids
 *.seed
 *.pid.lock
 coverage/
+!/.infra/coverage/
 .nyc_output
 /ci-summary.json
 /coverage-badge.json
