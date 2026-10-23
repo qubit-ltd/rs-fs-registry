@@ -140,21 +140,13 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
     );
     let mut patch: Value = from_str(&patch_source).expect("self patch");
     if !published {
-        let sibling_fs = root
-            .parent()
-            .expect("registry has a parent directory")
-            .join("rs-fs");
+        let sibling_fs = root.parent().expect("registry has a parent directory").join("rs-fs");
         if sibling_fs.join("Cargo.toml").is_file() {
             patch["crates-io"].as_table_mut().expect("patch table").insert(
                 "qubit-fs".into(),
                 Value::Table(Table::from_iter([(
                     "path".into(),
-                    Value::String(
-                        sibling_fs
-                            .to_str()
-                            .expect("UTF-8 filesystem path")
-                            .into(),
-                    ),
+                    Value::String(sibling_fs.to_str().expect("UTF-8 filesystem path").into()),
                 )])),
             );
         }
@@ -167,12 +159,7 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
                 "qubit-redact".into(),
                 Value::Table(Table::from_iter([(
                     "path".into(),
-                    Value::String(
-                        sibling_redact
-                            .to_str()
-                            .expect("UTF-8 redaction path")
-                            .into(),
-                    ),
+                    Value::String(sibling_redact.to_str().expect("UTF-8 redaction path").into()),
                 )])),
             );
         }
@@ -185,19 +172,11 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
                 "qubit-fs-local".into(),
                 Value::Table(Table::from_iter([(
                     "path".into(),
-                    Value::String(
-                        sibling_fs_local
-                            .to_str()
-                            .expect("UTF-8 local filesystem path")
-                            .into(),
-                    ),
+                    Value::String(sibling_fs_local.to_str().expect("UTF-8 local filesystem path").into()),
                 )])),
             );
         }
-        let sibling_io = root
-            .parent()
-            .expect("registry has a parent directory")
-            .join("rs-io");
+        let sibling_io = root.parent().expect("registry has a parent directory").join("rs-io");
         if sibling_io.join("Cargo.toml").is_file() {
             patch["crates-io"].as_table_mut().expect("patch table").insert(
                 "qubit-io".into(),
