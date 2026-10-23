@@ -89,7 +89,6 @@ impl FileSystemConfig {
     /// `Some` with the configured selection, or `None` when resolution should
     /// derive a selection from the URI.
     #[inline]
-    #[must_use]
     pub const fn selection(&self) -> Option<&ProviderSelection> {
         self.selection.as_ref()
     }
@@ -112,7 +111,6 @@ impl FileSystemConfig {
     /// `Some` with the external credential reference, or `None` when the
     /// configuration does not select an external credential source.
     #[inline]
-    #[must_use]
     pub const fn credential(&self) -> Option<&CredentialRef> {
         self.credential.as_ref()
     }

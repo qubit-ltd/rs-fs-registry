@@ -42,7 +42,10 @@ fn test_sync_inventory_discovers_and_validates_provider() {
 qubit_spi::submit_sync_provider! {
     inventory_entry = qubit_fs_registry::sync_file_system_providers::Entry;
     spec = FileSystemSpec;
-    provider = ObservedProvider { output_id: "other", ..ObservedProvider::new("inventory-sync-mismatch") };
+    provider = ObservedProvider {
+        output_id: "other",
+        ..ObservedProvider::new("inventory-sync-mismatch")
+    };
 }
 
 /// Discovered providers use the same identity-checking adapter as explicit
@@ -88,7 +91,10 @@ fn test_async_inventory_discovers_provider() {
 qubit_spi::submit_async_provider! {
     inventory_entry = qubit_fs_registry::async_file_system_providers::Entry;
     spec = FileSystemSpec;
-    provider = ObservedProvider { output_id: "other", ..ObservedProvider::new("inventory-async-mismatch") };
+    provider = ObservedProvider {
+        output_id: "other",
+        ..ObservedProvider::new("inventory-async-mismatch")
+    };
 }
 
 /// Async discovered providers also reject facade identities that contradict

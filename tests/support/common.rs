@@ -187,6 +187,19 @@ pub(crate) fn sync_resolution_with_path_properties(
     )
 }
 
+/// Creates a synchronous resolution using the supplied decoded-path semantics.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `path`: Provider-decoded path to validate.
+/// - `limits`: Filesystem limits applied to the path.
+/// - `path_constraints`: Structural path constraints to enforce.
+/// - `path_semantics`: Path interpretation used by the filesystem and path.
+///
+/// # Returns
+///
+/// A validated resolution, or the path/URI validation error.
 pub(crate) fn sync_resolution_with_path_semantics(
     provider_id: &'static str,
     path: &str,
@@ -331,6 +344,20 @@ pub(crate) fn async_resolution_with_path_properties(
     )
 }
 
+/// Creates an asynchronous resolution using the supplied decoded-path
+/// semantics.
+///
+/// # Parameters
+///
+/// - `provider_id`: Provider identity embedded in the fixture properties.
+/// - `path`: Provider-decoded path to validate.
+/// - `limits`: Filesystem limits applied to the path.
+/// - `path_constraints`: Structural path constraints to enforce.
+/// - `path_semantics`: Path interpretation used by the filesystem and path.
+///
+/// # Returns
+///
+/// A validated resolution, or the path/URI validation error.
 #[cfg(feature = "async")]
 pub(crate) fn async_resolution_with_path_semantics(
     provider_id: &'static str,

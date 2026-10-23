@@ -402,7 +402,7 @@ mod tests {
 
     /// One error diagnostic must share its output budget across all fields.
     #[test]
-    fn redacted_output_uses_one_event_budget() {
+    fn test_redacted_output_uses_one_event_budget() {
         let policy = RedactionPolicy::builder()
             .limits(|limits| {
                 limits.max_output_bytes(24);

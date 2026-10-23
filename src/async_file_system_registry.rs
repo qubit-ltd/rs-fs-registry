@@ -191,6 +191,7 @@ impl AsyncFileSystemRegistry {
     /// # Returns
     ///
     /// `true` when [`Self::seal`] has been called and mutation is rejected.
+    #[inline]
     #[must_use]
     pub fn is_sealed(&self) -> bool {
         self.providers.is_sealed()

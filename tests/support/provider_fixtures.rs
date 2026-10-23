@@ -48,6 +48,7 @@ pub struct ObservedProvider {
 impl ObservedProvider {
     /// Creates a successful provider whose output identity initially matches
     /// registration.
+    #[must_use]
     pub fn new(id: &'static str) -> Self {
         Self {
             descriptor: Arc::new(Mutex::new(ProviderDescriptor::new(

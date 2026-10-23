@@ -235,44 +235,48 @@ impl AsyncFileSystemResolution {
             canonical_uri,
         })
     }
+
     /// Returns the configured facade.
     ///
     /// # Returns
     ///
     /// The configured asynchronous filesystem.
-    #[inline]
     #[must_use]
+    #[inline]
     pub const fn file_system(&self) -> &AsyncFileSystem {
         &self.file_system
     }
+
     /// Returns the provider-decoded path.
     ///
     /// # Returns
     ///
     /// The validated provider-decoded path.
-    #[inline]
     #[must_use]
+    #[inline]
     pub const fn path(&self) -> &Path {
         &self.path
     }
+
     /// Returns the secret-free canonical URI.
     ///
     /// # Returns
     ///
     /// The validated canonical URI.
-    #[inline]
     #[must_use]
+    #[inline]
     pub const fn canonical_uri(&self) -> &Uri {
         &self.canonical_uri
     }
+
     /// Splits this resolution into owned components.
     ///
     /// # Returns
     ///
     /// The asynchronous filesystem, decoded path, and canonical URI in that
     /// order.
-    #[inline]
     #[must_use]
+    #[inline]
     pub fn into_parts(self) -> (AsyncFileSystem, Path, Uri) {
         (self.file_system, self.path, self.canonical_uri)
     }

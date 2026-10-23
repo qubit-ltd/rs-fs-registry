@@ -43,7 +43,8 @@ fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, S
         .as_str()
         .expect("qubit-fs version must be a string");
     let fs_version = fs_version.split('.').take(2).collect::<Vec<_>>().join(".");
-    let local_version = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
+    let documentation_dependencies = &input["package"]["metadata"]["documentation"]["dependencies"];
+    let local_version = documentation_dependencies["qubit-fs-local"]["version"]
         .as_str()
         .expect("qubit-fs-local version must be a string");
     let sync_command = format!("cargo add qubit-fs@{fs_version} qubit-fs-registry@{registry_version}");
@@ -128,7 +129,7 @@ fn test_documentation_versions_follow_manifest() {
     assert_eq!(
         output["dependencies"]["qubit-fs-registry"]["features"]
             .as_array()
-            .unwrap()
+            .expect("registry feature list must be an array")
             .len(),
         0
     );
@@ -173,7 +174,10 @@ fn test_path_only_filesystem_dependency_uses_sibling_release() {
 fn test_missing_documentation_metadata_is_rejected() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut input = manifest(root);
-    input["package"].as_table_mut().unwrap().remove("metadata");
+    input["package"]
+        .as_table_mut()
+        .expect("package metadata table")
+        .remove("metadata");
     documentation_manifest(root, &input, true, false);
 }
 
@@ -212,21 +216,24 @@ fn test_documentation_manifest_preserves_sibling_symlinks() {
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut input = manifest(root);
-    let workspace = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().expect("temporary fixture");
     let target = workspace.path().join("source");
     let alias = workspace.path().join("linked-spi");
-    fs::create_dir_all(&target).unwrap();
+    fs::create_dir_all(&target).expect("SPI target directory");
     fs::write(
         target.join("Cargo.toml"),
         "[package]\nname = 'qubit-spi'\nversion = '0.12.0'\n",
     )
-    .unwrap();
-    symlink(&target, &alias).unwrap();
+    .expect("SPI fixture manifest");
+    symlink(&target, &alias).expect("SPI symlink");
     input["dependencies"]["qubit-spi"]
         .as_table_mut()
         .expect("SPI dependency table")
-        .insert("path".into(), toml::Value::String(alias.to_str().unwrap().into()));
+        .insert(
+            "path".into(),
+            toml::Value::String(alias.to_str().expect("UTF-8 fixture path").into()),
+        );
     let output = documentation_manifest(root, &input, false, false);
     assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
-    assert_ne!(alias, alias.canonicalize().unwrap());
+    assert_ne!(alias, alias.canonicalize().expect("canonical SPI fixture path"));
 }

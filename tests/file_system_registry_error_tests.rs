@@ -28,6 +28,7 @@ use qubit_spi::error::ProviderFailure;
 use qubit_spi::error::ProviderFailureKind;
 
 use crate::file_system_registry_tests::FailingProvider;
+
 /// Selection conflicts convert to filesystem invalid-options errors.
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
@@ -40,6 +41,7 @@ fn test_selection_conflict_converts_to_invalid_options() {
     assert_eq!(fs_error.kind(), FsErrorKind::InvalidOptions);
     assert_eq!(fs_error.operation(), FsOperation::Provider);
 }
+
 /// Invalid registry configurations do not expose an underlying source error.
 #[test]
 fn test_invalid_configuration_never_has_a_source() {

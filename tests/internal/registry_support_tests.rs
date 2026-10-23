@@ -10,6 +10,7 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
+
 /// A URI scheme can be valid URI syntax while failing the provider selector
 /// grammar; that failure does not fall back to the registry default.
 #[test]
