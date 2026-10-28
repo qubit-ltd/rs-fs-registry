@@ -20,7 +20,6 @@ include = [
   "/doc/**",
   "/scripts/*.py",
   "/scripts/tests/*.py",
-  "/check-published-docs.sh",
   "/src/**",
   "/tests/**",
 ]

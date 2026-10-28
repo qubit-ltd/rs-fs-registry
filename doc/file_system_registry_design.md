@@ -1,6 +1,6 @@
 # Qubit FS Registry Design
 
-Status: implemented contract for `qubit-fs-registry` 0.7, `qubit-fs` 0.2 and `qubit-spi` 0.13.
+Status: implemented contract for `qubit-fs-registry` 0.8, `qubit-fs` 0.3 and `qubit-spi` 0.13.
 
 [中文](file_system_registry_design.zh_CN.md) · [User guide](user_guide.md)
 
@@ -195,8 +195,8 @@ an ordinary cache key or a raw-string getter/deref abstraction.
 | --- | --- | --- |
 | InvalidConfiguration | Static message | InvalidOptions |
 | CredentialSourceConflict | No source | InvalidOptions |
-| Registration | RegistrationError | Conflict |
-| InventoryBuild | Submission source and registration conflict | Conflict |
+| RegistryMutation | RegistryMutationError (`registry_sealed` or `registration_conflict`) | Conflict |
+| InventoryBuild | Inventory-gated `ProviderInventoryBuildError` retaining submission source and registration conflict | Conflict |
 | Selection | ProviderSelectionBuildError | InvalidUri |
 | SelectionConflict | Requested and configured selections | InvalidOptions |
 | Resolution | UnknownProviders, NoCandidates, EmptyRegistry, etc. | ProviderUnavailable |
@@ -278,7 +278,8 @@ Programs run in separate working directories and prepare their own input files.
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. `published` allows
 only the tested crate locally, with other dependencies from package registries.
 Both validate unique fs/registry/spi identities and the local provider's registry edge.
-`check-published-docs.sh` requires Python 3.12 or newer and Rust 1.94. It packages and checks in an isolated Cargo environment without
+From the project root, run `python3 scripts/check_published_docs.py .` with
+Python 3.12 or newer and Rust 1.94.0 installed. It packages and checks in an isolated Cargo environment without
 inherited local patches; unavailable published requirements fail explicitly, never
 silently switching to sibling source trees. Mechanical style and coverage checks do
 not replace semantic test assertions or an item-by-item Rustdoc review.

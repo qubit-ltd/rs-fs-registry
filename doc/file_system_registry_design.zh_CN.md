@@ -1,6 +1,6 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.7、`qubit-fs` 0.2 与 `qubit-spi` 0.13。
+> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.8、`qubit-fs` 0.3 与 `qubit-spi` 0.13。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
@@ -353,7 +353,8 @@ canonical URI 的作用域是一次 provider resolution 的安全定位结果。
 | --- | --- | --- |
 | InvalidConfiguration | 静态配置说明 | InvalidOptions |
 | CredentialSourceConflict | 无底层 source | InvalidOptions |
-| Registration | RegistrationError | Conflict |
+| RegistryMutation | RegistryMutationError（`registry_sealed` 或 `registration_conflict`） | Conflict |
+| InventoryBuild | 受 inventory feature 控制的 `ProviderInventoryBuildError`，保留提交来源与注册冲突 | Conflict |
 | Selection | ProviderSelectionBuildError | InvalidUri |
 | SelectionConflict | requested/configured selection | InvalidOptions |
 | Resolution | UnknownProviders、NoCandidates、EmptyRegistry 等 | ProviderUnavailable |
@@ -488,7 +489,8 @@ README 与指南的 Rust 代码块是完整程序，默认运行同步块；`<!-
 
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖；`published` 仅允许被测 crate 的本地来源，
 其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
-是否引用当前被测 registry。`check-published-docs.sh` 需要 Python 3.12 或更新版本和 Rust 1.94，
+是否引用当前被测 registry。从项目根目录执行 `python3 scripts/check_published_docs.py .`，
+需要 Python 3.12 或更新版本和 Rust 1.94.0，
 在隔离 Cargo 环境中生成规范化包、解包并验证，
 不继承本地补丁；缺少已发布依赖时明确失败，不自动改用相邻源码。
 

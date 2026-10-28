@@ -1,8 +1,10 @@
 # Registry Contract Migration
 
-For application and provider authors adopting the filesystem facade/SPI contracts
-in `qubit-fs-registry` 0.6. These contracts are already implemented; this guide clarifies their
-observable behavior without introducing a new public API or changing selection/fallback semantics.
+For application and provider authors adopting the current filesystem facade/SPI
+contracts in `qubit-fs-registry` 0.8 with `qubit-fs` 0.3, `qubit-fs-local` 0.11
+and `qubit-spi` 0.13. These contracts are already implemented; this guide
+clarifies their observable behavior without introducing a new public API or
+changing selection/fallback semantics.
 
 [中文](registry_contract_migration.zh_CN.md) · [User guide](user_guide.md)
 
@@ -78,14 +80,20 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 ## 7. Migration Checklist
 
 1. Match CredentialSourceConflict or its stable reason code.
-2. Replace dependencies on complete display strings with typed errors and failure kinds.
-3. Apply stricter redaction at application output boundaries, rather than replacing the
+2. Handle registry changes with the current `RegistryMutation(RegistryMutationError)`
+   error. If your code or documentation refers to `Registration`/`RegistrationError`,
+   align those references with the current names; distinguish a sealed registry from
+   a descriptor conflict using `reason_code()` (`registry_sealed` or
+   `registration_conflict`), not display text.
+3. Replace dependencies on complete display strings with typed errors and failure kinds.
+4. Apply stricter redaction at application output boundaries, rather than replacing the
    application-default redactor and expecting registry diagnostics to follow it.
-4. Obtain a new resolution after catalog/default changes when new state is required.
-5. Use the documented selector grammar; do not route by userinfo, authority or query.
-6. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
-7. Use fs 0.2, registry 0.6, local provider 0.9 and spi 0.12 in related examples. Publish
-   the registry before the local provider, then run `check-published-docs.sh` for isolated
-   published-dependency verification. Do not treat unpublished packages as released.
+5. Obtain a new resolution after catalog/default changes when new state is required.
+6. Use the documented selector grammar; do not route by userinfo, authority or query.
+7. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
+8. Use fs 0.3, registry 0.8, local provider 0.11 and spi 0.13 in related examples. Run
+   `python3 scripts/check_published_docs.py .` from the project root with Python 3.12+
+   and Rust 1.94.0 installed for isolated published-dependency verification. Do not
+   treat unpublished packages as released.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

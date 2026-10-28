@@ -112,7 +112,8 @@ impl AsyncFileSystemRegistry {
     /// # Errors
     ///
     /// Returns [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation)
-    /// when its descriptor conflicts with an existing provider.
+    /// when the registry is sealed or its descriptor conflicts with an
+    /// existing provider.
     ///
     /// # Panics
     ///
@@ -138,7 +139,8 @@ impl AsyncFileSystemRegistry {
     /// # Errors
     ///
     /// Returns [`FileSystemRegistryError::RegistryMutation`](crate::FileSystemRegistryError::RegistryMutation)
-    /// when its descriptor conflicts with an existing provider.
+    /// when the registry is sealed or its descriptor conflicts with an
+    /// existing provider.
     ///
     /// # Panics
     ///

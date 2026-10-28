@@ -1,7 +1,8 @@
 # Registry 合约迁移说明
 
-本文面向迁移到 `qubit-fs-registry` 0.6 filesystem facade/SPI 合约的应用和 provider
-作者，说明这些已实现合约的可观察行为。它补充[中文用户手册](user_guide.zh_CN.md)，
+本文面向采用当前 filesystem facade/SPI 合约的应用和 provider 作者：
+`qubit-fs-registry` 0.8、`qubit-fs` 0.3、`qubit-fs-local` 0.11 与 `qubit-spi` 0.13。
+本文说明这些已实现合约的可观察行为，补充[中文用户手册](user_guide.zh_CN.md)，
 重点说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界；
 本文不引入新的公开 API，也不改变 selection/fallback 语义。
 
@@ -101,25 +102,30 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 
 1. 将 embedded credential 与 `CredentialRef` 冲突改为检查
    `CredentialSourceConflict` 和 `reason_code()`。
-2. 将日志和用户界面依赖从错误完整文本迁移到 typed error、稳定 reason code 与
+2. 处理 registry 变更时使用当前的 `RegistryMutation(RegistryMutationError)`。
+   如果代码或文档仍引用 `Registration`/`RegistrationError`，应将其对齐到当前名称；
+   通过 `reason_code()`（`registry_sealed` 或 `registration_conflict`）区分 registry
+   已封存与 descriptor 冲突，不要匹配显示文本。
+3. 将日志和用户界面依赖从错误完整文本迁移到 typed error、稳定 reason code 与
    provider failure 分类。
-3. 不要假设替换全局 application-default redactor 会改变 registry error 的
+4. 不要假设替换全局 application-default redactor 会改变 registry error 的
    `Display`/`Debug`；在应用自己的输出边界执行额外 redaction。
-4. 若修改默认 selection 或 provider 注册，重新取得 resolution 以获得新的原子快照。
-5. 将 scheme-derived selection 限制在上述 selector grammar 内，并避免把 authority、
+5. 若修改默认 selection 或 provider 注册，重新取得 resolution 以获得新的原子快照。
+6. 将 scheme-derived selection 限制在上述 selector grammar 内，并避免把 authority、
    userinfo 或 query 当成 selection。
-6. 只把 credential-free canonical URI 用作本次 resolution 的安全定位结果，并由
+7. 只把 credential-free canonical URI 用作本次 resolution 的安全定位结果，并由
    provider 负责其 URI/path 语义。
 
 ## 8. 当前版本与验证
 
-本文适用于 registry 0.6、fs 0.2、local provider 0.9、spi 0.12。用户名本身不是内嵌秘密，
+本文适用于 registry 0.8、fs 0.3、local provider 0.11、spi 0.13。用户名本身不是内嵌秘密，
 可以与外部引用共存。异步方法返回 future 前取得快照，首次轮询才开始创建；返回身份不符按
 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
 安全结构由 `Uri` 类型保证。
 
-相关示例应统一依赖版本，先发布 registry 再发布 local provider，并运行
-`check-published-docs.sh` 验证隔离的发布依赖环境；
+相关示例应统一依赖版本。从项目根目录运行
+`python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0，
+以验证隔离的发布依赖环境；
 开发期间带本地补丁的打包成功不能替代这一验证。
 
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)

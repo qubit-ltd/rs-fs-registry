@@ -6,7 +6,7 @@
 
 This guide is for application and provider authors who need to bind
 `qubit-fs` to runtime-registered filesystem providers. It covers the current
-`qubit-fs-registry` 0.7 API, including synchronous and asynchronous resolution.
+`qubit-fs-registry` 0.8 API, including synchronous and asynchronous resolution.
 
 ## Conceptual Model
 
@@ -163,6 +163,13 @@ credential conflicts before provider creation. This returns
 `reason_code()` is `credential_source_conflict` when an embedded URI
 secret and an external `CredentialRef` occupy the same slot. The reason code is
 safe structured data and contains no URI, reference, or secret payload.
+
+Register providers and choose the default during startup, then call `seal()`
+when configuration is complete. Clones share the sealed state. After sealing,
+registration and default-selection updates return
+`FileSystemRegistryError::RegistryMutation`; existing resolution remains
+available. Handle this error by its type and reason code, rather than by
+matching display text.
 
 For async providers, register with `AsyncFileSystemRegistry` and await its
 owned-config `resolve_config`, `resolve_uri`, `resolve_selected_config`, or

@@ -42,7 +42,7 @@ jobs:
       - name: Install the documented Rust toolchain
         run: rustup toolchain install 1.94 --profile minimal
       - name: Verify isolated published documentation
-        run: ./check-published-docs.sh
+        run: python3 scripts/check_published_docs.py .
 
   prepare-feature-matrix:
     runs-on: ubuntu-latest

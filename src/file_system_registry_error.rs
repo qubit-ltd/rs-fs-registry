@@ -61,17 +61,18 @@ pub enum FileSystemRegistryError {
     /// [`Self::reason_code`] always returns `credential_source_conflict` for
     /// this variant.
     CredentialSourceConflict,
-    /// A provider descriptor could not be registered.
+    /// A registry mutation was rejected because the registry is sealed or a
+    /// provider descriptor conflicts with an existing provider.
     RegistryMutation(
-        /// Typed SPI registration failure.
+        /// Typed SPI error describing the rejected registration or mutation.
         RegistryMutationError,
     ),
-    /// A linked provider could not be added while building an inventory
+    /// A linked provider could not be registered while building an inventory
     /// registry.
     #[cfg(feature = "inventory")]
     InventoryBuild(
-        /// Typed SPI error retaining submission source and registration
-        /// failure.
+        /// Typed SPI error retaining the submission source and registration
+        /// conflict.
         ProviderInventoryBuildError,
     ),
     /// A provider selection could not be constructed from configuration.

@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，覆盖当前
-`qubit-fs-registry` 0.7 API，包括同步与异步 resolution。
+`qubit-fs-registry` 0.8 API，包括同步与异步 resolution。
 
 ## 概念模型
 
@@ -142,6 +142,11 @@ credential 配置。此时返回 `FileSystemRegistryError::CredentialSourceConfl
 secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_code()` 为
 `credential_source_conflict`。reason code 可安全写入结构化诊断，不包含 URI、reference
 或 secret 内容。
+
+启动配置完成后可调用 `seal()` 封存 registry。clone 共享封存状态；封存后，注册 provider
+和更新默认 selection 都会返回 `FileSystemRegistryError::RegistryMutation`，已有解析能力仍可
+使用。
+处理错误时应按错误类型和 reason code 判断，不要匹配显示文本。
 
 对于异步 provider，使用 `AsyncFileSystemRegistry` 注册，并 await 其接收 owned config 的
 `resolve_config`、`resolve_uri`、`resolve_selected_config` 或 `resolve_default_config` future。所得

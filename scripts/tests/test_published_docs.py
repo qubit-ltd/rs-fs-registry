@@ -1,6 +1,9 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
 from pathlib import Path
+import shlex
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,6 +14,34 @@ spec.loader.exec_module(checker)
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_ci_published_documentation_entrypoint_exists(self):
+        repository = Path(__file__).parents[2]
+        workflow_lines = (repository / ".github/workflows/ci.yml").read_text().splitlines()
+        step_name = "      - name: Verify isolated published documentation"
+        step_index = workflow_lines.index(step_name)
+        step_lines = []
+        for line in workflow_lines[step_index + 1:]:
+            if line.startswith("      - "):
+                break
+            step_lines.append(line)
+        run_commands = [line.strip()[len("run:"):].strip() for line in step_lines if line.strip().startswith("run:")]
+        self.assertEqual(len(run_commands), 1)
+        command = shlex.split(run_commands[0])
+        self.assertIn(command[0], {"python", "python3"})
+        self.assertEqual(command[1:], ["scripts/check_published_docs.py", "."])
+
+        checker_path = repository / "scripts/check_published_docs.py"
+        self.assertTrue(checker_path.is_file())
+        result = subprocess.run(
+            [sys.executable, str(checker_path), "--help"],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("root", result.stdout)
+
     def test_packaging_uses_isolated_cwd_when_source_has_parent_cargo_config(self):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
