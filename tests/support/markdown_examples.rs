@@ -332,6 +332,37 @@ fn cargo(root: &Path, target: &Path, arguments: &[&str]) -> std::process::Output
     output
 }
 
+/// Collects executable paths reported by Cargo for generated binary targets.
+pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, String> {
+    let text = std::str::from_utf8(output).map_err(|error| error.to_string())?;
+    let mut artifacts = BTreeMap::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let message: Json = from_slice(line.as_bytes()).map_err(|error| error.to_string())?;
+        if message["reason"].as_str() != Some("compiler-artifact") {
+            continue;
+        }
+        let binary = message["target"]["kind"]
+            .as_array()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("bin")));
+        if !binary {
+            continue;
+        }
+        let Some(executable) = message["executable"].as_str() else {
+            continue;
+        };
+        let name = message["target"]["name"]
+            .as_str()
+            .ok_or_else(|| "executable artifact has no target name".to_owned())?;
+        let path = PathBuf::from(executable);
+        if let Some(previous) = artifacts.insert(name.to_owned(), path.clone())
+            && previous != path
+        {
+            return Err(format!("conflicting executable artifacts for {name}"));
+        }
+    }
+    Ok(artifacts)
+}
+
 /// Checks the shipped programs in isolated directories with an explicit feature
 /// matrix.
 pub fn check_documents(root: &Path, include_async: bool) {
@@ -389,15 +420,20 @@ pub fn check_documents(root: &Path, include_async: bool) {
             root,
             published,
         );
-        cargo(&project, &target, &["build", "--locked", "--bins", "--quiet"]);
+        let build = cargo(
+            &project,
+            &target,
+            &["build", "--locked", "--bins", "--message-format=json"],
+        );
+        let executables = executable_artifacts(&build.stdout).expect("parse Cargo executable artifacts");
         for (name, run) in programs {
+            let executable = executables
+                .get(&name)
+                .unwrap_or_else(|| panic!("Cargo did not report an executable for {name}"));
             if !run {
                 continue;
             }
             let execution = TempDir::new().expect("isolated example working directory");
-            let executable = target
-                .join("debug")
-                .join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
             let output = Command::new(executable)
                 .current_dir(execution.path())
                 .output()

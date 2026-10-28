@@ -8,10 +8,12 @@
 //! Regression and execution checks for shipped documentation.
 
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::support::markdown_examples::check_documents;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
+use crate::support::markdown_examples::executable_artifacts;
 use crate::support::markdown_examples::manifest;
 use crate::support::markdown_examples::snippets;
 
@@ -198,6 +200,51 @@ fn test_documentation_rejects_malformed_fences() {
     assert!(!result[0].asynchronous);
     assert!(result[1].asynchronous);
     assert!(result.iter().all(|s| s.run));
+}
+
+/// Reported executable paths retain target folders and platform spelling.
+#[test]
+fn test_cargo_executable_artifacts_keep_reported_paths() {
+    for executable in [
+        "/tmp/target/debug/document_0_0",
+        "/tmp/target/x86_64-unknown-linux-gnu/debug/document_0_0",
+        "C:/example target/示例/debug/document_0_0.exe",
+    ] {
+        let message = serde_json::json!({
+            "reason": "compiler-artifact",
+            "target": {"kind": ["bin"], "name": "document_0_0"},
+            "executable": executable,
+        });
+        let paths = executable_artifacts(message.to_string().as_bytes()).unwrap();
+        assert_eq!(paths["document_0_0"], PathBuf::from(executable));
+    }
+}
+
+/// Irrelevant messages are skipped and ambiguous or invalid output is rejected.
+#[test]
+fn test_cargo_executable_artifacts_validate_messages() {
+    let output = concat!(
+        "\n",
+        "{\"reason\":\"build-finished\",\"success\":true}\n",
+        "{\"reason\":\"compiler-artifact\",\"target\":{\"kind\":[\"lib\"],\"name\":\"dep\"},\"executable\":null}\n"
+    );
+    assert!(executable_artifacts(output.as_bytes()).unwrap().is_empty());
+    assert!(executable_artifacts(b"not-json").is_err());
+    assert!(executable_artifacts(&[0xff]).is_err());
+    let first = serde_json::json!({
+        "reason": "compiler-artifact",
+        "target": {"kind": ["bin"], "name": "document_0_0"},
+        "executable": "/tmp/first",
+    });
+    let mut second = first.clone();
+    second["executable"] = serde_json::json!("/tmp/second");
+    assert!(executable_artifacts(format!("{first}\n{second}\n").as_bytes()).is_err());
+    assert!(executable_artifacts(format!("{first}\n{first}\n").as_bytes()).is_ok());
+    let mut missing_name = first.clone();
+    missing_name["target"].as_object_mut().unwrap().remove("name");
+    assert!(executable_artifacts(missing_name.to_string().as_bytes()).is_err());
+    second["executable"] = serde_json::Value::Null;
+    assert!(executable_artifacts(second.to_string().as_bytes()).unwrap().is_empty());
 }
 
 /// Each example is compiled and run with its documented minimum features.
