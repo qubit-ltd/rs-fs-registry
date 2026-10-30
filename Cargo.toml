@@ -50,7 +50,7 @@ required-features = ["inventory"]
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
 qubit-redact = { path = "../rs-redact", version = "0.10" }
-qubit-spi = { version = "0.13" }
+qubit-spi = { version = "0.14" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }

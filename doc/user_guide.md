@@ -49,7 +49,7 @@ cargo add qubit-fs-local@0.11 --features registry
 ```
 
 Provider crates that create explicit SPI selections or use low-level provider
-catalog types must add `qubit-spi` directly with `cargo add qubit-spi@0.13`;
+catalog types must add `qubit-spi` directly with `cargo add qubit-spi@0.14`;
 those SPI-owned types are not re-exported by this crate.
 
 ### Optional linked provider discovery
@@ -179,7 +179,7 @@ has the same filesystem/path/canonical-URI shape.
 ### Provider integration tutorials
 
 Run filesystem examples from an empty working directory; they create their own
-report files and subdirectories. Add SPI types with `cargo add qubit-spi@0.13`.
+report files and subdirectories. Add SPI types with `cargo add qubit-spi@0.14`.
 
 ### Separate roots with the same URI
 

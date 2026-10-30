@@ -122,7 +122,10 @@ impl FileSystemRegistryError {
                 }
             }
             #[cfg(feature = "inventory")]
-            Self::InventoryBuild(_) => "inventory_registration_conflict",
+            Self::InventoryBuild(error) => match error.registration_error() {
+                Some(_) => "inventory_registration_conflict",
+                None => "inventory_source_ambiguity",
+            },
             Self::Selection(_) => "invalid_selection",
             Self::SelectionConflict { .. } => "selection_conflict",
             Self::Resolution(error) => match error {
@@ -164,7 +167,13 @@ impl FileSystemRegistryError {
                 .literal(", source=")
                 .field("provider_source", &DebugDisplay::new(&error.source_location()))
                 .literal(", selector=")
-                .field("selector", error.registration_error().selector().unwrap_or("<unknown>")),
+                .field(
+                    "selector",
+                    error
+                        .registration_error()
+                        .and_then(|cause| cause.selector())
+                        .unwrap_or("<unknown>"),
+                ),
             Self::Selection(_error) => composer,
             Self::SelectionConflict { requested, configured } => composer
                 .literal(", requested=")

@@ -20,7 +20,7 @@ cargo add qubit-fs-local@0.11 --features registry
 ```
 
 The default feature set is synchronous. For asynchronous providers, enable
-`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.13`
+`qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.14`
 dependency; this crate does not re-export them.
 
 ## Quick Start

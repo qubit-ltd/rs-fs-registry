@@ -1,6 +1,6 @@
 # Qubit FS Registry Design
 
-Status: implemented contract for `qubit-fs-registry` 0.8, `qubit-fs` 0.3 and `qubit-spi` 0.13.
+Status: implemented contract for `qubit-fs-registry` 0.8, `qubit-fs` 0.3 and `qubit-spi` 0.14.
 
 [中文](file_system_registry_design.zh_CN.md) · [User guide](user_guide.md)
 

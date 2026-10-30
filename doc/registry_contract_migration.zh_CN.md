@@ -1,7 +1,7 @@
 # Registry 合约迁移说明
 
 本文面向采用当前 filesystem facade/SPI 合约的应用和 provider 作者：
-`qubit-fs-registry` 0.8、`qubit-fs` 0.3、`qubit-fs-local` 0.11 与 `qubit-spi` 0.13。
+`qubit-fs-registry` 0.8、`qubit-fs` 0.3、`qubit-fs-local` 0.11 与 `qubit-spi` 0.14。
 本文说明这些已实现合约的可观察行为，补充[中文用户手册](user_guide.zh_CN.md)，
 重点说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界；
 本文不引入新的公开 API，也不改变 selection/fallback 语义。

@@ -2,7 +2,7 @@
 
 For application and provider authors adopting the current filesystem facade/SPI
 contracts in `qubit-fs-registry` 0.8 with `qubit-fs` 0.3, `qubit-fs-local` 0.11
-and `qubit-spi` 0.13. These contracts are already implemented; this guide
+and `qubit-spi` 0.14. These contracts are already implemented; this guide
 clarifies their observable behavior without introducing a new public API or
 changing selection/fallback semantics.
 

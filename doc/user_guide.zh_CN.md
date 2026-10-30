@@ -41,7 +41,7 @@ cargo add qubit-fs@0.3 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 
-需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.13` 添加直接依赖；
+需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.14` 添加直接依赖；
 本 crate 不重新导出这些属于 SPI 的类型。
 
 ### 可选的链接期 provider 发现
@@ -155,7 +155,7 @@ secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_co
 ### 提供者接入实战
 
 文件系统示例应在空工作目录中运行；程序会自行创建报表文件和子目录。
-使用选择规则时，执行 `cargo add qubit-spi@0.13` 添加直接依赖。
+使用选择规则时，执行 `cargo add qubit-spi@0.14` 添加直接依赖。
 
 ### 相同 URI，不同根目录
 
