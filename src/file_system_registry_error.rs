@@ -16,6 +16,7 @@ use qubit_fs::error::FsOperation;
 use qubit_redact::DebugDisplay;
 use qubit_redact::RedactionTextOutput;
 use qubit_redact::Redactor;
+use qubit_redact::Sensitivity;
 use qubit_spi::ProviderSelection;
 use qubit_spi::error::ProviderCreationError;
 #[cfg(feature = "inventory")]
@@ -153,7 +154,11 @@ impl FileSystemRegistryError {
             .literal("filesystem registry error: code=")
             .field("reason_code", self.reason_code());
         let composer = match self {
-            Self::InvalidConfiguration { message } => composer.literal(", detail=").field("password", message),
+            Self::InvalidConfiguration { message } => {
+                composer
+                    .literal(", detail=")
+                    .field_at_least(Sensitivity::Secret, "detail", message)
+            }
             Self::CredentialSourceConflict => composer,
             Self::RegistryMutation(error) => composer
                 .literal(", selector=")
