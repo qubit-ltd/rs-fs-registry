@@ -454,4 +454,15 @@ mod tests {
         assert!(!output.text().as_str().contains("raw-secret-value"));
         assert!(output.text().as_str().contains("<redacted>"));
     }
+
+    /// Disabled redaction restores detail text through the registry formatter.
+    #[test]
+    fn test_invalid_configuration_detail_is_restored_when_disabled() {
+        let message = "connection failed for token=raw-secret-value";
+        let error = FileSystemRegistryError::InvalidConfiguration { message };
+
+        let output = error.redacted_output(&Redactor::new(RedactionPolicy::disabled()));
+
+        assert!(output.text().as_str().contains(message));
+    }
 }
