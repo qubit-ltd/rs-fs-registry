@@ -434,4 +434,24 @@ mod tests {
 
         assert!(output.text().as_str().len() <= 24);
     }
+
+    /// The real invalid-configuration formatter enforces its secret minimum.
+    #[test]
+    fn test_invalid_configuration_detail_ignores_password_allow_rule() {
+        let policy = RedactionPolicy::builder()
+            .fields(|fields| {
+                fields.allow_exact("password").disable_floor();
+            })
+            .expect("field rules should be valid")
+            .build()
+            .expect("policy should build");
+        let error = FileSystemRegistryError::InvalidConfiguration {
+            message: "connection failed for token=raw-secret-value",
+        };
+
+        let output = error.redacted_output(&Redactor::new(policy));
+
+        assert!(!output.text().as_str().contains("raw-secret-value"));
+        assert!(output.text().as_str().contains("<redacted>"));
+    }
 }
