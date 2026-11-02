@@ -118,7 +118,7 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 
 ## 8. 当前版本与验证
 
-本文适用于 registry 0.8、fs 0.3、local provider 0.11、spi 0.13。用户名本身不是内嵌秘密，
+本文适用于 registry 0.8、fs 0.3、local provider 0.11、`qubit-spi` 0.14。用户名本身不是内嵌秘密，
 可以与外部引用共存。异步方法返回 future 前取得快照，首次轮询才开始创建；返回身份不符按
 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
 安全结构由 `Uri` 类型保证。

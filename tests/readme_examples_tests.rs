@@ -110,6 +110,32 @@ fn test_documentation_commands_follow_manifest() {
     }
 }
 
+/// Both migration guides keep every SPI release declaration aligned with Cargo.
+#[test]
+fn test_migration_spi_versions_follow_manifest() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let expected = input["dependencies"]["qubit-spi"]["version"]
+        .as_str()
+        .expect("SPI dependency version must be a string");
+    for relative in [
+        "doc/registry_contract_migration.md",
+        "doc/registry_contract_migration.zh_CN.md",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("migration guide must be readable");
+        let declarations: Vec<_> = source.split("`qubit-spi` ").skip(1).collect();
+        assert_eq!(declarations.len(), 2, "{relative}: expected two SPI declarations");
+        for declaration in declarations {
+            let version = declaration
+                .split(|c: char| !c.is_ascii_digit() && c != '.')
+                .next()
+                .expect("SPI release declaration")
+                .trim_end_matches('.');
+            assert_eq!(version, expected, "{relative}: stale SPI release declaration");
+        }
+    }
+}
+
 /// Dependency requirements must follow Cargo metadata, including without
 /// siblings.
 #[test]
