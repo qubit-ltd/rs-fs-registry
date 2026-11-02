@@ -17,9 +17,6 @@ use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemResolution;
 use qubit_fs_registry::FileSystemSpec;
-use qubit_redact::RedactionPolicy;
-use qubit_redact::Redactor;
-use qubit_redact::Sensitivity;
 use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
@@ -71,65 +68,6 @@ fn test_invalid_configuration_display_does_not_expose_embedded_secret() {
     let debug = format!("{error:?}");
     assert!(!debug.contains("raw-secret-value"));
     assert!(debug.contains("<redacted>"));
-}
-
-/// The diagnostic detail remains secret even when a policy allows the old
-/// synthetic `password` classification key and has no floor.
-#[test]
-fn test_invalid_configuration_detail_has_an_explicit_secret_minimum() {
-    let message = "connection failed for token=raw-secret-value";
-    let policy = RedactionPolicy::builder()
-        .fields(|fields| {
-            fields.allow_exact("password").disable_floor();
-        })
-        .expect("field rules should be valid")
-        .build()
-        .expect("policy should build");
-    let output = Redactor::new(policy)
-        .text_composer()
-        .literal("filesystem registry error: code=invalid_configuration, detail=")
-        .field_at_least(Sensitivity::Secret, "detail", message)
-        .finish();
-
-    assert!(!output.text().as_str().contains("raw-secret-value"));
-    assert!(output.text().as_str().contains("<redacted>"));
-}
-
-/// Disabled redaction restores invalid-configuration detail text.
-#[test]
-fn test_invalid_configuration_detail_is_restored_when_redaction_is_disabled() {
-    let message = "connection failed for token=raw-secret-value";
-    let output = Redactor::new(RedactionPolicy::disabled())
-        .text_composer()
-        .literal("filesystem registry error: code=invalid_configuration, detail=")
-        .field_at_least(Sensitivity::Secret, "detail", message)
-        .finish();
-
-    assert!(output.text().as_str().contains(message));
-}
-
-/// Invalid-configuration formatting remains bounded by a tiny output limit.
-#[test]
-fn test_invalid_configuration_detail_respects_a_tiny_output_limit() {
-    let policy = RedactionPolicy::builder()
-        .limits(|limits| {
-            limits.max_output_bytes(1);
-        })
-        .expect("limits should be valid")
-        .build()
-        .expect("policy should build");
-    let output = Redactor::new(policy)
-        .text_composer()
-        .literal("filesystem registry error: code=invalid_configuration, detail=")
-        .field_at_least(
-            Sensitivity::Secret,
-            "detail",
-            "connection failed for token=raw-secret-value",
-        )
-        .finish();
-
-    assert!(output.text().as_str().len() <= 1);
-    assert!(!output.text().as_str().contains("raw-secret-value"));
 }
 
 /// Credential source conflicts expose a stable reason code and only safe

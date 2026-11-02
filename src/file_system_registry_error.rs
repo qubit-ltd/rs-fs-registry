@@ -465,4 +465,24 @@ mod tests {
 
         assert!(output.text().as_str().contains(message));
     }
+
+    /// The actual registry formatter obeys a one-byte diagnostic budget.
+    #[test]
+    fn test_invalid_configuration_detail_respects_a_tiny_output_limit() {
+        let policy = RedactionPolicy::builder()
+            .limits(|limits| {
+                limits.max_output_bytes(1);
+            })
+            .expect("limits should be valid")
+            .build()
+            .expect("policy should build");
+        let error = FileSystemRegistryError::InvalidConfiguration {
+            message: "connection failed for token=raw-secret-value",
+        };
+
+        let output = error.redacted_output(&Redactor::new(policy));
+
+        assert!(output.text().as_str().len() <= 1);
+        assert!(!output.text().as_str().contains("raw-secret-value"));
+    }
 }
