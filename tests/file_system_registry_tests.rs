@@ -97,7 +97,10 @@ fn test_sealed_registry_preserves_successful_resolution() {
             handle.resolve_default_config(&config),
         ] {
             let resolution = result.expect("sealed registry must still resolve");
-            assert_eq!(resolution.file_system().properties().info().provider_id(), "sealed-provider");
+            assert_eq!(
+                resolution.file_system().properties().info().provider_id(),
+                "sealed-provider"
+            );
         }
     }
     assert_eq!(*calls.lock().expect("calls"), vec![config; 8]);

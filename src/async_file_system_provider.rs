@@ -25,8 +25,9 @@ use crate::FileSystemSpec;
 /// the metadata and service-provider contracts described by
 /// [`AsyncProviderDefinition`]. The example assumes the registry is not sealed
 /// and the provider descriptor does not conflict with an existing
-/// registration; see [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry)
-/// for registry rules and [`AsyncProviderDefinition`] for the SPI contract.
+/// registration; see
+/// [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry) for registry
+/// rules and [`AsyncProviderDefinition`] for the SPI contract.
 ///
 /// # Examples
 ///

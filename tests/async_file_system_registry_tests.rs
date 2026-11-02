@@ -93,7 +93,10 @@ fn test_sealed_async_registry_preserves_successful_resolution() {
     assert!(calls.lock().expect("calls").is_empty());
     registry.seal();
     let captured = common::block_on(before_seal).expect("captured future survives sealing");
-    assert_eq!(captured.file_system().properties().info().provider_id(), "sealed-provider");
+    assert_eq!(
+        captured.file_system().properties().info().provider_id(),
+        "sealed-provider"
+    );
 
     for handle in [&registry, &clone] {
         assert!(handle.is_sealed());
@@ -104,7 +107,10 @@ fn test_sealed_async_registry_preserves_successful_resolution() {
             common::block_on(handle.resolve_default_config(config.clone())),
         ] {
             let resolution = result.expect("sealed async registry must still resolve");
-            assert_eq!(resolution.file_system().properties().info().provider_id(), "sealed-provider");
+            assert_eq!(
+                resolution.file_system().properties().info().provider_id(),
+                "sealed-provider"
+            );
         }
     }
     assert_eq!(*calls.lock().expect("calls"), vec![config; 9]);
