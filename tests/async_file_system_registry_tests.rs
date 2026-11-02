@@ -7,6 +7,8 @@
 // =============================================================================
 
 use std::future::Future;
+use std::panic::catch_unwind;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -27,6 +29,7 @@ use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemSpec;
 use qubit_spi::AsyncServiceProvider;
+use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderFuture;
 use qubit_spi::ProviderId;
@@ -541,4 +544,81 @@ fn test_async_registration_binds_original_descriptor() {
         .expect("original identity");
     assert_eq!(resolution.file_system().properties().info().provider_id(), "original");
     assert_eq!(registry.provider_ids()[0].as_str(), "original");
+}
+
+/// Panics in the creation method before it can return a provider future.
+struct MethodPanicAsyncProvider {
+    create_calls: Arc<AtomicUsize>,
+}
+
+impl ProviderMetadata for MethodPanicAsyncProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new("panic-first").expect("provider ID"))
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for MethodPanicAsyncProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        panic!("provider-panic-marker");
+    }
+}
+
+/// The creation method is deferred until polling, and its panic never falls back.
+#[test]
+fn test_provider_panic_async_method_is_deferred_and_does_not_fallback() {
+    let registry = AsyncFileSystemRegistry::default();
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    registry
+        .register(MethodPanicAsyncProvider {
+            create_calls: Arc::clone(&create_calls),
+        })
+        .expect("first provider");
+    let second = ObservedProvider::new("panic-second");
+    let second_calls = Arc::clone(&second.calls);
+    registry.register(second).expect("second provider");
+    let selection = ProviderSelection::chain(["panic-first", "panic-second"])
+        .expect("chain")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+
+    let future = registry.resolve_selected_config(selection, config);
+    assert_eq!(create_calls.load(Ordering::SeqCst), 0);
+    assert!(second_calls.lock().expect("second calls").is_empty());
+    let payload = catch_unwind(AssertUnwindSafe(|| common::block_on(future)))
+        .expect_err("creation-method panic must propagate from polling");
+
+    assert_eq!(payload.downcast_ref::<&str>().copied(), Some("provider-panic-marker"));
+    assert_eq!(create_calls.load(Ordering::SeqCst), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
+}
+
+/// A panic inside the provider future propagates without invoking a fallback.
+#[test]
+fn test_provider_panic_async_future_does_not_fallback() {
+    let registry = AsyncFileSystemRegistry::default();
+    let mut first = ObservedProvider::new("panic-first");
+    first.on_create = Some(Arc::new(|| panic!("provider-panic-marker")));
+    let first_calls = Arc::clone(&first.calls);
+    let second = ObservedProvider::new("panic-second");
+    let second_calls = Arc::clone(&second.calls);
+    registry.register(first).expect("first provider");
+    registry.register(second).expect("second provider");
+    let selection = ProviderSelection::chain(["panic-first", "panic-second"])
+        .expect("chain")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+
+    let future = registry.resolve_selected_config(selection, config);
+    assert!(first_calls.lock().expect("first calls").is_empty());
+    assert!(second_calls.lock().expect("second calls").is_empty());
+    let payload = catch_unwind(AssertUnwindSafe(|| common::block_on(future)))
+        .expect_err("creation-future panic must propagate from polling");
+
+    assert_eq!(payload.downcast_ref::<&str>().copied(), Some("provider-panic-marker"));
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
 }

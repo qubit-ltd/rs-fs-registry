@@ -6,10 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::Arc;
+use std::panic::catch_unwind;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -486,4 +488,30 @@ fn test_registration_binds_original_descriptor() {
         .expect("original identity");
     assert_eq!(resolution.file_system().properties().info().provider_id(), "original");
     assert_eq!(registry.provider_ids()[0].as_str(), "original");
+}
+
+/// A provider panic propagates even when ordinary errors allow fallback.
+#[test]
+fn test_provider_panic_sync_does_not_fallback() {
+    let registry = FileSystemRegistry::default();
+    let mut first = ObservedProvider::new("panic-first");
+    first.on_create = Some(Arc::new(|| panic!("provider-panic-marker")));
+    let first_calls = Arc::clone(&first.calls);
+    let second = ObservedProvider::new("panic-second");
+    let second_calls = Arc::clone(&second.calls);
+    registry.register(first).expect("first provider");
+    registry.register(second).expect("second provider");
+    let selection = ProviderSelection::chain(["panic-first", "panic-second"])
+        .expect("chain")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///resource").expect("URI"));
+
+    let payload = catch_unwind(AssertUnwindSafe(|| {
+        registry.resolve_selected_config(&selection, &config)
+    }))
+    .expect_err("provider panic must propagate");
+
+    assert_eq!(payload.downcast_ref::<&str>().copied(), Some("provider-panic-marker"));
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
 }
