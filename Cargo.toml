@@ -43,6 +43,10 @@ name = "integration_tests"
 path = "tests/mod.rs"
 
 [[test]]
+name = "formatting_tests"
+path = "tests/file_system_registry_formatting_tests.rs"
+
+[[test]]
 name = "inventory_conflict_tests"
 path = "tests/file_system_inventory_conflict_tests.rs"
 required-features = ["inventory"]
