@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install the documented Rust toolchain
-        run: rustup toolchain install 1.94 --profile minimal
+        run: rustup toolchain install 1.94.0 --profile minimal
       - name: Verify isolated published documentation
         run: python3 scripts/check_published_docs.py .
 
