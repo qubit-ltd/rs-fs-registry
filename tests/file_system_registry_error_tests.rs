@@ -29,6 +29,34 @@ use qubit_spi::error::ProviderFailureKind;
 
 use crate::file_system_registry_tests::FailingProvider;
 
+struct ConversionFailureProvider {
+    id: &'static str,
+    kind: FsErrorKind,
+    source_message: &'static str,
+}
+
+impl ProviderMetadata for ConversionFailureProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("fixture provider ID"))
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for ConversionFailureProvider {
+    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+        let error = FsError::with_source(
+            self.kind,
+            FsOperation::Provider,
+            "conversion fixture failure",
+            std::io::Error::other(self.source_message),
+        );
+        Err(if self.kind == FsErrorKind::InvalidOptions {
+            ProviderFailure::invalid_configuration(error)
+        } else {
+            ProviderFailure::initialization_failed(error)
+        })
+    }
+}
+
 /// Selection conflicts convert to filesystem invalid-options errors.
 #[test]
 fn test_selection_conflict_converts_to_invalid_options() {
@@ -302,6 +330,70 @@ fn test_creation_display_is_structured_without_leaf_message() {
             .kind(),
         ProviderFailureKind::Unavailable,
     );
+}
+
+/// Conversion preserves the decisive failure and every typed leaf source.
+#[test]
+fn test_creation_conversion_preserves_decisive_failure_and_sources() {
+    let registry = FileSystemRegistry::default();
+    for (id, kind, source_message) in [
+        ("first", FsErrorKind::InvalidOptions, "first-source"),
+        ("second", FsErrorKind::ProviderContractViolation, "second-source"),
+    ] {
+        registry
+            .register(ConversionFailureProvider {
+                id,
+                kind,
+                source_message,
+            })
+            .expect("register fixture");
+    }
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("fixture chain")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("fixture:///resource").expect("fixture URI"));
+    let error = registry
+        .resolve_selected_config(&selection, &config)
+        .expect_err("both fixtures fail");
+    let converted: FsError = error.into();
+    assert_eq!(converted.kind(), FsErrorKind::ProviderContractViolation);
+    assert_eq!(converted.provider(), Some("second"));
+    assert_eq!(converted.operation(), FsOperation::Provider);
+    let registry_source = converted
+        .source()
+        .and_then(|source| source.downcast_ref::<FileSystemRegistryError>())
+        .expect("typed registry source");
+    let FileSystemRegistryError::Creation(creation) = registry_source else {
+        panic!("creation source expected");
+    };
+    assert_eq!(creation.attempts().len(), 2);
+    assert_eq!(creation.decisive_attempt().provider_id().as_str(), "second");
+    let expected = [
+        (
+            "first",
+            FsErrorKind::InvalidOptions,
+            ProviderFailureKind::InvalidConfiguration,
+            "first-source",
+        ),
+        (
+            "second",
+            FsErrorKind::ProviderContractViolation,
+            ProviderFailureKind::InitializationFailed,
+            "second-source",
+        ),
+    ];
+    for (attempt, (id, kind, classification, source_message)) in creation.attempts().iter().zip(expected) {
+        assert_eq!(attempt.provider_id().as_str(), id);
+        assert_eq!(attempt.failure().kind(), classification);
+        assert_eq!(attempt.failure().error().kind(), kind);
+        let leaf_source = attempt
+            .failure()
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<std::io::Error>())
+            .expect("typed leaf source");
+        assert_eq!(leaf_source.to_string(), source_message);
+    }
 }
 
 struct InvalidConfigurationProvider {
