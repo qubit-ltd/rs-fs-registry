@@ -80,8 +80,13 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns the submitted provider's source and registration conflict when
-    /// two discovered descriptors claim the same selector.
+    /// Returns [`FileSystemRegistryError::InventoryBuild`] when discovered
+    /// providers have ambiguous submission sources or descriptors conflict on
+    /// a selector.
+    /// Source ambiguity is checked before invoking provider factories or
+    /// transforming providers. The error retains the submission source.
+    /// [`FileSystemRegistryError::reason_code`] distinguishes
+    /// `inventory_source_ambiguity` from `inventory_registration_conflict`.
     ///
     /// # Panics
     ///
@@ -257,6 +262,12 @@ impl AsyncFileSystemRegistry {
     ///
     /// The returned future yields a structured error when credential sources
     /// conflict, the selection is invalid or unavailable, or creation fails.
+    ///
+    /// # Panics
+    ///
+    /// A panic from a provider factory, creation method, or creation future
+    /// propagates when the returned future is polled; it does not trigger
+    /// fallback to another provider.
     #[inline]
     pub fn resolve_config(
         &self,
@@ -281,6 +292,12 @@ impl AsyncFileSystemRegistry {
     /// # Errors
     ///
     /// The returned future yields the same errors as [`Self::resolve_config`].
+    ///
+    /// # Panics
+    ///
+    /// Provider factory, creation method, and creation future panics propagate
+    /// when the returned future is polled, as described for
+    /// [`Self::resolve_config`]; they do not trigger fallback.
     #[inline]
     pub fn resolve_uri(
         &self,
@@ -304,6 +321,12 @@ impl AsyncFileSystemRegistry {
     /// The returned future yields a structured error when credential sources
     /// or selections conflict, the selection is unavailable, or creation
     /// fails.
+    ///
+    /// # Panics
+    ///
+    /// A panic from a provider factory, creation method, or creation future
+    /// propagates when the returned future is polled; it does not trigger
+    /// fallback to another provider.
     #[inline]
     pub fn resolve_selected_config(
         &self,
@@ -329,6 +352,12 @@ impl AsyncFileSystemRegistry {
     ///
     /// The returned future yields the same errors as
     /// [`Self::resolve_selected_config`].
+    ///
+    /// # Panics
+    ///
+    /// Provider factory, creation method, and creation future panics propagate
+    /// when the returned future is polled, as described for
+    /// [`Self::resolve_selected_config`]; they do not trigger fallback.
     #[inline]
     pub fn resolve_default_config(
         &self,

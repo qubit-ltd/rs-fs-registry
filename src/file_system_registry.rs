@@ -71,8 +71,13 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns the submitted provider's source and registration conflict when
-    /// two discovered descriptors claim the same selector.
+    /// Returns [`FileSystemRegistryError::InventoryBuild`] when discovered
+    /// providers have ambiguous submission sources or descriptors conflict on
+    /// a selector.
+    /// Source ambiguity is checked before invoking provider factories or
+    /// transforming providers. The error retains the submission source.
+    /// [`FileSystemRegistryError::reason_code`] distinguishes
+    /// `inventory_source_ambiguity` from `inventory_registration_conflict`.
     ///
     /// # Panics
     ///
@@ -245,6 +250,11 @@ impl FileSystemRegistry {
     ///
     /// Returns a structured error when credential sources conflict, the
     /// selection is invalid or unavailable, or provider creation fails.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic from a provider factory. A panic does not trigger
+    /// fallback to another provider.
     #[inline]
     pub fn resolve_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
@@ -266,6 +276,11 @@ impl FileSystemRegistry {
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_config`].
+    ///
+    /// # Panics
+    ///
+    /// Propagates provider factory panics as described for
+    /// [`Self::resolve_config`]; they do not trigger fallback.
     #[inline]
     pub fn resolve_uri(&self, uri: &ConnectionUri) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))
@@ -286,6 +301,11 @@ impl FileSystemRegistry {
     ///
     /// Returns a structured error when credential sources or selections
     /// conflict, the selection is unavailable, or provider creation fails.
+    ///
+    /// # Panics
+    ///
+    /// Propagates a panic from a provider factory. A panic does not trigger
+    /// fallback to another provider.
     #[inline]
     pub fn resolve_selected_config(
         &self,
@@ -311,6 +331,11 @@ impl FileSystemRegistry {
     /// # Errors
     ///
     /// Returns the same errors as [`Self::resolve_selected_config`].
+    ///
+    /// # Panics
+    ///
+    /// Propagates provider factory panics as described for
+    /// [`Self::resolve_selected_config`]; they do not trigger fallback.
     #[inline]
     pub fn resolve_default_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
