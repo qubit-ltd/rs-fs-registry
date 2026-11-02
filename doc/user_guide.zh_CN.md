@@ -54,6 +54,31 @@ cargo add qubit-fs-local@0.11 --features registry
 发现的 provider 与显式注册一样接受身份校验；重复 selector 返回带提交来源的
 inventory build error。
 
+本指南使用的本地 provider 启用 `qubit-fs-local` 的 `registry` feature 后也会启用
+inventory。链接的 provider crate 会提交一个工厂，创建使用
+`LocalResourcePolicy::standard()` 的 host-wide provider；它不会保留显式注册示例中的
+rooted 目录或自定义策略。因此，`file:` URI 所处的权限上下文也不同。需要 rooted
+provider 或自定义策略时，请在新的 `FileSystemRegistry::default()` 上显式注册。
+
+下面的示例只验证 provider 已被发现且注册表可以封存，不会访问宿主文件：
+
+```rust
+use qubit_fs_local as _;
+use qubit_fs_registry::FileSystemRegistry;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = FileSystemRegistry::from_inventory()?;
+    assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+    registry.seal();
+    assert!(registry.is_sealed());
+    Ok(())
+}
+```
+
+如果确实要混用发现和显式 rooted provider，请为它们设置不同的 ID 或 alias，并显式选择
+目标 provider。关于相同 URI 在不同根目录中解析的方式，请见
+[相同 URI，不同根目录](#相同-uri-不同根目录)。
+
 ## 核心工作流
 
 请在空工作目录中运行；程序会自行创建 `report.csv`，并验证文件大小。

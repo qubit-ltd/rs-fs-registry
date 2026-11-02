@@ -64,6 +64,35 @@ submitting provider crate. Discovered providers receive the same identity
 validation as explicitly registered ones. Duplicate selectors return a typed
 inventory build error with the submission source.
 
+With the local provider used in this guide, the `registry` feature on
+`qubit-fs-local` enables inventory support. The linked provider crate submits a
+factory for a host-wide provider using `LocalResourcePolicy::standard()`; it
+does not retain the rooted directory or custom policy from the explicit
+registration example. A `file:` URI therefore has a different authority
+context. Keep explicit registration on a fresh `FileSystemRegistry::default()`
+when you need a rooted provider or custom policy.
+
+This example verifies that the linked crate is discovered and the registry can
+be sealed. It does not access a host file:
+
+```rust
+use qubit_fs_local as _;
+use qubit_fs_registry::FileSystemRegistry;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = FileSystemRegistry::from_inventory()?;
+    assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+    registry.seal();
+    assert!(registry.is_sealed());
+    Ok(())
+}
+```
+
+If you intentionally combine discovery with explicitly rooted providers, give
+them independent IDs or aliases and select the intended provider explicitly.
+See [Separate roots with the same URI](#separate-roots-with-the-same-uri) for
+how identical URIs can resolve within different roots.
+
 ## Core Workflow
 
 Run this program in an empty working directory. It creates `report.csv` and verifies its size.
