@@ -20,17 +20,29 @@ use crate::FileSystemSpec;
 /// The [`ProviderDefinition`] combines provider metadata with configured
 /// creation. [`FileSystemSpec`] fixes the configuration, resolution, and
 /// filesystem error types; [`FileSystemRegistry`](crate::FileSystemRegistry)
-/// validates returned identities.
+/// validates returned identities. Applications provide a shared provider
+/// implementing the metadata and service-provider contracts described by
+/// [`ProviderDefinition`]. The example assumes the registry is not sealed and
+/// the provider descriptor does not conflict with an existing registration;
+/// see [`FileSystemRegistry`](crate::FileSystemRegistry) for registry rules and
+/// [`ProviderDefinition`] for the SPI contract.
 ///
 /// # Examples
 ///
 /// ```
+/// use std::sync::Arc;
+///
 /// use qubit_fs_registry::FileSystemProvider;
 /// use qubit_fs_registry::FileSystemRegistry;
+/// use qubit_fs_registry::FileSystemRegistryResult;
 ///
-/// let registry = FileSystemRegistry::default();
-/// fn accepts(_provider: &FileSystemProvider) {}
-/// assert!(registry.is_empty());
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// fn register_provider(
+///     registry: &FileSystemRegistry,
+///     provider: Arc<FileSystemProvider>,
+/// ) -> FileSystemRegistryResult<()> {
+///     registry.register_shared(provider)?;
+///     assert!(!registry.is_empty());
+///     Ok(())
+/// }
 /// ```
 pub type FileSystemProvider = dyn ProviderDefinition<FileSystemSpec>;

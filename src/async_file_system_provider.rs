@@ -21,7 +21,12 @@ use crate::FileSystemSpec;
 /// creation. [`FileSystemSpec`] fixes the configuration, resolution, and
 /// filesystem error
 /// types; [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry) validates
-/// returned identities.
+/// returned identities. Applications provide a shared provider implementing
+/// the metadata and service-provider contracts described by
+/// [`AsyncProviderDefinition`]. The example assumes the registry is not sealed
+/// and the provider descriptor does not conflict with an existing
+/// registration; see [`AsyncFileSystemRegistry`](crate::AsyncFileSystemRegistry)
+/// for registry rules and [`AsyncProviderDefinition`] for the SPI contract.
 ///
 /// # Examples
 ///
@@ -29,12 +34,20 @@ use crate::FileSystemSpec;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # #[cfg(feature = "async")]
 /// # {
+/// use std::sync::Arc;
+///
 /// use qubit_fs_registry::AsyncFileSystemProvider;
 /// use qubit_fs_registry::AsyncFileSystemRegistry;
+/// use qubit_fs_registry::FileSystemRegistryResult;
 ///
-/// let registry = AsyncFileSystemRegistry::default();
-/// fn accepts(_provider: &AsyncFileSystemProvider) {}
-/// assert!(registry.is_empty());
+/// fn register_provider(
+///     registry: &AsyncFileSystemRegistry,
+///     provider: Arc<AsyncFileSystemProvider>,
+/// ) -> FileSystemRegistryResult<()> {
+///     registry.register_shared(provider)?;
+///     assert!(!registry.is_empty());
+///     Ok(())
+/// }
 /// # }
 /// # Ok(())
 /// # }
