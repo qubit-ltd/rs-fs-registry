@@ -77,6 +77,39 @@ fn test_async_registry_clone_shares_catalog_and_default_selection() {
     assert_eq!(registry.default_selection(), selection);
 }
 
+/// Sealing preserves old futures and new resolutions through shared handles.
+#[test]
+fn test_sealed_async_registry_preserves_successful_resolution() {
+    let registry = AsyncFileSystemRegistry::default();
+    let provider = ObservedProvider::new("sealed-provider");
+    let calls = Arc::clone(&provider.calls);
+    registry.register(provider).expect("register provider");
+    let selection = ProviderSelection::named("sealed-provider").expect("selection");
+    registry.set_default_selection(selection.clone()).expect("set default");
+    let clone = registry.clone();
+    let uri = ConnectionUri::parse("sealed-provider:///resource").expect("URI");
+    let config = FileSystemConfig::new(uri.clone());
+    let before_seal = registry.resolve_default_config(config.clone());
+    assert!(calls.lock().expect("calls").is_empty());
+    registry.seal();
+    let captured = common::block_on(before_seal).expect("captured future survives sealing");
+    assert_eq!(captured.file_system().properties().info().provider_id(), "sealed-provider");
+
+    for handle in [&registry, &clone] {
+        assert!(handle.is_sealed());
+        for result in [
+            common::block_on(handle.resolve_config(config.clone())),
+            common::block_on(handle.resolve_uri(uri.clone())),
+            common::block_on(handle.resolve_selected_config(selection.clone(), config.clone())),
+            common::block_on(handle.resolve_default_config(config.clone())),
+        ] {
+            let resolution = result.expect("sealed async registry must still resolve");
+            assert_eq!(resolution.file_system().properties().info().provider_id(), "sealed-provider");
+        }
+    }
+    assert_eq!(*calls.lock().expect("calls"), vec![config; 9]);
+}
+
 /// Sealing is shared by asynchronous registry clones and rejects mutations.
 #[test]
 fn test_async_registry_seal_is_shared_and_rejects_mutation() {

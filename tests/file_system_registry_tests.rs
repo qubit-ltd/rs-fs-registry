@@ -74,6 +74,35 @@ fn test_registry_clone_shares_catalog_and_default_selection() {
     assert_eq!(registry.default_selection(), selection);
 }
 
+/// Sealing preserves successful resolution through both shared handles.
+#[test]
+fn test_sealed_registry_preserves_successful_resolution() {
+    let registry = FileSystemRegistry::default();
+    let provider = ObservedProvider::new("sealed-provider");
+    let calls = Arc::clone(&provider.calls);
+    registry.register(provider).expect("register provider");
+    let selection = ProviderSelection::named("sealed-provider").expect("selection");
+    registry.set_default_selection(selection.clone()).expect("set default");
+    let clone = registry.clone();
+    let uri = ConnectionUri::parse("sealed-provider:///resource").expect("URI");
+    let config = FileSystemConfig::new(uri.clone());
+    registry.seal();
+
+    for handle in [&registry, &clone] {
+        assert!(handle.is_sealed());
+        for result in [
+            handle.resolve_config(&config),
+            handle.resolve_uri(&uri),
+            handle.resolve_selected_config(&selection, &config),
+            handle.resolve_default_config(&config),
+        ] {
+            let resolution = result.expect("sealed registry must still resolve");
+            assert_eq!(resolution.file_system().properties().info().provider_id(), "sealed-provider");
+        }
+    }
+    assert_eq!(*calls.lock().expect("calls"), vec![config; 8]);
+}
+
 /// Sealing is shared by clones and rejects every registry mutation.
 #[test]
 fn test_registry_seal_is_shared_and_rejects_mutation() {
