@@ -7,8 +7,8 @@
 // =============================================================================
 
 use std::future::Future;
-use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -567,7 +567,8 @@ impl AsyncServiceProvider<FileSystemSpec> for MethodPanicAsyncProvider {
     }
 }
 
-/// The creation method is deferred until polling, and its panic never falls back.
+/// The creation method is deferred until polling, and its panic never falls
+/// back.
 #[test]
 fn test_provider_panic_async_method_is_deferred_and_does_not_fallback() {
     let registry = AsyncFileSystemRegistry::default();
