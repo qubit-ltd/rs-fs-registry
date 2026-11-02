@@ -120,7 +120,8 @@ macro_rules! submit_same_source_providers {
 
 submit_same_source_providers!();
 
-/// Ambiguous source errors keep their source and format without selector access.
+/// Ambiguous source errors keep their source and format without selector
+/// access.
 #[test]
 fn test_inventory_ambiguity_preserves_source_and_safe_formatting() {
     let build_error = ambiguous_providers::build_registry().expect_err("duplicate source must fail");

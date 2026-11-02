@@ -12,6 +12,18 @@
       "commands": ["check", "test", "doc"],
       "defaultFeatures": false,
       "features": []
+    },
+    {
+      "name": "async-only",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["async"]
+    },
+    {
+      "name": "inventory-only",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["inventory"]
     }
   ]
 }
