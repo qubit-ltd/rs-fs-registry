@@ -37,15 +37,20 @@ use crate::FileSystemResolution;
 pub struct FileSystemSpec;
 
 impl ServiceSpec for FileSystemSpec {
+    /// The URI and provider selection used to resolve a filesystem.
     type Config = FileSystemConfig;
+
+    /// Filesystem errors are surfaced directly by the provider SPI.
     type Error = FsError;
 }
 
 impl SyncServiceSpec for FileSystemSpec {
+    /// A synchronous filesystem resolution with a validated logical path.
     type Output = FileSystemResolution;
 }
 
 #[cfg(feature = "async")]
 impl AsyncServiceSpec for FileSystemSpec {
+    /// An asynchronous filesystem resolution with a validated logical path.
     type Output = AsyncFileSystemResolution;
 }

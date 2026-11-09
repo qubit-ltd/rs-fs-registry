@@ -291,6 +291,14 @@ impl From<RegistryMutationError> for FileSystemRegistryError {
 #[cfg(feature = "inventory")]
 impl From<ProviderInventoryBuildError> for FileSystemRegistryError {
     /// Preserves the failed inventory submission and mutation error.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: Inventory construction error to preserve.
+    ///
+    /// # Returns
+    ///
+    /// The registry error containing the inventory failure.
     fn from(error: ProviderInventoryBuildError) -> Self {
         Self::InventoryBuild(error)
     }
