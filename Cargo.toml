@@ -52,8 +52,8 @@ path = "tests/file_system_inventory_conflict_tests.rs"
 required-features = ["inventory"]
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
-qubit-redact = { path = "../rs-redact", version = "0.10" }
+qubit-fs = { path = "../rs-fs", version = "^0.3", default-features = false }
+qubit-redact = { version = "^0.10" }
 qubit-spi = "^0.14"
 
 [lints.rust]
