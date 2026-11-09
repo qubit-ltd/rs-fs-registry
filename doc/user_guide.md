@@ -48,6 +48,21 @@ cargo add qubit-fs@0.3 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 
+A synchronous example without a local provider or linked discovery uses only the default feature set:
+
+```rust
+use qubit_fs::path::ConnectionUri;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = FileSystemRegistry::default();
+    let error = registry.resolve_uri(&ConnectionUri::parse("missing:///report.csv")?)
+        .expect_err("empty registry cannot resolve a provider");
+    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+    Ok(())
+}
+```
 Provider crates that create explicit SPI selections or use low-level provider
 catalog types must add `qubit-spi` directly with `cargo add qubit-spi@0.14`;
 those SPI-owned types are not re-exported by this crate.
@@ -76,6 +91,8 @@ This example discovers the linked provider and opens the current directory as a
 rooted authority. It does not create or read `report.csv`, or perform file
 operations through the discovered host provider:
 
+<!-- registry-example: local -->
+<!-- registry-example: inventory -->
 ```rust
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
@@ -119,6 +136,7 @@ how identical URIs can resolve within different roots.
 
 Run this program in an empty working directory. It creates `report.csv` and verifies its size.
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 
@@ -240,6 +258,7 @@ the configured filesystem. URI schemes describe supported locations and need
 not equal the descriptor ID. Two roots can therefore have the same canonical URI
 while containing different data. Preserve the returned facade with the path:
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 
@@ -305,6 +324,7 @@ rules have a single owner. A new backend instead constructs its facade and calls
 That constructor validates path semantics/limits and requires an advertised
 canonical scheme; an empty scheme list fails. Registry identity checks follow.
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 

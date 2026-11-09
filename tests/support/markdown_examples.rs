@@ -27,6 +27,8 @@ use toml::to_string;
 pub struct Snippet {
     pub source: String,
     pub asynchronous: bool,
+    pub local: bool,
+    pub inventory: bool,
     pub run: bool,
 }
 
@@ -35,14 +37,24 @@ pub fn snippets(text: &str) -> Result<Vec<Snippet>, String> {
     let mut result = Vec::new();
     let mut fence: Option<(bool, bool)> = None;
     let mut asynchronous = false;
+    let mut local = false;
+    let mut inventory = false;
+    let mut directive_pending = false;
     let mut source = String::new();
     for line in text.lines() {
         let trimmed = line.trim();
         if fence.is_none() && trimmed.starts_with("<!-- registry-example:") {
-            if trimmed != "<!-- registry-example: async -->" || asynchronous {
-                return Err("unknown or repeated registry-example directive".into());
+            let flag = match trimmed {
+                "<!-- registry-example: async -->" => &mut asynchronous,
+                "<!-- registry-example: local -->" => &mut local,
+                "<!-- registry-example: inventory -->" => &mut inventory,
+                _ => return Err("unknown registry-example directive".into()),
+            };
+            if *flag {
+                return Err("repeated registry-example directive".into());
             }
-            asynchronous = true;
+            *flag = true;
+            directive_pending = true;
         } else if let Some(language) = trimmed.strip_prefix("```") {
             if let Some((rust, run)) = fence.take() {
                 if !language.is_empty() {
@@ -52,10 +64,15 @@ pub fn snippets(text: &str) -> Result<Vec<Snippet>, String> {
                     result.push(Snippet {
                         source: std::mem::take(&mut source),
                         asynchronous,
+                        local,
+                        inventory,
                         run,
                     });
                 }
                 asynchronous = false;
+                local = false;
+                inventory = false;
+                directive_pending = false;
             } else {
                 let rust = matches!(language, "rust" | "rs" | "rust,no_run");
                 if language.starts_with("rust") && !rust {
@@ -64,15 +81,21 @@ pub fn snippets(text: &str) -> Result<Vec<Snippet>, String> {
                 if asynchronous && !rust {
                     return Err("async directive must precede a Rust example".into());
                 }
+                if (local || inventory) && !rust {
+                    return Err("provider directive must precede a Rust example".into());
+                }
                 fence = Some((rust, language != "rust,no_run"));
+                directive_pending = false;
             }
+        } else if directive_pending && !trimmed.is_empty() {
+            return Err("registry-example directives must be consecutive and immediately precede Rust code".into());
         } else if matches!(fence, Some((true, _))) {
             source.push_str(line);
             source.push('\n');
         }
     }
-    if fence.is_some() || asynchronous {
-        return Err("unterminated fence or unused async directive".into());
+    if fence.is_some() || asynchronous || local || inventory {
+        return Err("unterminated fence or unused registry-example directive".into());
     }
     Ok(result)
 }
@@ -85,9 +108,21 @@ pub fn manifest(root: &Path) -> Value {
 
 /// Builds a minimal example manifest; only the tested package may be patched in
 /// published mode.
-pub fn documentation_manifest(root: &Path, input: &Value, published: bool, asynchronous: bool) -> Value {
-    let package_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+pub fn documentation_manifest(
+    root: &Path,
+    input: &Value,
+    published: bool,
+    asynchronous: bool,
+    local: bool,
+    inventory: bool,
+) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let sibling_alias = root
+        .parent()
+        .map(|parent| parent.join(format!("rs-{}", package.trim_start_matches("qubit-"))))
+        .filter(|path| path.is_dir() && path.canonicalize().ok().as_ref() == Some(&canonical_root));
+    let package_root = sibling_alias.unwrap_or(canonical_root);
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
@@ -101,7 +136,9 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
     assert!(extra.is_some(), "documentation dependency metadata is required");
     if let Some(extra) = extra {
         for (name, value) in extra.as_table().expect("documentation dependencies table") {
-            if value.get("async-only").and_then(Value::as_bool) == Some(true) && !asynchronous {
+            if (name == "qubit-fs-local" && !local)
+                || (value.get("async-only").and_then(Value::as_bool) == Some(true) && !asynchronous)
+            {
                 continue;
             }
             dependencies.insert(name.clone(), dependency(root, value, published));
@@ -120,13 +157,13 @@ pub fn documentation_manifest(root: &Path, input: &Value, published: bool, async
         Value::String(package_root.to_str().expect("UTF-8 root").into()),
     );
     current.insert("default-features".into(), Value::Boolean(false));
-    let features = if package == "qubit-fs-local" {
-        vec![Value::String("registry".into())]
-    } else if asynchronous {
-        vec![Value::String("async".into())]
-    } else {
-        vec![]
-    };
+    let mut features = Vec::new();
+    if asynchronous {
+        features.push(Value::String("async".into()));
+    }
+    if inventory || local {
+        features.push(Value::String("inventory".into()));
+    }
     current.insert("features".into(), Value::Array(features));
     dependencies.insert(package.into(), Value::Table(current));
     let mut output: Value = from_str("[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\nedition='2024'\npublish=false\n[workspace]\n").expect("static manifest");
@@ -274,7 +311,15 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
 
 /// Rejects duplicate filesystem/SPI package identities and a downstream using
 /// another registry.
-pub fn check_graph(metadata: &Json, package: &str, root: &Path, published: bool) {
+pub fn check_graph(
+    metadata: &Json,
+    package: &str,
+    root: &Path,
+    published: bool,
+    asynchronous: bool,
+    local: bool,
+    inventory: bool,
+) {
     let mut ids = BTreeMap::new();
     for entry in metadata["packages"].as_array().expect("metadata packages") {
         let name = entry["name"].as_str().expect("package name");
@@ -298,6 +343,29 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, published: bool)
             }
         }
     }
+    let registry_id = ids.get(package).expect("tested package identity");
+    let registry_node = metadata["resolve"]["nodes"]
+        .as_array()
+        .expect("resolved nodes")
+        .iter()
+        .find(|node| node["id"].as_str() == Some(registry_id))
+        .expect("tested registry resolve node");
+    let features = registry_node["features"].as_array().expect("resolve features");
+    assert_eq!(
+        features.iter().any(|feature| feature.as_str() == Some("async")),
+        asynchronous,
+        "tested registry async feature does not match example requirements"
+    );
+    assert_eq!(
+        features.iter().any(|feature| feature.as_str() == Some("inventory")),
+        inventory || local,
+        "tested registry inventory feature does not match example requirements"
+    );
+    assert_eq!(
+        ids.contains_key(&"qubit-fs-local"),
+        local,
+        "local provider dependency does not match example requirements"
+    );
     if let (Some(local), Some(registry)) = (ids.get("qubit-fs-local"), ids.get("qubit-fs-registry")) {
         let node = metadata["resolve"]["nodes"]
             .as_array()
@@ -376,73 +444,98 @@ pub fn check_documents(root: &Path, include_async: bool) {
     let workspace = TempDir::new().expect("isolated documentation workspace");
     let target = root.join("target/documentation-examples");
     for asynchronous in [false, true] {
-        if asynchronous && !include_async {
-            continue;
-        }
-        let project = workspace.path().join(if asynchronous { "async" } else { "sync" });
-        fs::create_dir_all(project.join("src/bin")).expect("create example sources");
-        let mut programs = Vec::new();
-        for (document_index, document) in [
-            "README.md",
-            "README.zh_CN.md",
-            "doc/user_guide.md",
-            "doc/user_guide.zh_CN.md",
-        ]
-        .iter()
-        .enumerate()
-        {
-            let source = fs::read_to_string(root.join(document)).expect("read document");
-            let examples = snippets(&source).unwrap_or_else(|e| panic!("{document}: {e}"));
-            assert!(!examples.is_empty(), "{document} needs examples");
-            for (index, snippet) in examples
-                .into_iter()
+        for local in [false, true] {
+            for inventory in [false, true] {
+                if asynchronous && !include_async {
+                    continue;
+                }
+                let group = format!("{}-{}-{}", asynchronous as u8, local as u8, inventory as u8);
+                let project = workspace.path().join(group);
+                fs::create_dir_all(project.join("src/bin")).expect("create example sources");
+                let mut programs = Vec::new();
+                for (document_index, document) in [
+                    "README.md",
+                    "README.zh_CN.md",
+                    "doc/user_guide.md",
+                    "doc/user_guide.zh_CN.md",
+                ]
+                .iter()
                 .enumerate()
-                .filter(|(_, s)| s.asynchronous == asynchronous)
-            {
-                let name = format!("document_{document_index}_{index}");
-                fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source).expect("write program");
-                programs.push((name, snippet.run));
+                {
+                    let source = fs::read_to_string(root.join(document)).expect("read document");
+                    let examples = snippets(&source).unwrap_or_else(|e| panic!("{document}: {e}"));
+                    assert!(!examples.is_empty(), "{document} needs examples");
+                    for (index, snippet) in examples
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(_, s)| (s.asynchronous, s.local, s.inventory) == (asynchronous, local, inventory))
+                    {
+                        let name = format!("document_{document_index}_{index}");
+                        fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source)
+                            .expect("write program");
+                        programs.push((name, snippet.run));
+                    }
+                }
+                if programs.is_empty() {
+                    continue;
+                }
+                let label = match (asynchronous, local, inventory) {
+                    (false, false, false) => "default-only",
+                    (true, false, false) => "async-only",
+                    _ => "combined requirements",
+                };
+                eprintln!(
+                    "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
+                );
+                fs::write(
+                    project.join("Cargo.toml"),
+                    to_string(&documentation_manifest(
+                        root,
+                        &input,
+                        published,
+                        asynchronous,
+                        local,
+                        inventory,
+                    ))
+                    .expect("serialize manifest"),
+                )
+                .expect("write example manifest");
+                cargo(&project, &target, &["generate-lockfile"]);
+                let metadata = cargo(&project, &target, &["metadata", "--locked", "--format-version", "1"]);
+                check_graph(
+                    &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
+                    package,
+                    root,
+                    published,
+                    asynchronous,
+                    local,
+                    inventory,
+                );
+                let build = cargo(
+                    &project,
+                    &target,
+                    &["build", "--locked", "--bins", "--message-format=json"],
+                );
+                let executables = executable_artifacts(&build.stdout).expect("parse Cargo executable artifacts");
+                for (name, run) in programs {
+                    let executable = executables
+                        .get(&name)
+                        .unwrap_or_else(|| panic!("Cargo did not report an executable for {name}"));
+                    if !run {
+                        continue;
+                    }
+                    let execution = TempDir::new().expect("isolated example working directory");
+                    let output = Command::new(executable)
+                        .current_dir(execution.path())
+                        .output()
+                        .expect("execute example");
+                    assert!(
+                        output.status.success(),
+                        "{name}: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
             }
-        }
-        if programs.is_empty() {
-            continue;
-        }
-        fs::write(
-            project.join("Cargo.toml"),
-            to_string(&documentation_manifest(root, &input, published, asynchronous)).expect("serialize manifest"),
-        )
-        .expect("write example manifest");
-        cargo(&project, &target, &["generate-lockfile"]);
-        let metadata = cargo(&project, &target, &["metadata", "--locked", "--format-version", "1"]);
-        check_graph(
-            &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
-            package,
-            root,
-            published,
-        );
-        let build = cargo(
-            &project,
-            &target,
-            &["build", "--locked", "--bins", "--message-format=json"],
-        );
-        let executables = executable_artifacts(&build.stdout).expect("parse Cargo executable artifacts");
-        for (name, run) in programs {
-            let executable = executables
-                .get(&name)
-                .unwrap_or_else(|| panic!("Cargo did not report an executable for {name}"));
-            if !run {
-                continue;
-            }
-            let execution = TempDir::new().expect("isolated example working directory");
-            let output = Command::new(executable)
-                .current_dir(execution.path())
-                .output()
-                .expect("execute example");
-            assert!(
-                output.status.success(),
-                "{name}: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
         }
     }
 }

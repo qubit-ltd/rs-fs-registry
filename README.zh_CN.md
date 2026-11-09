@@ -26,6 +26,7 @@ cargo add qubit-fs-local@0.11 --features registry
 在一个新建的空工作目录中运行下面的完整程序。程序写入 `report.csv`，注册以该目录为根的
 提供者，解析文件 URI，再查询并核对报表大小。预期输出为 `file:///report.csv: 22 bytes`。
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 

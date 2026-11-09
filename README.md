@@ -29,6 +29,7 @@ Run this complete program in a new, empty working directory. It writes
 `report.csv`, registers a provider rooted in that directory, resolves the URI,
 and verifies the report's size. The output is `file:///report.csv: 22 bytes`.
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 

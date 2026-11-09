@@ -11,6 +11,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::support::markdown_examples::check_documents;
+use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
 use crate::support::markdown_examples::executable_artifacts;
@@ -145,17 +146,13 @@ fn test_migration_spi_versions_follow_manifest() {
 fn test_documentation_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let output = documentation_manifest(root, &input, true, false);
+    let output = documentation_manifest(root, &input, true, false, false, false);
     assert_eq!(
         output["dependencies"]["qubit-fs"]["version"],
         input["dependencies"]["qubit-fs"]["version"]
     );
-    assert_eq!(
-        output["dependencies"]["qubit-fs-local"]["version"],
-        input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
-    );
+    assert!(output["dependencies"].get("qubit-fs-local").is_none());
     assert!(output["dependencies"]["qubit-fs"].get("path").is_none());
-    assert!(output["dependencies"]["qubit-fs-local"].get("path").is_none());
     assert!(output["dependencies"].get("futures").is_none());
     assert_eq!(
         output["dependencies"]["qubit-fs-registry"]["features"]
@@ -164,12 +161,137 @@ fn test_documentation_versions_follow_manifest() {
             .len(),
         0
     );
-    let asynchronous = documentation_manifest(root, &input, true, true);
+    let asynchronous = documentation_manifest(root, &input, true, true, false, false);
     assert_eq!(
         asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("async")
     );
     assert!(asynchronous["dependencies"].get("futures").is_some());
+}
+
+/// Example directives compose and each dependency group declares only its
+/// needs.
+#[test]
+fn test_example_requirements_are_grouped_explicitly() {
+    let parsed = snippets("<!-- registry-example: async -->\n<!-- registry-example: local -->\n<!-- registry-example: inventory -->\n```rust\nfn main() {}\n```\n```rust,no_run\nfn main() {}\n```").expect("combined requirements");
+    assert_eq!(parsed.len(), 2);
+    assert!(parsed[0].asynchronous && parsed[0].local && parsed[0].inventory && parsed[0].run);
+    assert!(!parsed[1].asynchronous && !parsed[1].local && !parsed[1].inventory && !parsed[1].run);
+
+    for invalid in [
+        "<!-- registry-example: local -->\n<!-- registry-example: local -->\n```rust\nfn main() {}\n```",
+        "<!-- registry-example: typo -->",
+        "<!-- registry-example: inventory -->",
+    ] {
+        assert!(snippets(invalid).is_err(), "must reject {invalid:?}");
+    }
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let default = documentation_manifest(root, &input, true, false, false, false);
+    assert!(default["dependencies"].get("qubit-fs-local").is_none());
+    assert_eq!(
+        default["dependencies"]["qubit-fs-registry"]["features"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    let asynchronous = documentation_manifest(root, &input, true, true, false, false);
+    assert_eq!(
+        asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
+        Some("async")
+    );
+    assert!(asynchronous["dependencies"].get("futures").is_some());
+    let local = documentation_manifest(root, &input, true, false, true, false);
+    assert_eq!(
+        local["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
+        Some("inventory")
+    );
+    assert!(local["dependencies"].get("qubit-fs-local").is_some());
+    assert_eq!(
+        local["dependencies"]["qubit-fs-local"]["features"][0].as_str(),
+        Some("registry")
+    );
+    let inventory = documentation_manifest(root, &input, true, false, false, true);
+    assert_eq!(
+        inventory["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
+        Some("inventory")
+    );
+    assert!(inventory["dependencies"].get("qubit-fs-local").is_none());
+}
+
+/// Resolve graph checks verify the tested registry's real feature closure.
+#[test]
+fn test_graph_checks_registry_features() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry_id = "registry 0.8.0 (path+file:///registry)";
+    let base = |features: &[&str]| {
+        serde_json::json!({
+            "packages": [{"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null}],
+            "resolve": {"nodes": [{"id":registry_id, "features":features, "dependencies":[]}]}
+        })
+    };
+    check_graph(&base(&[]), "qubit-fs-registry", root, false, false, false, false);
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &base(&["inventory"]),
+            "qubit-fs-registry",
+            root,
+            false,
+            false,
+            false,
+            false
+        ))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &base(&["async"]),
+            "qubit-fs-registry",
+            root,
+            false,
+            false,
+            false,
+            false
+        ))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| check_graph(&base(&[]), "qubit-fs-registry", root, false, true, false, false))
+            .is_err()
+    );
+    check_graph(
+        &base(&["async", "inventory"]),
+        "qubit-fs-registry",
+        root,
+        false,
+        true,
+        false,
+        true,
+    );
+    let local = serde_json::json!({
+        "packages": [
+            {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
+            {"name":"qubit-fs-local", "id":"local 0.11.0 (registry+https://example)", "manifest_path":"/local/Cargo.toml", "source":"registry+https://example"}
+        ],
+        "resolve": {"nodes": [
+            {"id":registry_id, "features":["inventory"], "dependencies":[]},
+            {"id":"local 0.11.0 (registry+https://example)", "features":[], "dependencies":[registry_id]}
+        ]}
+    });
+    check_graph(&local, "qubit-fs-registry", root, false, false, true, false);
+    let duplicate = serde_json::json!({
+        "packages": [
+            {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
+            {"name":"qubit-fs-registry", "id":"registry duplicate", "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null}
+        ],
+        "resolve": {"nodes": [{"id":registry_id, "features":[], "dependencies":[]}]}
+    });
+    assert!(
+        std::panic::catch_unwind(|| check_graph(&duplicate, "qubit-fs-registry", root, false, false, false, false))
+            .is_err()
+    );
 }
 
 /// A path-only workspace edge still renders the sibling's release requirement.
@@ -192,7 +314,7 @@ fn test_path_only_filesystem_dependency_uses_sibling_release() {
         .expect("filesystem dependency table");
     dependency.remove("version");
     dependency.insert("path".into(), toml::Value::String("../fixture-fs".into()));
-    let output = documentation_manifest(&registry, &input, false, false);
+    let output = documentation_manifest(&registry, &input, false, false, false, false);
 
     assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.98.7"));
     assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
@@ -209,7 +331,7 @@ fn test_missing_documentation_metadata_is_rejected() {
         .as_table_mut()
         .expect("package metadata table")
         .remove("metadata");
-    documentation_manifest(root, &input, true, false);
+    documentation_manifest(root, &input, true, false, false, false);
 }
 
 /// Invalid documents must fail rather than silently skip malformed examples.
@@ -219,6 +341,11 @@ fn test_documentation_rejects_malformed_fences() {
         "```rust\nfn main() {}",
         "<!-- registry-example: typo -->",
         "<!-- registry-example: async -->",
+        "<!-- registry-example: local -->\n<!-- registry-example: local -->\n```rust\nfn main() {}\n```",
+        "<!-- registry-example: async -->\n<!-- registry-example: async -->\n```rust\nfn main() {}\n```",
+        "<!-- registry-example: inventory -->\n<!-- registry-example: inventory -->\n```rust\nfn main() {}\n```",
+        "<!-- registry-example: inventory -->",
+        "<!-- registry-example: local -->\nnot a fence\n```rust\nfn main() {}\n```",
         "```rust,ignore\n```",
     ] {
         assert!(snippets(source).is_err(), "must reject {source:?}");
@@ -314,7 +441,7 @@ fn test_documentation_manifest_preserves_sibling_symlinks() {
             "path".into(),
             toml::Value::String(alias.to_str().expect("UTF-8 fixture path").into()),
         );
-    let output = documentation_manifest(root, &input, false, false);
+    let output = documentation_manifest(root, &input, false, false, false, false);
     assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
     assert_ne!(alias, alias.canonicalize().expect("canonical SPI fixture path"));
 }

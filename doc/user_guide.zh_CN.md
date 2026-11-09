@@ -41,6 +41,21 @@ cargo add qubit-fs@0.3 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 
+不使用本地 provider 或链接期发现的同步示例只需默认 feature：
+
+```rust
+use qubit_fs::path::ConnectionUri;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = FileSystemRegistry::default();
+    let error = registry.resolve_uri(&ConnectionUri::parse("missing:///report.csv")?)
+        .expect_err("empty registry cannot resolve a provider");
+    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+    Ok(())
+}
+```
 需要显式选择提供者或使用底层注册目录类型时，执行 `cargo add qubit-spi@0.14` 添加直接依赖；
 本 crate 不重新导出这些属于 SPI 的类型。
 
@@ -63,6 +78,8 @@ provider 或自定义策略时，请在新的 `FileSystemRegistry::default()` �
 下面的示例会发现已链接的 provider，并将当前目录作为 rooted authority 打开。它不会创建或读取
 `report.csv`，也不会通过发现的 host provider 执行文件操作：
 
+<!-- registry-example: local -->
+<!-- registry-example: inventory -->
 ```rust
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
@@ -104,6 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 请在空工作目录中运行；程序会自行创建 `report.csv`，并验证文件大小。
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 
@@ -209,6 +227,7 @@ secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_co
 一致。文件系统 ID 标识配置后的具体文件系统，URI 协议则声明可处理的位置格式，三者不能混为一谈。
 下面两个根目录具有相同规范 URI，但内容不同，因此业务代码应始终一起保留门面和路径。
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 
@@ -273,6 +292,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 构造器校验路径语义与限制，并要求门面声明规范 URI 的协议；空协议集合也会失败。
 注册表随后校验提供者身份。
 
+<!-- registry-example: local -->
 ```rust
 use std::time::Duration;
 
