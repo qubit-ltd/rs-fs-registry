@@ -115,9 +115,11 @@ fn test_documentation_commands_follow_manifest() {
 fn test_migration_spi_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let expected = input["dependencies"]["qubit-spi"]["version"]
+    let spi_dependency = dependency(root, &input["dependencies"]["qubit-spi"], true);
+    let expected = spi_dependency["version"]
         .as_str()
-        .expect("SPI dependency version must be a string");
+        .expect("SPI dependency version must be a string")
+        .trim_start_matches('^');
     for relative in [
         "doc/registry_contract_migration.md",
         "doc/registry_contract_migration.zh_CN.md",
@@ -299,6 +301,11 @@ fn test_documentation_manifest_preserves_sibling_symlinks() {
     )
     .expect("SPI fixture manifest");
     symlink(&target, &alias).expect("SPI symlink");
+    let spi_declaration = dependency(root, &input["dependencies"]["qubit-spi"], true);
+    let spi_version = spi_declaration["version"].as_str().expect("SPI dependency version");
+    let mut spi_dependency = toml::Table::new();
+    spi_dependency.insert("version".into(), toml::Value::String(spi_version.into()));
+    input["dependencies"]["qubit-spi"] = toml::Value::Table(spi_dependency);
     input["dependencies"]["qubit-spi"]
         .as_table_mut()
         .expect("SPI dependency table")
