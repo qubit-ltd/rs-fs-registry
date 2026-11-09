@@ -43,7 +43,8 @@ fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, S
     let filesystem = dependency(root, &input["dependencies"]["qubit-fs"], true);
     let fs_version = filesystem["version"]
         .as_str()
-        .expect("qubit-fs version must be a string");
+        .expect("qubit-fs version must be a string")
+        .trim_start_matches('^');
     let fs_version = fs_version.split('.').take(2).collect::<Vec<_>>().join(".");
     let documentation_dependencies = &input["package"]["metadata"]["documentation"]["dependencies"];
     let local_version = documentation_dependencies["qubit-fs-local"]["version"]
