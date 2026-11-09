@@ -72,24 +72,46 @@ registration example. A `file:` URI therefore has a different authority
 context. Keep explicit registration on a fresh `FileSystemRegistry::default()`
 when you need a rooted provider or custom policy.
 
-This example verifies that the linked crate is discovered and the registry can
-be sealed. It does not access a host file:
+This example discovers the linked provider and opens the current directory as a
+rooted authority. It does not create or read `report.csv`, or perform file
+operations through the discovered host provider:
 
 ```rust
-use qubit_fs_local as _;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::ConnectionUri;
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderSelection;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = FileSystemRegistry::from_inventory()?;
     assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+    let root = std::env::current_dir()?;
+    registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(ProviderId::new("rooted-reports")?),
+        FileSystemId::new("reports")?,
+        &root,
+        LocalResourcePolicy::standard(),
+    )?)?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?)
+        .with_selection(ProviderSelection::named("rooted-reports")?);
+    let resolution = registry.resolve_config(&config)?;
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "rooted-reports");
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///report.csv");
     registry.seal();
     assert!(registry.is_sealed());
     Ok(())
 }
 ```
 
-If you intentionally combine discovery with explicitly rooted providers, give
-them independent IDs or aliases and select the intended provider explicitly.
+Provider IDs must be unique, and every alias must avoid all registered IDs and
+aliases. Changing only the filesystem ID does not avoid a registration
+conflict. Explicit selection chooses among providers after successful
+registration; it does not bypass registration conflicts.
 See [Separate roots with the same URI](#separate-roots-with-the-same-uri) for
 how identical URIs can resolve within different roots.
 

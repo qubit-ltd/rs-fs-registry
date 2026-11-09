@@ -60,23 +60,44 @@ inventory。链接的 provider crate 会提交一个工厂，创建使用
 rooted 目录或自定义策略。因此，`file:` URI 所处的权限上下文也不同。需要 rooted
 provider 或自定义策略时，请在新的 `FileSystemRegistry::default()` 上显式注册。
 
-下面的示例只验证 provider 已被发现且注册表可以封存，不会访问宿主文件：
+下面的示例会发现已链接的 provider，并将当前目录作为 rooted authority 打开。它不会创建或读取
+`report.csv`，也不会通过发现的 host provider 执行文件操作：
 
 ```rust
-use qubit_fs_local as _;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::ConnectionUri;
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderSelection;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = FileSystemRegistry::from_inventory()?;
     assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+    let root = std::env::current_dir()?;
+    registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(ProviderId::new("rooted-reports")?),
+        FileSystemId::new("reports")?,
+        &root,
+        LocalResourcePolicy::standard(),
+    )?)?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///report.csv")?)
+        .with_selection(ProviderSelection::named("rooted-reports")?);
+    let resolution = registry.resolve_config(&config)?;
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "rooted-reports");
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///report.csv");
     registry.seal();
     assert!(registry.is_sealed());
     Ok(())
 }
 ```
 
-如果确实要混用发现和显式 rooted provider，请为它们设置不同的 ID 或 alias，并显式选择
-目标 provider。关于相同 URI 在不同根目录中解析的方式，请见
+每个 provider ID 必须唯一，所有 alias 都不得与已注册的 ID 或 alias 冲突；仅修改 filesystem ID
+不能消除注册冲突。显式选择是在成功注册之后从 provider 中进行选择，不能绕过注册冲突。关于相同 URI
+在不同根目录中解析的方式，请见
 [相同 URI，不同根目录](#相同-uri-不同根目录)。
 
 ## 核心工作流
