@@ -31,7 +31,9 @@ resolution = filesystem + decoded path + canonical URI
 
 某应用在启动时选择本地文件系统提供者，再打开报表 URI，使报表处理代码无需了解工厂实现。
 解析成功后，应用得到文件系统门面、逻辑路径和规范 URI。逻辑路径已通过门面声明的
-`PathSemantics`、路径形式与大小限制校验。这些校验不调用 `stat`，不访问后端，也不证明目标存在；
+`PathSemantics`、路径形式与大小限制校验。`FileSystemResolution::try_new` 和
+`AsyncFileSystemResolution::try_new` 执行的路径与 scheme 校验是本地属性检查：这些校验不调用
+`stat`，不访问后端，也不证明目标存在。注册表解析调用的 provider 工厂可以执行 IO 来创建配置后的文件系统门面。
 需要资源状态时，应用再显式调用 `stat` 等操作。
 
 ## 安装与最小配置

@@ -36,10 +36,13 @@ An application selects a local filesystem provider at startup, then opens a
 report URI without coupling its report-handling code to a provider factory.
 Success means the boundary yields a filesystem and logical path that have passed
 the facade's `PathSemantics`, path-form constraints, and limits checks, while
-the canonical URI is available for safe identification. Resolution validation
-is local and metadata-based: creating a resolution does not call `stat`, touch
-the backend, or prove that the target exists. Call `stat` or another operation
-when the application needs resource state.
+the canonical URI is available for safe identification. The path and scheme
+checks performed by `FileSystemResolution::try_new` and
+`AsyncFileSystemResolution::try_new` are local and property-based: these checks
+do not call `stat`, access the backend, or prove that the target exists. Provider
+factories invoked by registry resolution may perform IO to create their
+configured filesystem facades. Call `stat` or another operation when the
+application needs resource state.
 
 ## Installation and Minimal Configuration
 
