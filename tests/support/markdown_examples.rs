@@ -13,6 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::absolute;
 use std::process::Command;
+use std::time::Duration;
 
 use serde_json::Value as Json;
 use serde_json::from_slice;
@@ -21,6 +22,8 @@ use toml::Table;
 use toml::Value;
 use toml::from_str;
 use toml::to_string;
+
+use crate::support::process_runner::run_with_timeout;
 
 /// One complete Markdown program and its minimum feature requirement.
 #[derive(Debug, PartialEq)]
@@ -385,13 +388,14 @@ pub fn check_graph(
 }
 
 /// Runs one Cargo operation and includes the command in a failed assertion.
-fn cargo(root: &Path, target: &Path, arguments: &[&str]) -> std::process::Output {
-    let output = Command::new(env!("CARGO"))
+fn cargo(root: &Path, target: &Path, arguments: &[&str], context: &str) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO"));
+    command
         .args(arguments)
         .current_dir(root)
-        .env("CARGO_TARGET_DIR", target)
-        .output()
-        .expect("run Cargo");
+        .env("CARGO_TARGET_DIR", target);
+    let output =
+        run_with_timeout(&mut command, Duration::from_secs(900), context).unwrap_or_else(|error| panic!("{error}"));
     assert!(
         output.status.success(),
         "cargo {arguments:?}: {}",
@@ -450,7 +454,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     continue;
                 }
                 let group = format!("{}-{}-{}", asynchronous as u8, local as u8, inventory as u8);
-                let project = workspace.path().join(group);
+                let project = workspace.path().join(&group);
                 fs::create_dir_all(project.join("src/bin")).expect("create example sources");
                 let mut programs = Vec::new();
                 for (document_index, document) in [
@@ -473,7 +477,11 @@ pub fn check_documents(root: &Path, include_async: bool) {
                         let name = format!("document_{document_index}_{index}");
                         fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source)
                             .expect("write program");
-                        programs.push((name, snippet.run));
+                        programs.push((
+                            name,
+                            snippet.run,
+                            format!("{document} example {index} in group {group}"),
+                        ));
                     }
                 }
                 if programs.is_empty() {
@@ -500,8 +508,18 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     .expect("serialize manifest"),
                 )
                 .expect("write example manifest");
-                cargo(&project, &target, &["generate-lockfile"]);
-                let metadata = cargo(&project, &target, &["metadata", "--locked", "--format-version", "1"]);
+                cargo(
+                    &project,
+                    &target,
+                    &["generate-lockfile"],
+                    &format!("Cargo generate-lockfile in group {label}"),
+                );
+                let metadata = cargo(
+                    &project,
+                    &target,
+                    &["metadata", "--locked", "--format-version", "1"],
+                    &format!("Cargo metadata in group {label}"),
+                );
                 check_graph(
                     &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
                     package,
@@ -515,9 +533,10 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     &project,
                     &target,
                     &["build", "--locked", "--bins", "--message-format=json"],
+                    &format!("Cargo build in group {label}"),
                 );
                 let executables = executable_artifacts(&build.stdout).expect("parse Cargo executable artifacts");
-                for (name, run) in programs {
+                for (name, run, context) in programs {
                     let executable = executables
                         .get(&name)
                         .unwrap_or_else(|| panic!("Cargo did not report an executable for {name}"));
@@ -525,10 +544,10 @@ pub fn check_documents(root: &Path, include_async: bool) {
                         continue;
                     }
                     let execution = TempDir::new().expect("isolated example working directory");
-                    let output = Command::new(executable)
-                        .current_dir(execution.path())
-                        .output()
-                        .expect("execute example");
+                    let mut command = Command::new(executable);
+                    command.current_dir(execution.path());
+                    let output = run_with_timeout(&mut command, Duration::from_secs(30), &context)
+                        .unwrap_or_else(|error| panic!("{error}"));
                     assert!(
                         output.status.success(),
                         "{name}: {}",

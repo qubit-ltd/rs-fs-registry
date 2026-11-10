@@ -9,4 +9,5 @@
 
 pub mod common;
 pub mod markdown_examples;
+pub mod process_runner;
 pub mod provider_fixtures;

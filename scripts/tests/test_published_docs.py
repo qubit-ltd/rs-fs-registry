@@ -4,7 +4,11 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("published_docs", Path(__file__).parents[1] / "check_published_docs.py")
@@ -13,6 +17,210 @@ spec.loader.exec_module(checker)
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_suspended_process_rollback_uses_bounded_waits(self):
+        class UnreapableProcess:
+            def __init__(self):
+                self.wait_timeouts = []
+
+            def poll(self):
+                return None
+
+            def kill(self):
+                raise OSError("kill marker")
+
+            def wait(self, timeout):
+                self.wait_timeouts.append(timeout)
+                raise checker.subprocess.TimeoutExpired("suspended child", timeout)
+
+        process = UnreapableProcess()
+        result = checker._kill_and_reap_process(process, wait_seconds=5)
+        self.assertIn("wait exceeded 5s", result)
+        self.assertIn("final bounded wait failed", result)
+        self.assertEqual(process.wait_timeouts, [5, 1])
+
+    def test_windows_cleanup_runtime_errors_do_not_skip_timeout_log(self):
+        class FakeProcess:
+            def __init__(self, *args, stdout, **kwargs):
+                self.returncode = None
+                stdout.write("timeout output marker")
+                stdout.flush()
+
+            def poll(self):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+            def wait(self, timeout=None):
+                if self.returncode is None:
+                    self.returncode = -9
+                return self.returncode
+
+        fake_subprocess = SimpleNamespace(Popen=FakeProcess, CREATE_SUSPENDED=4,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "timeout.log"
+            with patch.object(checker, "os", SimpleNamespace(name="nt")), \
+                    patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker, "_windows_job_functions", return_value=object()), \
+                    patch.object(checker, "_configure_windows_job", return_value=object()), \
+                    patch.object(checker, "terminate_process_tree", side_effect=RuntimeError("initial close marker")), \
+                    patch.object(checker, "close_windows_job", side_effect=RuntimeError("retry close marker")):
+                with self.assertRaisesRegex(RuntimeError, "timed out.*retry close marker"):
+                    checker.run("fake-cargo", [], Path(directory), {}, log, timeout_seconds=0,
+                                context="fake Windows timeout")
+            self.assertIn("timeout output marker", log.read_text())
+
+    def test_windows_cleanup_runtime_errors_do_not_skip_normal_exit_log(self):
+        class FakeProcess:
+            def __init__(self, *args, stdout, **kwargs):
+                self.returncode = 0
+                stdout.write("normal output marker")
+                stdout.flush()
+
+            def poll(self):
+                return self.returncode
+
+        fake_subprocess = SimpleNamespace(Popen=FakeProcess, CREATE_SUSPENDED=4,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "normal.log"
+            with patch.object(checker, "os", SimpleNamespace(name="nt")), \
+                    patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker, "_windows_job_functions", return_value=object()), \
+                    patch.object(checker, "_configure_windows_job", return_value=object()), \
+                    patch.object(checker, "close_windows_job", side_effect=RuntimeError("close marker")):
+                with self.assertRaisesRegex(RuntimeError, "cleanup failed.*close marker"):
+                    checker.run("fake-cargo", [], Path(directory), {}, log, timeout_seconds=2,
+                                context="fake Windows normal exit")
+            self.assertIn("normal output marker", log.read_text())
+
+    def test_windows_job_close_failure_is_reported(self):
+        close_results = iter([False, False, True])
+        kernel32 = SimpleNamespace(CloseHandle=lambda _: next(close_results),
+                                   TerminateJobObject=lambda *_: False)
+        job = checker.WindowsJob(kernel32, 123)
+        with patch.object(checker.ctypes, "WinError", return_value=OSError("close marker"), create=True), \
+                patch.object(checker.ctypes, "get_last_error", return_value=5, create=True):
+            with self.assertRaisesRegex(RuntimeError, "TerminateJobObject failed"):
+                job.cleanup()
+        self.assertEqual(job._handle, 123, "failed cleanup retains ownership for a later retry")
+        with patch.object(checker.ctypes, "WinError", return_value=OSError("close marker"), create=True), \
+                patch.object(checker.ctypes, "get_last_error", return_value=5, create=True):
+            job.cleanup()
+        self.assertIsNone(job._handle)
+
+    def test_windows_job_termination_fallback_cleans_tree_after_close_failure(self):
+        close_results = iter([False, True])
+        kernel32 = SimpleNamespace(CloseHandle=lambda _: next(close_results),
+                                   TerminateJobObject=lambda *_: True)
+        job = checker.WindowsJob(kernel32, 123)
+        with patch.object(checker.ctypes, "WinError", return_value=OSError("close marker"), create=True), \
+                patch.object(checker.ctypes, "get_last_error", return_value=5, create=True):
+            job.cleanup()
+        self.assertIsNone(job._handle)
+
+    def test_windows_thread_and_snapshot_close_failures_are_reported(self):
+        kernel32 = SimpleNamespace(CloseHandle=lambda _: False)
+        with patch.object(checker.ctypes, "WinError", return_value=OSError("close marker"), create=True), \
+                patch.object(checker.ctypes, "get_last_error", return_value=5, create=True):
+            with self.assertRaisesRegex(OSError, "primary thread"):
+                checker._close_windows_handle(kernel32, 123, "primary thread")
+            with self.assertRaisesRegex(OSError, "thread snapshot"):
+                checker._close_windows_handle(kernel32, 123, "thread snapshot")
+
+    def test_run_returns_success_output_and_logs_nonzero_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            success = checker.run(sys.executable, ["-c", "print('success marker')"], root, {},
+                                  root / "success.log", timeout_seconds=2)
+            self.assertIn("success marker", success)
+            with self.assertRaisesRegex(RuntimeError, "failed with exit code 7"):
+                checker.run(sys.executable, ["-c", "import sys; print('failure marker'); sys.exit(7)"],
+                            root, {}, root / "failure.log", timeout_seconds=2, context="nonzero context")
+            self.assertIn("failure marker", (root / "failure.log").read_text())
+
+    def test_run_times_out_and_preserves_partial_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "timeout.log"
+            started = time.monotonic()
+            with self.assertRaisesRegex(RuntimeError, "unique timeout context"):
+                checker.run(
+                    sys.executable,
+                    ["-c", "import sys,time; print('partial marker', flush=True); time.sleep(30)"],
+                    Path(directory), {}, log, timeout_seconds=0.3, context="unique timeout context",
+                )
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertIn("partial marker", log.read_text())
+
+    def test_run_timeout_stops_grandchild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            heartbeat = Path(directory) / "heartbeat"
+            log = Path(directory) / "grandchild.log"
+            child_code = "import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); n=0; exec('while True: n+=1; p.write_text(str(n)); time.sleep(0.02)')"
+            code = (
+                "import subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable,'-c',{child_code!r},sys.argv[1]]); "
+                "print('parent marker',flush=True); time.sleep(30)"
+            )
+            with self.assertRaises(RuntimeError):
+                checker.run(sys.executable, ["-c", code, str(heartbeat)], Path(directory), {}, log,
+                            timeout_seconds=0.3, context="grandchild timeout")
+            deadline = time.monotonic() + 2
+            while not heartbeat.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(heartbeat.exists())
+            first = heartbeat.read_text()
+            time.sleep(0.1)
+            self.assertEqual(first, heartbeat.read_text())
+
+    def test_run_cleans_grandchild_after_parent_exits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            heartbeat = root / "heartbeat"
+            log = root / "parent-exits.log"
+            child_code = (
+                "import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); n=0; "
+                "exec('while True: n+=1; p.write_text(str(n)); time.sleep(0.02)')"
+            )
+            parent_code = (
+                "import pathlib,subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable,'-c',{child_code!r},sys.argv[1]]); "
+                "p=pathlib.Path(sys.argv[1]); deadline=time.monotonic()+2; "
+                "exec('while not p.exists() and time.monotonic()<deadline: time.sleep(0.01)'); "
+                "assert p.exists(); print('parent exited',flush=True)"
+            )
+            output = checker.run(sys.executable, ["-c", parent_code, str(heartbeat)], root, {}, log,
+                                 timeout_seconds=3, context="parent exits before grandchild")
+            self.assertIn("parent exited", output)
+            self.assertTrue(heartbeat.exists())
+            first = heartbeat.read_text()
+            time.sleep(0.1)
+            self.assertEqual(first, heartbeat.read_text())
+
+    def test_timeout_cleanup_failure_is_reported_and_output_logged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "cleanup.log"
+            with patch.object(checker, "terminate_process_tree", side_effect=RuntimeError("cleanup marker")):
+                with self.assertRaisesRegex(RuntimeError, "cleanup marker"):
+                    checker.run(sys.executable,
+                                ["-c", "import sys,time; print('before cleanup',flush=True); time.sleep(30)"],
+                                root, {}, log, timeout_seconds=0.2, context="cleanup context")
+            self.assertIn("before cleanup", log.read_text())
+
+    def test_main_preserves_workspace_when_check_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "diagnostics"
+            workspace.mkdir()
+            with patch.object(checker.tempfile, "mkdtemp", return_value=str(workspace)), \
+                    patch.object(checker, "check", side_effect=RuntimeError("expected failure")):
+                stderr = StringIO()
+                with patch("sys.argv", ["check_published_docs.py", directory]), redirect_stderr(stderr):
+                    self.assertEqual(checker.main(), 1)
+            self.assertTrue(workspace.is_dir())
+            self.assertIn(str(workspace), stderr.getvalue())
+
     def test_ci_runs_published_documentation_gate_for_all_required_events(self):
         repository = Path(__file__).parents[2]
         workflow_lines = (repository / ".github/workflows/ci.yml").read_text().splitlines()
@@ -94,6 +302,8 @@ class PublishedDocsTests(unittest.TestCase):
                 command_cwd,
                 environment,
                 workspace / "package.log",
+                timeout_seconds=900,
+                context="Cargo package",
             )
 
     def test_environment_drops_inherited_build_overrides(self):

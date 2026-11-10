@@ -287,12 +287,14 @@ name = "qubit-fs-registry"
 version = "0.8.0"
 dependencies = [
  "futures",
+ "libc",
  "qubit-fs",
  "qubit-redact",
  "qubit-spi",
  "serde_json",
  "tempfile",
  "toml",
+ "windows-sys",
 ]
 
 [[package]]

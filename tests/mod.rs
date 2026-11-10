@@ -20,5 +20,6 @@ mod file_system_resolution_tests;
 mod file_system_spec_tests;
 mod internal;
 mod path_contract_tests;
+mod process_runner_tests;
 mod readme_examples_tests;
 mod support;
