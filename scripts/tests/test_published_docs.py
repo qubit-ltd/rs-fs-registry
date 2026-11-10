@@ -4,9 +4,11 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import tarfile
 import time
 import unittest
 from contextlib import redirect_stderr
+from contextlib import redirect_stdout
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -17,6 +19,148 @@ spec.loader.exec_module(checker)
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_check_runs_both_doctest_modes_from_the_extracted_archive(self):
+        repository = Path(__file__).parents[2]
+        manifest = __import__("tomllib").loads((repository / "Cargo.toml").read_text())
+        package = manifest["package"]["name"]
+        version = manifest["package"]["version"]
+
+        def make_archive(cargo, root, workspace, environment):
+            archive = workspace / "target" / "package" / f"{package}-{version}.crate"
+            archive.parent.mkdir(parents=True)
+            content = f"[package]\nname = '{package}'\nversion = '{version}'\n".encode()
+            with tarfile.open(archive, "w:gz") as output:
+                member = tarfile.TarInfo(f"{package}-{version}/Cargo.toml")
+                member.size = len(content)
+                output.addfile(member, __import__("io").BytesIO(content))
+
+        metadata_template = {
+            "packages": [{"name": package, "source": None}],
+        }
+        calls = []
+
+        def record_run(cargo, arguments, cwd, environment, log, *, timeout_seconds, context):
+            calls.append((arguments, cwd, environment, log, timeout_seconds, context))
+            if arguments[:2] == ["metadata", "--locked"]:
+                metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
+                return __import__("json").dumps(metadata_template)
+            return ""
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "isolated"
+            workspace.mkdir()
+            with patch.object(checker.shutil, "which", return_value="cargo"), \
+                    patch.object(checker, "package_source", side_effect=make_archive), \
+                    patch.object(checker, "run", side_effect=record_run):
+                checker.check(repository, workspace)
+
+        doctest_calls = [call for call in calls if call[0][:3] == ["test", "--locked", "--doc"]]
+        self.assertEqual([call[0] for call in doctest_calls], [
+            ["test", "--locked", "--doc"],
+            ["test", "--locked", "--doc", "--all-features"],
+        ])
+        extracted = workspace / "unpacked" / f"{package}-{version}"
+        self.assertTrue(all(call[1] == extracted for call in doctest_calls))
+        self.assertTrue(all(call[2] == checker.isolated_environment(workspace) for call in doctest_calls))
+        self.assertEqual([call[3].name for call in doctest_calls], [
+            "doctests-default.log", "doctests-all-features.log",
+        ])
+        self.assertTrue(all(call[4] == 900 for call in doctest_calls))
+
+        for failed_command in [
+            ["test", "--locked", "--doc"],
+            ["test", "--locked", "--doc", "--all-features"],
+        ]:
+            calls.clear()
+
+            def fail_doctest(cargo, arguments, cwd, environment, log, *, timeout_seconds, context):
+                calls.append((arguments, cwd, environment, log, timeout_seconds, context))
+                if arguments[:2] == ["metadata", "--locked"]:
+                    metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
+                    return __import__("json").dumps(metadata_template)
+                if arguments == failed_command:
+                    raise RuntimeError("doctest failure marker")
+                return ""
+
+            with tempfile.TemporaryDirectory() as directory:
+                failed_workspace = Path(directory) / "isolated"
+                failed_workspace.mkdir()
+                output = StringIO()
+                with patch.object(checker.shutil, "which", return_value="cargo"), \
+                        patch.object(checker, "package_source", side_effect=make_archive), \
+                        patch.object(checker, "run", side_effect=fail_doctest), \
+                        redirect_stdout(output):
+                    with self.assertRaisesRegex(RuntimeError, "doctest failure marker"):
+                        checker.check(repository, failed_workspace)
+                self.assertNotIn("Published archive and examples verified", output.getvalue())
+            self.assertTrue(any(call[0] == failed_command for call in calls))
+            test_commands = [call[0] for call in calls if call[0][0] == "test"]
+            expected_commands = [["test", "--locked", "--doc"]]
+            if failed_command[-1] == "--all-features":
+                expected_commands.append(["test", "--locked", "--doc", "--all-features"])
+            self.assertEqual(test_commands, expected_commands)
+
+    @unittest.skipUnless(sys.platform != "win32", "Unix process groups are unavailable")
+    def test_unix_timeout_cleanup_bounds_reaping_and_preserves_diagnostics(self):
+        class FakeClock:
+            now = 0.0
+
+            def monotonic(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += seconds
+
+        clock = FakeClock()
+
+        class UnreapableProcess:
+            last_wait_timeouts = []
+
+            def __init__(self, *args, stdout, **kwargs):
+                self.wait_timeouts = []
+                type(self).last_wait_timeouts = self.wait_timeouts
+                self.pid = 1234
+                self.poll_count = 0
+                stdout.write("unix cleanup output marker")
+                stdout.flush()
+
+            def poll(self):
+                self.poll_count += 1
+                return None
+
+            def wait(self, timeout=None):
+                self.wait_timeouts.append(timeout)
+                clock.now += timeout
+                raise checker.subprocess.TimeoutExpired("fake process", timeout)
+
+            def kill(self):
+                raise OSError("direct kill marker")
+
+        fake_subprocess = SimpleNamespace(Popen=UnreapableProcess,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        signals = []
+
+        def fail_signal(group, received_signal):
+            signals.append(received_signal)
+            raise PermissionError(f"signal marker {received_signal}")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "unix-cleanup.log"
+            with patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker.os, "killpg", side_effect=fail_signal), \
+                    patch.object(checker.time, "sleep", side_effect=clock.sleep), \
+                    patch.object(checker.time, "monotonic", side_effect=clock.monotonic):
+                with self.assertRaisesRegex(RuntimeError, "signal marker|cleanup") as raised:
+                    checker.run("fake-cargo", [], root, {}, log, timeout_seconds=0,
+                                context="fake Unix timeout")
+
+            self.assertEqual(signals[:2], [checker.signal.SIGTERM, checker.signal.SIGKILL], str(raised.exception))
+            self.assertTrue(all(timeout is not None for timeout in UnreapableProcess.last_wait_timeouts))
+            self.assertLessEqual(sum(UnreapableProcess.last_wait_timeouts), 5.9 + 1e-9)
+            self.assertIn("unix cleanup output marker", log.read_text())
+            self.assertRegex(str(raised.exception), "reap|signal|cleanup")
+
     def test_suspended_process_rollback_uses_bounded_waits(self):
         class UnreapableProcess:
             def __init__(self):
@@ -34,9 +178,10 @@ class PublishedDocsTests(unittest.TestCase):
 
         process = UnreapableProcess()
         result = checker._kill_and_reap_process(process, wait_seconds=5)
-        self.assertIn("wait exceeded 5s", result)
+        self.assertIn("wait exceeded cleanup deadline", result)
         self.assertIn("final bounded wait failed", result)
-        self.assertEqual(process.wait_timeouts, [5, 1])
+        self.assertEqual(len(process.wait_timeouts), 2)
+        self.assertLessEqual(sum(process.wait_timeouts), 6)
 
     def test_windows_cleanup_runtime_errors_do_not_skip_timeout_log(self):
         class FakeProcess:

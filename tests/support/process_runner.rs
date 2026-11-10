@@ -22,6 +22,70 @@ use tempfile::NamedTempFile;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[cfg(unix)]
 const CLEANUP_GRACE: Duration = Duration::from_millis(100);
+const CLEANUP_WAIT: Duration = Duration::from_secs(5);
+const FINAL_REAP_WAIT: Duration = Duration::from_secs(1);
+
+enum ChildWait {
+    Reaped,
+    TimedOut,
+    Failed(io::Error),
+}
+
+fn wait_for_exit_until(deadline: Instant, mut try_wait: impl FnMut() -> io::Result<bool>) -> ChildWait {
+    loop {
+        match try_wait() {
+            Ok(true) => return ChildWait::Reaped,
+            Ok(false) => {
+                let now = Instant::now();
+                if now >= deadline {
+                    return ChildWait::TimedOut;
+                }
+                sleep(POLL_INTERVAL.min(deadline.saturating_duration_since(now)));
+            }
+            Err(error) => return ChildWait::Failed(error),
+        }
+    }
+}
+
+fn bounded_child_cleanup_with(
+    deadline: Instant,
+    final_wait: Duration,
+    mut try_wait: impl FnMut() -> io::Result<bool>,
+    mut kill: impl FnMut() -> io::Result<()>,
+) -> String {
+    let first_wait = wait_for_exit_until(deadline, &mut try_wait);
+    if matches!(first_wait, ChildWait::Reaped) {
+        return "child reap: reaped".into();
+    }
+    let kill_result = kill();
+    let final_wait = wait_for_exit_until(Instant::now() + final_wait, try_wait);
+    let kill_result = kill_result
+        .map(|()| "kill: ok".to_owned())
+        .unwrap_or_else(|error| format!("kill failed: {error}"));
+    format!(
+        "child reap before kill: {}; {kill_result}; final child reap: {}",
+        describe_child_wait(first_wait),
+        describe_child_wait(final_wait),
+    )
+}
+
+fn bounded_child_cleanup(child: &mut Child, deadline: Instant, final_wait: Duration) -> String {
+    let child = std::cell::RefCell::new(child);
+    bounded_child_cleanup_with(
+        deadline,
+        final_wait,
+        || child.borrow_mut().try_wait().map(|status| status.is_some()),
+        || child.borrow_mut().kill(),
+    )
+}
+
+fn describe_child_wait(wait: ChildWait) -> String {
+    match wait {
+        ChildWait::Reaped => "reaped".into(),
+        ChildWait::TimedOut => "not reaped before deadline (status unconfirmed)".into(),
+        ChildWait::Failed(error) => format!("try_wait failed: {error}; status unconfirmed"),
+    }
+}
 
 /// Runs a test-support command with a deadline and retains output on failure.
 pub fn run_with_timeout(command: &mut Command, timeout: Duration, context: &str) -> io::Result<Output> {
@@ -109,15 +173,16 @@ struct ProcessTreeGuard(Option<std::os::windows::io::OwnedHandle>);
 #[cfg(unix)]
 fn terminate_tree(child: &mut Child, _: &mut ProcessTreeGuard) -> String {
     let group = -(child.id() as i32);
+    let deadline = Instant::now() + CLEANUP_WAIT;
     let gentle = signal_group(group, libc::SIGTERM);
-    sleep(CLEANUP_GRACE);
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    sleep(CLEANUP_GRACE.min(remaining));
     let forced = signal_group(group, libc::SIGKILL);
-    let waited = child.wait();
+    let reaped = bounded_child_cleanup(child, deadline, FINAL_REAP_WAIT);
     format!(
-        "SIGTERM: {}; SIGKILL: {}; child reap: {}",
+        "SIGTERM: {}; SIGKILL: {}; {reaped}",
         display_result(&gentle),
         display_result(&forced),
-        display_result(&waited.map(|_| ()))
     )
 }
 
@@ -156,9 +221,11 @@ fn spawn_contained(command: &mut Command) -> io::Result<(Child, ProcessTreeGuard
     let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
     if job.is_null() {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     // SAFETY: CreateJobObjectW returned a valid owned kernel handle.
     let job = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(job.cast()) };
@@ -176,42 +243,52 @@ fn spawn_contained(command: &mut Command) -> io::Result<(Child, ProcessTreeGuard
     };
     if configured == 0 {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     // SAFETY: `child.id()` names the newly spawned suspended process.
     let process: HANDLE = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, child.id()) };
     if process.is_null() {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     // SAFETY: both handles are live and the child has not resumed yet.
     let assigned = unsafe { AssignProcessToJobObject(job.as_raw_handle().cast(), process) };
     // SAFETY: `process` is an owned handle returned by OpenProcess.
     if unsafe { CloseHandle(process) } == 0 {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     if assigned == 0 {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
 
     // SAFETY: this requests a system-wide thread snapshot without pointers.
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     if snapshot as isize == -1 {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
         drop(job);
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     // SAFETY: a valid snapshot handle was returned above.
     let snapshot = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(snapshot.cast()) };
@@ -235,10 +312,12 @@ fn spawn_contained(command: &mut Command) -> io::Result<(Child, ProcessTreeGuard
     }
     if thread.is_null() {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
         drop(job);
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     // SAFETY: OpenThread returned a valid thread handle.
     let thread = unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(thread.cast()) };
@@ -246,29 +325,24 @@ fn spawn_contained(command: &mut Command) -> io::Result<(Child, ProcessTreeGuard
     // assignment has completed, so resuming it cannot escape containment.
     if unsafe { ResumeThread(thread.as_raw_handle().cast()) } == u32::MAX {
         let error = io::Error::last_os_error();
-        let _ = child.kill();
         drop(job);
-        let _ = child.wait();
-        return Err(error);
+        let rollback = bounded_child_cleanup(&mut child, Instant::now(), FINAL_REAP_WAIT);
+        return Err(io::Error::new(
+            error.kind(),
+            format!("{error}; suspended child rollback: {rollback}"),
+        ));
     }
     Ok((child, ProcessTreeGuard(Some(job))))
 }
 
 #[cfg(windows)]
 fn terminate_tree(child: &mut Child, guard: &mut ProcessTreeGuard) -> String {
+    let deadline = Instant::now() + CLEANUP_WAIT;
     let cleanup = guard.close();
-    if cleanup.is_err() {
-        let _ = child.kill();
-    }
-    match child.wait() {
-        Ok(_) if cleanup.is_ok() => "owned process job closed; child reaped".into(),
-        Ok(_) => format!("owned process job close failed: {}", cleanup.unwrap_err()),
-        Err(error) => match cleanup {
-            Ok(()) => format!("owned process job closed; child reap failed: {error}"),
-            Err(cleanup_error) => {
-                format!("owned process job close failed: {cleanup_error}; child reap failed: {error}")
-            }
-        },
+    let reaped = bounded_child_cleanup(child, deadline, FINAL_REAP_WAIT);
+    match cleanup {
+        Ok(()) => format!("owned process job closed; {reaped}"),
+        Err(error) => format!("owned process job close failed: {error}; {reaped}"),
     }
 }
 
@@ -327,6 +401,39 @@ fn cleanup_descendants(_: &mut Child, guard: &mut ProcessTreeGuard) -> io::Resul
     // Closing the owned job terminates all remaining descendants, even when
     // the original process has exited and its PID is no longer valid.
     guard.close()
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use std::io;
+    use std::time::Instant;
+
+    use super::ChildWait;
+    use super::wait_for_exit_until;
+
+    #[test]
+    fn test_wait_for_exit_reports_deadline_and_try_wait_failure() {
+        assert!(matches!(
+            wait_for_exit_until(Instant::now(), || Ok(false)),
+            ChildWait::TimedOut
+        ));
+        assert!(matches!(
+            wait_for_exit_until(Instant::now(), || Err(io::Error::other("try marker"))),
+            ChildWait::Failed(error) if error.to_string() == "try marker"
+        ));
+    }
+
+    #[test]
+    fn test_child_cleanup_reports_kill_failure_and_unconfirmed_reap() {
+        let diagnostic = super::bounded_child_cleanup_with(
+            Instant::now(),
+            std::time::Duration::ZERO,
+            || Ok(false),
+            || Err(io::Error::other("kill marker")),
+        );
+        assert!(diagnostic.contains("kill failed: kill marker"));
+        assert!(diagnostic.contains("status unconfirmed"));
+    }
 }
 
 #[cfg(windows)]

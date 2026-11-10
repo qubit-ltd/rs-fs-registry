@@ -148,8 +148,13 @@ def _close_windows_handle(kernel32, handle, label: str) -> None:
         raise OSError(f"failed to close Windows {label}: {error}") from error
 
 
-def _kill_and_reap_process(process: subprocess.Popen, *, wait_seconds: float = 5) -> str:
+def _kill_and_reap_process(process: subprocess.Popen, *, wait_seconds: float = 5,
+                           deadline: float | None = None, final_deadline: float | None = None) -> str:
     """Best-effort terminate/reap with a bounded wait and diagnostic result."""
+    if deadline is None:
+        deadline = time.monotonic() + wait_seconds
+    if final_deadline is None:
+        final_deadline = deadline + 1
     errors = []
     try:
         if process.poll() is None:
@@ -157,15 +162,15 @@ def _kill_and_reap_process(process: subprocess.Popen, *, wait_seconds: float = 5
     except Exception as error:
         errors.append(f"kill failed: {error}")
     try:
-        process.wait(timeout=wait_seconds)
+        process.wait(timeout=max(0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
-        errors.append(f"wait exceeded {wait_seconds}s")
+        errors.append("wait exceeded cleanup deadline")
         try:
             process.kill()
         except Exception as error:
             errors.append(f"retry kill failed: {error}")
         try:
-            process.wait(timeout=1)
+            process.wait(timeout=min(1, max(0, final_deadline - time.monotonic())))
         except Exception as error:
             errors.append(f"final bounded wait failed: {error}")
     except Exception as error:
@@ -256,26 +261,41 @@ def close_windows_job(job_handle) -> None:
         job_handle.cleanup()
 
 
-def terminate_process_tree(process: subprocess.Popen, job_handle=None) -> str:
+def terminate_process_tree(process: subprocess.Popen, job_handle=None, *,
+                           deadline: float | None = None, final_deadline: float | None = None) -> str:
     """Terminate the owned process tree and reap its direct child."""
+    if deadline is None:
+        deadline = time.monotonic() + 5
+    if final_deadline is None:
+        final_deadline = deadline + 1
     if os.name == "nt":
         close_windows_job(job_handle)
-        reap = _kill_and_reap_process(process)
+        reap = _kill_and_reap_process(process, deadline=deadline, final_deadline=final_deadline)
         if reap != "process reaped":
             raise RuntimeError(f"owned Job Object closed; direct child reap failed: {reap}")
         return "owned Job Object closed; process tree terminated and direct child reaped"
 
     group = process.pid
+    errors = []
     try:
         os.killpg(group, signal.SIGTERM)
     except ProcessLookupError:
         pass
-    time.sleep(0.1)
+    except OSError as error:
+        errors.append(f"SIGTERM failed: {error}")
+    # Keep the existing graceful window inside the first five-second budget.
+    time.sleep(min(0.1, max(0, deadline - time.monotonic())))
     try:
         os.killpg(group, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    process.wait()
+    except OSError as error:
+        errors.append(f"SIGKILL failed: {error}")
+    reap = _kill_and_reap_process(process, deadline=deadline, final_deadline=final_deadline)
+    if reap != "process reaped":
+        errors.append(f"direct child reap failed: {reap}")
+    if errors:
+        raise RuntimeError("; ".join(errors))
     return "process group terminated and direct child reaped"
 
 
@@ -313,12 +333,18 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
         cleanup = "not required"
         cleanup_error = None
         if timed_out:
+            cleanup_deadline = time.monotonic() + 5
+            final_deadline = cleanup_deadline + 1
             try:
-                cleanup = terminate_process_tree(process, tree_job)
+                cleanup = terminate_process_tree(
+                    process, tree_job, deadline=cleanup_deadline, final_deadline=final_deadline,
+                )
                 tree_job = None
             except Exception as error:
                 cleanup_error = str(error)
-                fallback = _kill_and_reap_process(process)
+                fallback = _kill_and_reap_process(
+                    process, deadline=cleanup_deadline, final_deadline=final_deadline,
+                )
                 if fallback != "process reaped":
                     cleanup_error += f"; direct-child fallback: {fallback}"
                 if os.name == "nt" and tree_job:
@@ -423,6 +449,12 @@ def check(root: Path, workspace: Path) -> None:
     metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo metadata")
     validate_graph(json.loads(metadata), package, extracted)
+    run(cargo, ["test", "--locked", "--doc"], extracted, environment,
+        workspace / "doctests-default.log", timeout_seconds=900,
+        context="Cargo published default doctests")
+    run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment,
+        workspace / "doctests-all-features.log", timeout_seconds=900,
+        context="Cargo published all-feature doctests")
     run(cargo, ["test", "--locked", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"], extracted, environment,
         workspace / "examples.log", timeout_seconds=3600, context="Cargo published examples")
     print(f"Published archive and examples verified: {package} {version}")
