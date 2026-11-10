@@ -125,6 +125,7 @@ python3 scripts/check_published_docs.py .
 ```
 
 发布依赖检查需要 Python 3.12+ 和 Rust 1.94.0。
+检查必须针对准备发布的同一源码状态成功；修改源码、manifest 或示例后必须重新运行。
 
 ## 许可证
 

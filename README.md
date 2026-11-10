@@ -135,6 +135,8 @@ python3 scripts/check_published_docs.py .
 ```
 
 The published dependency check requires Python 3.12+ and Rust 1.94.0.
+It must succeed for the same source state you intend to publish. Rerun it after
+changing source files, the manifest, or examples.
 
 ## License
 
