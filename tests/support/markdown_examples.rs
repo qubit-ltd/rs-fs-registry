@@ -25,6 +25,15 @@ use toml::to_string;
 
 use crate::support::process_runner::run_with_timeout;
 
+pub const CHECKED_DOCUMENTS: &[&str] = &[
+    "README.md",
+    "README.zh_CN.md",
+    "doc/user_guide.md",
+    "doc/user_guide.zh_CN.md",
+    "doc/async_resolution_example.md",
+    "doc/async_resolution_example.zh_CN.md",
+];
+
 /// One complete Markdown program and its minimum feature requirement.
 #[derive(Debug, PartialEq)]
 pub struct Snippet {
@@ -207,7 +216,7 @@ pub fn documentation_manifest(
             .parent()
             .expect("registry has a parent directory")
             .join("rs-fs-local");
-        if sibling_fs_local.join("Cargo.toml").is_file() {
+        if sibling_fs_local.join("Cargo.toml").is_file() && local_provider_uses_registry(&sibling_fs_local, root) {
             patch["crates-io"].as_table_mut().expect("patch table").insert(
                 "qubit-fs-local".into(),
                 Value::Table(Table::from_iter([(
@@ -242,6 +251,111 @@ pub fn documentation_manifest(
         .expect("manifest table")
         .insert("patch".into(), patch);
     output
+}
+
+pub(crate) fn local_provider_uses_registry(local_provider: &Path, registry: &Path) -> bool {
+    let source = match fs::read_to_string(local_provider.join("Cargo.toml")) {
+        Ok(source) => source,
+        Err(_) => return false,
+    };
+    let manifest: Value = match from_str(&source) {
+        Ok(manifest) => manifest,
+        Err(_) => return false,
+    };
+    let Some(path) = manifest
+        .get("dependencies")
+        .and_then(|dependencies| dependencies.get("qubit-fs-registry"))
+        .and_then(Value::as_table)
+        .and_then(|dependency| dependency.get("path"))
+        .and_then(Value::as_str)
+    else {
+        return false;
+    };
+    let provider_root = local_provider
+        .canonicalize()
+        .unwrap_or_else(|_| local_provider.to_path_buf());
+    let provider_registry = provider_root.join(path).canonicalize();
+    let current_registry = registry.canonicalize();
+    matches!((provider_registry, current_registry), (Ok(provider), Ok(current)) if provider == current)
+}
+
+pub(crate) fn local_provider_manifest(local_provider: &Path, registry: &Path, destination: &Path) -> PathBuf {
+    let local_root = local_provider.canonicalize().expect("local provider must exist");
+    let source = fs::read_to_string(local_root.join("Cargo.toml")).expect("read local provider manifest");
+    let mut manifest: Value = from_str(&source).expect("parse local provider manifest");
+    let registry = registry.canonicalize().expect("tested registry must exist");
+    let scopes = manifest.as_table_mut().expect("local provider manifest table");
+    for name in ["dependencies", "build-dependencies"] {
+        if let Some(dependencies) = scopes.get_mut(name).and_then(Value::as_table_mut) {
+            rewrite_local_provider_paths(dependencies, &local_root, &registry);
+        }
+    }
+    if let Some(targets) = scopes.get_mut("target").and_then(Value::as_table_mut) {
+        for (_, target_value) in targets.iter_mut() {
+            let Some(target) = target_value.as_table_mut() else {
+                continue;
+            };
+            for name in ["dependencies", "build-dependencies"] {
+                if let Some(dependencies) = target.get_mut(name).and_then(Value::as_table_mut) {
+                    rewrite_local_provider_paths(dependencies, &local_root, &registry);
+                }
+            }
+        }
+    }
+    scopes.remove("dev-dependencies");
+    scopes.remove("patch");
+    let library_path = scopes
+        .get("lib")
+        .and_then(Value::as_table)
+        .and_then(|library| library.get("path"))
+        .and_then(Value::as_str)
+        .unwrap_or("src/lib.rs");
+    let library_path = local_root
+        .join(library_path)
+        .canonicalize()
+        .expect("local provider library");
+    scopes
+        .entry("lib")
+        .or_insert_with(|| Value::Table(Table::new()))
+        .as_table_mut()
+        .expect("library table")
+        .insert(
+            "path".into(),
+            Value::String(library_path.to_str().expect("UTF-8 library path").into()),
+        );
+    fs::create_dir_all(destination).expect("create local provider manifest shim");
+    let manifest_path = destination.join("Cargo.toml");
+    fs::write(
+        &manifest_path,
+        to_string(&manifest).expect("serialize local provider manifest"),
+    )
+    .expect("write local provider manifest shim");
+    manifest_path
+}
+
+fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, registry: &Path) {
+    let sibling_root = registry.parent().expect("registry must have a sibling root");
+    for (name, dependency) in dependencies {
+        let Some(declaration) = dependency.as_table_mut() else {
+            continue;
+        };
+        let Some(path) = declaration.get("path").and_then(Value::as_str) else {
+            continue;
+        };
+        let resolved = if name == "qubit-fs-registry" {
+            registry.to_path_buf()
+        } else if let Some(suffix) = name.strip_prefix("qubit-")
+            && sibling_root.join(format!("rs-{suffix}")).join("Cargo.toml").is_file()
+        {
+            sibling_root.join(format!("rs-{suffix}"))
+        } else {
+            local_root.join(path)
+        };
+        declaration.insert(
+            "path".into(),
+            Value::String(resolved.to_str().expect("UTF-8 dependency path").into()),
+        );
+    }
 }
 
 /// Keeps version/feature requirements while choosing local or published
@@ -457,15 +571,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 let project = workspace.path().join(&group);
                 fs::create_dir_all(project.join("src/bin")).expect("create example sources");
                 let mut programs = Vec::new();
-                for (document_index, document) in [
-                    "README.md",
-                    "README.zh_CN.md",
-                    "doc/user_guide.md",
-                    "doc/user_guide.zh_CN.md",
-                ]
-                .iter()
-                .enumerate()
-                {
+                for (document_index, document) in CHECKED_DOCUMENTS.iter().enumerate() {
                     let source = fs::read_to_string(root.join(document)).expect("read document");
                     let examples = snippets(&source).unwrap_or_else(|e| panic!("{document}: {e}"));
                     assert!(!examples.is_empty(), "{document} needs examples");
@@ -495,17 +601,41 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
+                let mut example_manifest =
+                    documentation_manifest(root, &input, published, asynchronous, local, inventory);
+                if local && !published {
+                    let sibling_local = root
+                        .parent()
+                        .expect("registry has a parent directory")
+                        .join("rs-fs-local");
+                    if sibling_local.join("Cargo.toml").is_file() && !local_provider_uses_registry(&sibling_local, root)
+                    {
+                        let shim = local_provider_manifest(
+                            &sibling_local,
+                            root,
+                            &workspace.path().join("local-provider-shim"),
+                        );
+                        example_manifest["patch"]["crates-io"]
+                            .as_table_mut()
+                            .expect("patch table")
+                            .insert(
+                                "qubit-fs-local".into(),
+                                Value::Table(Table::from_iter([(
+                                    "path".into(),
+                                    Value::String(
+                                        shim.parent()
+                                            .expect("shim manifest has a parent")
+                                            .to_str()
+                                            .expect("UTF-8 shim directory")
+                                            .into(),
+                                    ),
+                                )])),
+                            );
+                    }
+                }
                 fs::write(
                     project.join("Cargo.toml"),
-                    to_string(&documentation_manifest(
-                        root,
-                        &input,
-                        published,
-                        asynchronous,
-                        local,
-                        inventory,
-                    ))
-                    .expect("serialize manifest"),
+                    to_string(&example_manifest).expect("serialize manifest"),
                 )
                 .expect("write example manifest");
                 cargo(

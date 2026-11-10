@@ -10,11 +10,14 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::support::markdown_examples::CHECKED_DOCUMENTS;
 use crate::support::markdown_examples::check_documents;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
 use crate::support::markdown_examples::executable_artifacts;
+use crate::support::markdown_examples::local_provider_manifest;
+use crate::support::markdown_examples::local_provider_uses_registry;
 use crate::support::markdown_examples::manifest;
 use crate::support::markdown_examples::snippets;
 
@@ -167,6 +170,89 @@ fn test_documentation_versions_follow_manifest() {
         Some("async")
     );
     assert!(asynchronous["dependencies"].get("futures").is_some());
+}
+
+/// A sibling provider that still points at another registry worktree is not
+/// patched into the isolated example package.
+#[test]
+fn test_local_provider_patch_requires_the_tested_registry_path() {
+    let workspace = tempfile::tempdir().expect("temporary sibling fixture");
+    let current = workspace.path().join("current-registry");
+    let previous = workspace.path().join("rs-fs-registry");
+    let local = workspace.path().join("rs-fs-local");
+    std::fs::create_dir_all(&current).expect("current registry directory");
+    std::fs::create_dir_all(&previous).expect("previous registry directory");
+    std::fs::create_dir_all(&local).expect("local provider directory");
+    std::fs::write(
+        current.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
+    )
+    .expect("current registry manifest");
+    std::fs::write(
+        previous.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
+    )
+    .expect("previous registry manifest");
+    std::fs::write(
+        local.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[dependencies]\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\n",
+    )
+    .expect("local provider manifest");
+
+    assert!(!local_provider_uses_registry(&local, &current));
+    assert!(local_provider_uses_registry(&local, &previous));
+}
+
+/// A local-provider shim aligns its registry and sibling package paths with
+/// the isolated example manifest while compiling the real provider source.
+#[test]
+fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
+    let workspace = tempfile::tempdir().expect("temporary shim fixture");
+    let siblings = workspace.path().join("siblings");
+    let current = siblings.join("codex-registry");
+    let local = workspace.path().join("original/rs-fs-local");
+    let original_registry = workspace.path().join("original/rs-fs-registry");
+    let original_fs = workspace.path().join("original/rs-fs");
+    let sibling_fs = siblings.join("rs-fs");
+    for directory in [&current, &local, &original_registry, &original_fs, &sibling_fs] {
+        std::fs::create_dir_all(directory).expect("fixture directory");
+    }
+    for directory in [&current, &original_registry] {
+        std::fs::write(
+            directory.join("Cargo.toml"),
+            "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
+        )
+        .expect("registry fixture manifest");
+    }
+    for directory in [&original_fs, &sibling_fs] {
+        std::fs::write(
+            directory.join("Cargo.toml"),
+            "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
+        )
+        .expect("filesystem fixture manifest");
+    }
+    std::fs::create_dir_all(local.join("src")).expect("provider source directory");
+    std::fs::write(local.join("src/lib.rs"), "pub fn example() {}\n").expect("provider source");
+    std::fs::write(
+        local.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[lib]\n[dependencies]\nqubit-fs={path='../rs-fs',version='0.3'}\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\n",
+    )
+    .expect("provider manifest");
+
+    let shim = local_provider_manifest(&local, &current, &workspace.path().join("shim"));
+    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
+    assert_eq!(
+        manifest["dependencies"]["qubit-fs-registry"]["path"].as_str(),
+        Some(current.canonicalize().unwrap().to_str().unwrap())
+    );
+    assert_eq!(
+        manifest["dependencies"]["qubit-fs"]["path"].as_str(),
+        Some(sibling_fs.to_str().unwrap())
+    );
+    assert_eq!(
+        manifest["lib"]["path"].as_str(),
+        Some(local.join("src/lib.rs").canonicalize().unwrap().to_str().unwrap())
+    );
 }
 
 /// Example directives compose and each dependency group declares only its
@@ -407,6 +493,32 @@ fn test_cargo_executable_artifacts_validate_messages() {
 #[test]
 fn test_shipped_markdown_rust_examples_run() {
     check_documents(Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(feature = "async"));
+}
+
+/// Both language appendices stay in the verifier and retain async execution.
+#[test]
+fn test_async_resolution_appendices_are_checked_as_async_examples() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "doc/async_resolution_example.md",
+        "doc/async_resolution_example.zh_CN.md",
+    ] {
+        assert!(CHECKED_DOCUMENTS.contains(&relative), "{relative} must be checked");
+        let source = std::fs::read_to_string(root.join(relative)).expect("appendix must be readable");
+        let examples = snippets(&source).expect("appendix examples must parse");
+        assert!(
+            examples.iter().any(|example| example.asynchronous && example.run),
+            "{relative} must retain a runnable async example"
+        );
+    }
+    for relative in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("guide must be readable");
+        let examples = snippets(&source).expect("guide examples must parse");
+        assert!(
+            examples.iter().any(|example| example.asynchronous && !example.run),
+            "{relative} must compile its short async example without running it"
+        );
+    }
 }
 
 /// Direct dependency paths retain the identity used by sibling transitive

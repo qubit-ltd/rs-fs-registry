@@ -270,18 +270,24 @@ rotation/revocation must invalidate reuse. No cache is introduced in this revisi
 ## 16. Documentation and Published Dependency Checks
 
 Example versions come from manifest dependencies and
-`package.metadata.documentation.dependencies`. README/guide Rust blocks are complete
-programs. Async blocks are marked `<!-- registry-example: async -->` and checked with
-an explicit minimal async dependency set. Unknown directives and unclosed fences fail.
-Programs run in separate working directories and prepare their own input files.
+`package.metadata.documentation.dependencies`. README, guide, and async-resolution
+appendix Rust blocks are complete programs. The six checked documents include both
+bilingual async appendices. Their full async programs are marked
+`<!-- registry-example: async -->` and run with an explicit minimal async dependency
+set. Short guide examples use `rust,no_run`: they compile but are not executed.
+Unknown directives and unclosed fences fail. Programs run in separate working
+directories and prepare their own input files.
 
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. `published` allows
 only the tested crate locally, with other dependencies from package registries.
 Both validate unique fs/registry/spi identities and the local provider's registry edge.
 From the project root, run `python3 scripts/check_published_docs.py .` with
-Python 3.12 or newer and Rust 1.94.0 installed. It packages and checks in an isolated Cargo environment without
-inherited local patches; unavailable published requirements fail explicitly, never
-silently switching to sibling source trees. Mechanical style and coverage checks do
-not replace semantic test assertions or an item-by-item Rustdoc review.
+Python 3.12 or newer and Rust 1.94.0 installed. It packages and checks in an isolated
+Cargo environment without inherited local patches. On the extracted archive it runs
+`cargo test --locked --doc` and `cargo test --locked --doc --all-features` before the
+Markdown example harness; each command keeps its own diagnostic log. Unavailable
+published requirements fail explicitly, never silently switching to sibling source
+trees. Mechanical style and coverage checks do not replace semantic test assertions
+or an item-by-item Rustdoc review.
 
 [Migration](registry_contract_migration.md) · [User guide](user_guide.md)

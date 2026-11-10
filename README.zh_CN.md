@@ -125,8 +125,10 @@ python3 scripts/check_published_docs.py .
 ```
 
 发布依赖检查需要 Python 3.12+ 和 Rust 1.94.0。
-检查必须针对准备发布的同一源码状态成功；修改源码、manifest 或示例后必须重新运行。
-CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得回退到本地依赖覆盖。
+检查会在解包后的发布归档上运行默认与全部 feature 的 Rustdoc 测试，然后验证 Markdown 示例，
+其中包括两个完整的异步解析附录。检查必须针对准备发布的同一源码状态成功；修改源码、manifest
+或示例后必须重新运行。CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得
+回退到本地依赖覆盖。
 
 ## 许可证
 

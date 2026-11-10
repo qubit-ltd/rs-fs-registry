@@ -486,15 +486,17 @@ helper 类型。共享无状态验证 helper 保持私有自由函数，不暴�
 ## 16. 文档与发布验证
 
 示例版本来自 Cargo.toml 的正常依赖和 `package.metadata.documentation.dependencies`，不在测试源码重复维护。
-README 与指南的 Rust 代码块是完整程序，默认运行同步块；`<!-- registry-example: async -->` 标记的块
-另在最小异步依赖工程中执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
+README、指南和异步解析附录中的 Rust 代码块是完整程序；六份受检文档包含双语异步附录。
+附录中的完整异步程序以 `<!-- registry-example: async -->` 标记，并在最小异步依赖工程中运行。
+指南中的短示例使用 `rust,no_run`：会编译但不执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
 
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖；`published` 仅允许被测 crate 的本地来源，
 其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
 是否引用当前被测 registry。从项目根目录执行 `python3 scripts/check_published_docs.py .`，
-需要 Python 3.12 或更新版本和 Rust 1.94.0，
-在隔离 Cargo 环境中生成规范化包、解包并验证，
-不继承本地补丁；缺少已发布依赖时明确失败，不自动改用相邻源码。
+需要 Python 3.12 或更新版本和 Rust 1.94.0，在隔离 Cargo 环境中生成规范化包、解包并验证。
+它先在同一解包归档上运行 `cargo test --locked --doc` 和
+`cargo test --locked --doc --all-features`，然后执行 Markdown 示例检查；每条命令保留独立诊断日志。
+检查不继承本地补丁；缺少已发布依赖时明确失败，不自动改用相邻源码。
 
 契约回归通过信号控制创建期间的目录修改与异步 Pending，检查未轮询 future 不触发创建、
 注册 descriptor 保持快照、身份失败遵守 fallback，以及路径字节数与语义边界。CI 的覆盖率与
