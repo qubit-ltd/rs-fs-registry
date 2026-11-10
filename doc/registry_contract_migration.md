@@ -91,9 +91,12 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 5. Obtain a new resolution after catalog/default changes when new state is required.
 6. Use the documented selector grammar; do not route by userinfo, authority or query.
 7. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
-8. Use fs 0.3, registry 0.8, local provider 0.11 and `qubit-spi` 0.14 in related examples. Run
-   `python3 scripts/check_published_docs.py .` from the project root with Python 3.12+
-   and Rust 1.94.0 installed for isolated published-dependency verification. Do not
-   treat unpublished packages as released.
+8. Use fs 0.3, registry 0.8, local provider 0.11 and `qubit-spi` 0.14 in related examples.
+   Before publishing, run `python3 scripts/check_published_docs.py .` from the project root
+   with Python 3.12+ and Rust 1.94.0 installed. Publish only after this check succeeds for
+   the same source state you will publish. Rerun it after changing source, the manifest, or
+   examples. If it fails, do not fall back to local dependency overrides; fix the issue and
+   rerun the check. Manual workflow dispatch has no option to skip this gate. Do not treat
+   unpublished packages as released.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

@@ -1,7 +1,6 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -14,21 +13,40 @@ spec.loader.exec_module(checker)
 
 
 class PublishedDocsTests(unittest.TestCase):
-    def test_ci_published_documentation_entrypoint_exists(self):
+    def test_ci_runs_published_documentation_gate_for_all_required_events(self):
         repository = Path(__file__).parents[2]
         workflow_lines = (repository / ".github/workflows/ci.yml").read_text().splitlines()
-        step_name = "      - name: Verify isolated published documentation"
-        step_index = workflow_lines.index(step_name)
-        step_lines = []
-        for line in workflow_lines[step_index + 1:]:
-            if line.startswith("      - "):
-                break
-            step_lines.append(line)
-        run_commands = [line.strip()[len("run:"):].strip() for line in step_lines if line.strip().startswith("run:")]
-        self.assertEqual(len(run_commands), 1)
-        command = shlex.split(run_commands[0])
-        self.assertIn(command[0], {"python", "python3"})
-        self.assertEqual(command[1:], ["scripts/check_published_docs.py", "."])
+
+        def indented_block(header: str, end_header: str | None = None) -> list[str]:
+            start = workflow_lines.index(header)
+            end = next(
+                (index for index in range(start + 1, len(workflow_lines))
+                 if (workflow_lines[index].startswith(end_header) if end_header else
+                     workflow_lines[index].startswith("  ")
+                     and len(workflow_lines[index]) > 2
+                     and not workflow_lines[index][2].isspace())),
+                len(workflow_lines),
+            )
+            return workflow_lines[start:end]
+
+        triggers = indented_block("on:", "permissions:")
+        self.assertIn("  pull_request:", triggers)
+        self.assertIn("  push:", triggers)
+        self.assertIn("      - main", triggers)
+        self.assertIn("  workflow_dispatch:", triggers)
+        self.assertFalse(any("verify_published_dependencies" in line for line in triggers))
+        dispatch = triggers[triggers.index("  workflow_dispatch:") + 1:]
+        self.assertFalse(any(line.startswith("    ") for line in dispatch))
+
+        job = indented_block("  published-documentation:")
+        self.assertFalse(any(line.startswith("    if:") for line in job))
+        self.assertFalse(any(line.strip().startswith("continue-on-error:") for line in job))
+        run_commands = [line.strip()[len("run:"):].strip() for line in job if line.strip().startswith("run:")]
+        self.assertEqual(
+            [command for command in run_commands if "check_published_docs.py" in command],
+            ["python3 scripts/check_published_docs.py ."],
+        )
+        self.assertEqual(run_commands.count("python3 scripts/check_published_docs.py ."), 1)
 
         checker_path = repository / "scripts/check_published_docs.py"
         self.assertTrue(checker_path.is_file())
@@ -41,6 +59,11 @@ class PublishedDocsTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("root", result.stdout)
+
+    def test_unused_dispatch_input_is_absent(self):
+        repository = Path(__file__).parents[2]
+        workflow = (repository / ".github/workflows/ci.yml").read_text()
+        self.assertNotIn("verify_published_dependencies", workflow)
 
     def test_packaging_uses_isolated_cwd_when_source_has_parent_cargo_config(self):
         with tempfile.TemporaryDirectory() as directory:

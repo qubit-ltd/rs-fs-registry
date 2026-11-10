@@ -123,9 +123,10 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
 安全结构由 `Uri` 类型保证。
 
-相关示例应统一依赖版本。从项目根目录运行
-`python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0，
-以验证隔离的发布依赖环境；
-开发期间带本地补丁的打包成功不能替代这一验证。
+相关示例应统一依赖版本。发布前，从项目根目录运行
+`python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0。
+只有同一源码状态的检查成功后才能发布；修改源码、manifest 或示例后必须重新运行。
+检查失败时不得回退到本地依赖覆盖，应修复问题并重新检查。手动触发 workflow
+也没有跳过该门禁的选项。开发期间带本地补丁的打包成功不能替代这一验证。
 
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)

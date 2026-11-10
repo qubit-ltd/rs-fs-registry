@@ -6,11 +6,6 @@ on:
       - main
   pull_request:
   workflow_dispatch:
-    inputs:
-      verify_published_dependencies:
-        description: Verify packaged documentation against published dependencies
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -44,7 +39,6 @@ jobs:
         run: python3 -B -m unittest discover -s scripts/tests -v
 
   published-documentation:
-    if: github.event_name == 'workflow_dispatch' && inputs.verify_published_dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

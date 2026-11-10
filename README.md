@@ -129,7 +129,12 @@ cargo test --all-features
 
 # Check code coverage
 ./.infra/bin/coverage.sh
+
+# Verify documentation against published dependencies before publishing
+python3 scripts/check_published_docs.py .
 ```
+
+The published dependency check requires Python 3.12+ and Rust 1.94.0.
 
 ## License
 

@@ -119,7 +119,12 @@ cargo test --all-features
 
 # 检查代码覆盖率
 ./.infra/bin/coverage.sh
+
+# 发布前验证文档使用已发布的依赖
+python3 scripts/check_published_docs.py .
 ```
+
+发布依赖检查需要 Python 3.12+ 和 Rust 1.94.0。
 
 ## 许可证
 
