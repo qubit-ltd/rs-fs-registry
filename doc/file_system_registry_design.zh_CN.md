@@ -207,14 +207,16 @@ resolution 阶段，异步情况下发生于 future 被轮询时。
 
 ## 8. Selection 与 fallback
 
-Selection precedence 保持确定：
+| 入口 | 使用的 selection |
+| --- | --- |
+| `resolve_config` | 配置内嵌的 selection；没有时由 URI scheme 派生 named selection。 |
+| `resolve_uri` | 由 URI scheme 派生 named selection。 |
+| `resolve_selected_config` | 显式参数；与配置内嵌的 selection 不同则返回 `SelectionConflict`。 |
+| `resolve_default_config` | 当前 registry default selection；与配置内嵌的 selection 不同则返回 `SelectionConflict`。 |
 
-1. 显式传入的 selection；
-2. `FileSystemConfig` 内嵌 selection；
-3. URI scheme 派生的 named selection；
-4. 只有明确使用 default/auto API 时才考虑 registry default 或 provider priority。
-
-冲突的显式 selection 必须在 provider creation 前失败。
+显式/default 入口不会覆盖冲突的内嵌 selection。普通 config/URI 入口也不会在找不到
+provider 后自动改用 registry default。凭据来源冲突先于 selection 冲突；两种冲突都在
+provider creation 前失败。默认 selection 与候选 provider 在同一个原子 catalog 快照中捕获。
 
 从 URI 派生 selection 时只读取 `ConnectionUri` 已解析并校验的 scheme component，
 不暴露或重新解析原始 URI 文本，也不把 authority、userinfo 或 query 放入 selection
