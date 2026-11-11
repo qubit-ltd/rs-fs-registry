@@ -479,6 +479,137 @@ fn test_pending_creation_outlives_registry_and_catalog_changes() {
     assert_eq!(old.file_system().properties().info().provider_id(), "original");
 }
 
+struct PendingFutureDropGuard(Arc<AtomicUsize>);
+
+impl Drop for PendingFutureDropGuard {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct PendingCancellationProvider {
+    id: &'static str,
+    starts: Arc<AtomicUsize>,
+    future_drops: Arc<AtomicUsize>,
+    provider_drops: Arc<AtomicUsize>,
+}
+
+impl Drop for PendingCancellationProvider {
+    fn drop(&mut self) {
+        self.provider_drops.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl ProviderMetadata for PendingCancellationProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider ID"))
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for PendingCancellationProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        let starts = Arc::clone(&self.starts);
+        let future_drops = Arc::clone(&self.future_drops);
+        Box::pin(async move {
+            starts.fetch_add(1, Ordering::SeqCst);
+            let guard = PendingFutureDropGuard(future_drops);
+            std::future::pending::<()>().await;
+            drop(guard);
+            Ok(common::async_resolution("cancel-provider"))
+        })
+    }
+}
+
+/// Cancelling a pending resolution releases its future and provider snapshot
+/// through every public asynchronous registry entry point.
+#[test]
+fn test_pending_cancellation_releases_creation_and_snapshot() {
+    enum EntryPoint {
+        Config,
+        Uri,
+        SelectedConfig,
+        DefaultConfig,
+    }
+
+    for entry_point in [
+        EntryPoint::Config,
+        EntryPoint::Uri,
+        EntryPoint::SelectedConfig,
+        EntryPoint::DefaultConfig,
+    ] {
+        let starts = Arc::new(AtomicUsize::new(0));
+        let future_drops = Arc::new(AtomicUsize::new(0));
+        let provider_drops = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(PendingCancellationProvider {
+            id: "cancel-provider",
+            starts: Arc::clone(&starts),
+            future_drops: Arc::clone(&future_drops),
+            provider_drops: Arc::clone(&provider_drops),
+        });
+        let registry = AsyncFileSystemRegistry::default();
+        registry
+            .register_shared(Arc::clone(&provider) as Arc<AsyncFileSystemProvider>)
+            .expect("register cancellation provider");
+        let fallback = ObservedProvider::new("fallback-provider");
+        let fallback_calls = Arc::clone(&fallback.calls);
+        registry.register(fallback).expect("register fallback provider");
+        let chain = ProviderSelection::chain(["cancel-provider", "fallback-provider"])
+            .expect("provider chain")
+            .with_fallback_policy(FallbackPolicy::OnAnyError);
+        registry
+            .set_default_selection(chain.clone())
+            .expect("set default chain");
+        let uri = ConnectionUri::parse("cancel-provider:///resource").expect("URI");
+        let config = match entry_point {
+            EntryPoint::Config => FileSystemConfig::new(uri.clone()).with_selection(chain.clone()),
+            EntryPoint::Uri | EntryPoint::SelectedConfig | EntryPoint::DefaultConfig => {
+                FileSystemConfig::new(uri.clone())
+            }
+        };
+        let mut future: std::pin::Pin<
+            Box<dyn Future<Output = Result<AsyncFileSystemResolution, FileSystemRegistryError>> + Send>,
+        > = match entry_point {
+            EntryPoint::Config => Box::pin(registry.resolve_config(config)),
+            EntryPoint::Uri => Box::pin(registry.resolve_uri(uri)),
+            EntryPoint::SelectedConfig => Box::pin(registry.resolve_selected_config(chain, config)),
+            EntryPoint::DefaultConfig => Box::pin(registry.resolve_default_config(config)),
+        };
+
+        assert_eq!(starts.load(Ordering::SeqCst), 0);
+        assert_eq!(future_drops.load(Ordering::SeqCst), 0);
+        let waker = noop_waker();
+        assert!(matches!(
+            future.as_mut().poll(&mut Context::from_waker(&waker)),
+            Poll::Pending
+        ));
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        assert_eq!(future_drops.load(Ordering::SeqCst), 0);
+        assert!(fallback_calls.lock().expect("fallback calls").is_empty());
+
+        drop(future);
+        assert_eq!(future_drops.load(Ordering::SeqCst), 1);
+        assert!(fallback_calls.lock().expect("fallback calls").is_empty());
+        assert_eq!(provider_drops.load(Ordering::SeqCst), 0);
+
+        let after_cancel =
+            FileSystemConfig::new(ConnectionUri::parse("fallback-provider:///after-cancel").expect("URI"));
+        let resolved = common::block_on(registry.resolve_config(after_cancel))
+            .expect("registry remains usable after cancellation");
+        assert_eq!(
+            resolved.file_system().properties().info().provider_id(),
+            "fallback-provider"
+        );
+        assert_eq!(provider_drops.load(Ordering::SeqCst), 0);
+
+        drop(registry);
+        drop(provider);
+        assert_eq!(provider_drops.load(Ordering::SeqCst), 1);
+    }
+}
+
 /// Dropping any unpolled owned-config future never creates a provider.
 #[test]
 fn test_unpolled_entry_points_do_not_create_provider() {
