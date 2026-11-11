@@ -126,9 +126,9 @@ python3 scripts/check_published_docs.py .
 
 发布依赖检查需要 Python 3.12+ 和 Rust 1.94.0。
 检查会在解包后的发布归档上运行默认与全部 feature 的 Rustdoc 测试，然后验证 Markdown 示例，
-其中包括两个完整的异步解析附录。检查必须针对准备发布的同一源码状态成功；修改源码、manifest
-或示例后必须重新运行。CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得
-回退到本地依赖覆盖。
+其中包括两个完整的异步解析附录。检查必须针对准备发布的同一源码状态成功。由于 crates.io 尚无所需版本，检查会使用当前 sibling
+`qubit-fs` 0.3.0 与 `qubit-fs-local` 0.11.0 sibling 源码，并在完整 local-provider 示例中使用 `qubit-local-files` 0.5.0，因为这些所需版本尚未发布到 crates.io。provider 通过 shim 指向被测归档。依赖图只允许这些具名路径、被测归档和生成的 Markdown 示例 crate 根；其他依赖必须来自 registry。修改源码、manifest 或示例后必须重新运行。
+CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得回退到其他本地依赖覆盖。
 
 ## 许可证
 

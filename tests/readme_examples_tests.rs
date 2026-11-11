@@ -11,6 +11,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::support::markdown_examples::CHECKED_DOCUMENTS;
+use crate::support::markdown_examples::GraphOptions;
 use crate::support::markdown_examples::check_documents;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
@@ -214,7 +215,17 @@ fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
     let original_registry = workspace.path().join("original/rs-fs-registry");
     let original_fs = workspace.path().join("original/rs-fs");
     let sibling_fs = siblings.join("rs-fs");
-    for directory in [&current, &local, &original_registry, &original_fs, &sibling_fs] {
+    let sibling_local_files = siblings.join("rs-local-files");
+    let sibling_mystery = siblings.join("rs-mystery");
+    for directory in [
+        &current,
+        &local,
+        &original_registry,
+        &original_fs,
+        &sibling_fs,
+        &sibling_local_files,
+        &sibling_mystery,
+    ] {
         std::fs::create_dir_all(directory).expect("fixture directory");
     }
     for directory in [&current, &original_registry] {
@@ -235,11 +246,11 @@ fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
     std::fs::write(local.join("src/lib.rs"), "pub fn example() {}\n").expect("provider source");
     std::fs::write(
         local.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[lib]\n[dependencies]\nqubit-fs={path='../rs-fs',version='0.3'}\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\n",
+        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[lib]\n[dependencies]\nqubit-fs={path='../rs-fs',version='0.3'}\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\nqubit-local-files={path='../rs-local-files',version='0.5'}\nqubit-mystery={path='../rs-mystery',version='1'}\n",
     )
     .expect("provider manifest");
 
-    let shim = local_provider_manifest(&local, &current, &workspace.path().join("shim"));
+    let shim = local_provider_manifest(&local, &current, &siblings, &workspace.path().join("shim"));
     let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
     assert_eq!(
         manifest["dependencies"]["qubit-fs-registry"]["path"].as_str(),
@@ -248,6 +259,14 @@ fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
     assert_eq!(
         manifest["dependencies"]["qubit-fs"]["path"].as_str(),
         Some(sibling_fs.to_str().unwrap())
+    );
+    assert_eq!(
+        manifest["dependencies"]["qubit-local-files"]["path"].as_str(),
+        Some(sibling_local_files.to_str().unwrap())
+    );
+    assert_eq!(
+        manifest["dependencies"]["qubit-mystery"]["path"].as_str(),
+        Some(local.join("../rs-mystery").to_str().unwrap())
     );
     assert_eq!(
         manifest["lib"]["path"].as_str(),
@@ -318,43 +337,41 @@ fn test_graph_checks_registry_features() {
             "resolve": {"nodes": [{"id":registry_id, "features":features, "dependencies":[]}]}
         })
     };
-    check_graph(&base(&[]), "qubit-fs-registry", root, false, false, false, false);
+    check_graph(&base(&[]), "qubit-fs-registry", root, GraphOptions::default());
     assert!(
         std::panic::catch_unwind(|| check_graph(
             &base(&["inventory"]),
             "qubit-fs-registry",
             root,
-            false,
-            false,
-            false,
-            false
+            GraphOptions::default()
         ))
         .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| check_graph(&base(&["async"]), "qubit-fs-registry", root, GraphOptions::default()))
+            .is_err()
     );
     assert!(
         std::panic::catch_unwind(|| check_graph(
-            &base(&["async"]),
+            &base(&[]),
             "qubit-fs-registry",
             root,
-            false,
-            false,
-            false,
-            false
+            GraphOptions {
+                asynchronous: true,
+                ..GraphOptions::default()
+            }
         ))
         .is_err()
-    );
-    assert!(
-        std::panic::catch_unwind(|| check_graph(&base(&[]), "qubit-fs-registry", root, false, true, false, false))
-            .is_err()
     );
     check_graph(
         &base(&["async", "inventory"]),
         "qubit-fs-registry",
         root,
-        false,
-        true,
-        false,
-        true,
+        GraphOptions {
+            asynchronous: true,
+            inventory: true,
+            ..GraphOptions::default()
+        },
     );
     let local = serde_json::json!({
         "packages": [
@@ -366,7 +383,15 @@ fn test_graph_checks_registry_features() {
             {"id":"local 0.11.0 (registry+https://example)", "features":[], "dependencies":[registry_id]}
         ]}
     });
-    check_graph(&local, "qubit-fs-registry", root, false, false, true, false);
+    check_graph(
+        &local,
+        "qubit-fs-registry",
+        root,
+        GraphOptions {
+            local: true,
+            ..GraphOptions::default()
+        },
+    );
     let duplicate = serde_json::json!({
         "packages": [
             {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
@@ -375,8 +400,143 @@ fn test_graph_checks_registry_features() {
         "resolve": {"nodes": [{"id":registry_id, "features":[], "dependencies":[]}]}
     });
     assert!(
-        std::panic::catch_unwind(|| check_graph(&duplicate, "qubit-fs-registry", root, false, false, false, false))
+        std::panic::catch_unwind(|| check_graph(&duplicate, "qubit-fs-registry", root, GraphOptions::default()))
             .is_err()
+    );
+}
+
+/// Published example graphs allow only the exact qubit-fs path from Cargo's
+/// override.
+#[test]
+fn test_graph_allows_only_the_configured_published_qubit_fs_path() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let temp = tempfile::tempdir().expect("temporary sibling fs");
+    let fs_path = temp.path().join("rs-fs");
+    std::fs::create_dir_all(&fs_path).expect("create sibling fs");
+    std::fs::write(
+        fs_path.join("Cargo.toml"),
+        "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
+    )
+    .unwrap();
+    let registry_id = "qubit-fs-registry 0.8.0 (path+file:///registry)";
+    let fs_id = "qubit-fs 0.3.0 (path+file:///rs-fs)";
+    let local_path = temp.path().join("rs-fs-local-shim");
+    std::fs::create_dir_all(&local_path).expect("create local provider shim");
+    std::fs::write(
+        local_path.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n",
+    )
+    .unwrap();
+    let local_id = "qubit-fs-local 0.11.0 (path+file:///rs-fs-local-shim)";
+    let local_files_path = temp.path().join("rs-local-files");
+    std::fs::create_dir_all(&local_files_path).expect("create local files sibling");
+    std::fs::write(
+        local_files_path.join("Cargo.toml"),
+        "[package]\nname='qubit-local-files'\nversion='0.5.0'\n",
+    )
+    .unwrap();
+    let local_files_id = "qubit-local-files 0.5.0 (path+file:///rs-local-files)";
+    let graph = serde_json::json!({
+        "packages": [
+            {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
+            {"name":"qubit-fs", "id":fs_id, "version":"0.3.0", "manifest_path":fs_path.join("Cargo.toml").to_str().unwrap(), "source":null},
+            {"name":"qubit-fs-local", "id":local_id, "version":"0.11.0", "manifest_path":local_path.join("Cargo.toml").to_str().unwrap(), "source":null},
+            {"name":"qubit-local-files", "id":local_files_id, "version":"0.5.0", "manifest_path":local_files_path.join("Cargo.toml").to_str().unwrap(), "source":null}
+        ],
+        "resolve": {"nodes": [
+            {"id":registry_id, "features":["inventory"], "dependencies":[]},
+            {"id":fs_id, "features":[], "dependencies":[]},
+            {"id":local_id, "features":[], "dependencies":[registry_id]},
+            {"id":local_files_id, "features":[], "dependencies":[]}
+        ]}
+    });
+    check_graph(
+        &graph,
+        "qubit-fs-registry",
+        root,
+        GraphOptions {
+            published: true,
+            local: true,
+            qubit_fs_override: Some(&fs_path),
+            qubit_fs_local_override: Some(&local_path),
+            qubit_local_files_override: Some(&local_files_path),
+            ..GraphOptions::default()
+        },
+    );
+
+    let mut unexpected_local_graph = graph.clone();
+    unexpected_local_graph["packages"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "name":"qubit-unlisted", "id":"qubit-unlisted 1.0.0 (path+file:///unlisted)",
+            "version":"1.0.0", "manifest_path":local_path.join("Cargo.toml").to_str().unwrap(), "source":null
+        }));
+    assert!(
+        std::panic::catch_unwind(|| {
+            check_graph(
+                &unexpected_local_graph,
+                "qubit-fs-registry",
+                root,
+                GraphOptions {
+                    published: true,
+                    local: true,
+                    qubit_fs_override: Some(&fs_path),
+                    qubit_fs_local_override: Some(&local_path),
+                    qubit_local_files_override: Some(&local_files_path),
+                    ..GraphOptions::default()
+                },
+            )
+        })
+        .is_err()
+    );
+
+    let wrong = temp.path().join("other-fs");
+    std::fs::create_dir_all(&wrong).expect("create unexpected path");
+    std::fs::write(
+        wrong.join("Cargo.toml"),
+        "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
+    )
+    .unwrap();
+    let mut wrong_graph = graph.clone();
+    wrong_graph["packages"][1]["manifest_path"] = wrong.join("Cargo.toml").to_str().unwrap().into();
+    assert!(
+        std::panic::catch_unwind(|| {
+            check_graph(
+                &wrong_graph,
+                "qubit-fs-registry",
+                root,
+                GraphOptions {
+                    published: true,
+                    local: true,
+                    qubit_fs_override: Some(&fs_path),
+                    qubit_fs_local_override: Some(&local_path),
+                    qubit_local_files_override: Some(&local_files_path),
+                    ..GraphOptions::default()
+                },
+            )
+        })
+        .is_err()
+    );
+    let mut wrong_local_graph = graph.clone();
+    wrong_local_graph["packages"][2]["manifest_path"] = wrong.join("Cargo.toml").to_str().unwrap().into();
+    assert!(
+        std::panic::catch_unwind(|| {
+            check_graph(
+                &wrong_local_graph,
+                "qubit-fs-registry",
+                root,
+                GraphOptions {
+                    published: true,
+                    local: true,
+                    qubit_fs_override: Some(&fs_path),
+                    qubit_fs_local_override: Some(&local_path),
+                    qubit_local_files_override: Some(&local_files_path),
+                    ..GraphOptions::default()
+                },
+            )
+        })
+        .is_err()
     );
 }
 

@@ -25,7 +25,7 @@ class PublishedDocsTests(unittest.TestCase):
         package = manifest["package"]["name"]
         version = manifest["package"]["version"]
 
-        def make_archive(cargo, root, workspace, environment):
+        def make_archive(cargo, root, workspace, environment, fs_path):
             archive = workspace / "target" / "package" / f"{package}-{version}.crate"
             archive.parent.mkdir(parents=True)
             content = f"[package]\nname = '{package}'\nversion = '{version}'\n".encode()
@@ -35,13 +35,21 @@ class PublishedDocsTests(unittest.TestCase):
                 output.addfile(member, __import__("io").BytesIO(content))
 
         metadata_template = {
-            "packages": [{"name": package, "source": None}],
+            "packages": [
+                {"name": package, "source": None},
+                {"name": "qubit-fs", "version": "0.3.0", "source": None,
+                 "manifest_path": str(checker.sibling_fs_path(repository) / "Cargo.toml")},
+            ],
         }
         calls = []
+        cargo_configs = []
+        cargo_homes = []
 
         def record_run(cargo, arguments, cwd, environment, log, *, timeout_seconds, context):
             calls.append((arguments, cwd, environment, log, timeout_seconds, context))
-            if arguments[:2] == ["metadata", "--locked"]:
+            cargo_configs.append((Path(environment["CARGO_HOME"]) / "config.toml").read_text())
+            cargo_homes.append(Path(environment["CARGO_HOME"]))
+            if arguments[-4:] == ["metadata", "--locked", "--format-version", "1"]:
                 metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
                 return __import__("json").dumps(metadata_template)
             return ""
@@ -54,18 +62,35 @@ class PublishedDocsTests(unittest.TestCase):
                     patch.object(checker, "run", side_effect=record_run):
                 checker.check(repository, workspace)
 
-        doctest_calls = [call for call in calls if call[0][:3] == ["test", "--locked", "--doc"]]
+        doctest_calls = [call for call in calls if "test" in call[0] and "--doc" in call[0]]
+        fs_path = checker.sibling_fs_path(repository)
+        expected_config = f'[patch.crates-io]\nqubit-fs = {{ path = "{fs_path}" }}\n'
         self.assertEqual([call[0] for call in doctest_calls], [
             ["test", "--locked", "--doc"],
             ["test", "--locked", "--doc", "--all-features"],
         ])
         extracted = workspace / "unpacked" / f"{package}-{version}"
         self.assertTrue(all(call[1] == extracted for call in doctest_calls))
-        self.assertTrue(all(call[2] == checker.isolated_environment(workspace) for call in doctest_calls))
+        expected_environment = checker.isolated_environment(workspace)
+        expected_environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
+        self.assertTrue(all(call[2] == expected_environment for call in doctest_calls))
         self.assertEqual([call[3].name for call in doctest_calls], [
             "doctests-default.log", "doctests-all-features.log",
         ])
         self.assertTrue(all(call[4] == 900 for call in doctest_calls))
+        self.assertTrue(cargo_configs)
+        self.assertTrue(all(config == expected_config for config in cargo_configs))
+        self.assertEqual(len(set(cargo_homes)), 1)
+        self.assertTrue(all(home.parent.name == "isolated" for home in cargo_homes))
+
+        package_calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            with patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
+                checker.package_source("cargo", repository, workspace, checker.isolated_environment(workspace),
+                                       fs_path)
+        self.assertEqual(package_calls[0][1], ["package", "--manifest-path",
+                                                str(repository / "Cargo.toml"), "--allow-dirty", "--no-verify"])
 
         for failed_command in [
             ["test", "--locked", "--doc"],
@@ -75,7 +100,7 @@ class PublishedDocsTests(unittest.TestCase):
 
             def fail_doctest(cargo, arguments, cwd, environment, log, *, timeout_seconds, context):
                 calls.append((arguments, cwd, environment, log, timeout_seconds, context))
-                if arguments[:2] == ["metadata", "--locked"]:
+                if arguments[-4:] == ["metadata", "--locked", "--format-version", "1"]:
                     metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
                     return __import__("json").dumps(metadata_template)
                 if arguments == failed_command:
@@ -94,7 +119,7 @@ class PublishedDocsTests(unittest.TestCase):
                         checker.check(repository, failed_workspace)
                 self.assertNotIn("Published archive and examples verified", output.getvalue())
             self.assertTrue(any(call[0] == failed_command for call in calls))
-            test_commands = [call[0] for call in calls if call[0][0] == "test"]
+            test_commands = [call[0] for call in calls if "test" in call[0]]
             expected_commands = [["test", "--locked", "--doc"]]
             if failed_command[-1] == "--all-features":
                 expected_commands.append(["test", "--locked", "--doc", "--all-features"])
@@ -431,7 +456,8 @@ class PublishedDocsTests(unittest.TestCase):
             environment = {"CARGO_HOME": str(workspace / "cargo-home")}
 
             with patch.object(checker, "run", return_value="") as run:
-                checker.package_source("cargo", source, workspace, environment)
+                fs_path = temporary / "rs-fs"
+                checker.package_source("cargo", source, workspace, environment, fs_path)
 
             command_cwd = workspace / "cargo-command"
             self.assertTrue(command_cwd.is_dir())
@@ -450,6 +476,23 @@ class PublishedDocsTests(unittest.TestCase):
                 timeout_seconds=900,
                 context="Cargo package",
             )
+
+    def test_packaging_restores_source_lockfile_after_path_override_resolution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            root.mkdir()
+            lockfile = root / "Cargo.lock"
+            lockfile.write_text("source lock contents\n")
+            workspace = Path(directory) / "isolated"
+            workspace.mkdir()
+
+            def mutate_lockfile(*args, **kwargs):
+                lockfile.write_text("Cargo package patch metadata\n")
+
+            with patch.object(checker, "run", side_effect=mutate_lockfile):
+                checker.package_source("cargo", root, workspace, {"CARGO_HOME": str(workspace / "cargo-home")},
+                                       Path(directory) / "rs-fs")
+            self.assertEqual(lockfile.read_text(), "source lock contents\n")
 
     def test_environment_drops_inherited_build_overrides(self):
         with patch.dict("os.environ", {"CARGO_HOME": "/old", "CARGO_ENCODED_RUSTFLAGS": "unsafe", "RUSTFLAGS": "unsafe", "CARGO_REGISTRIES_CRATES_IO_INDEX": "local", "RUSTC_WRAPPER": "wrapper"}):
@@ -473,14 +516,44 @@ class PublishedDocsTests(unittest.TestCase):
 
     def test_graph_rejects_duplicate_versions_and_wrong_sources(self):
         root = Path("/isolated/package")
+        repository = Path(__file__).parents[2]
+        fs_path = checker.sibling_fs_path(repository)
+        fs_local_path = fs_path.parent / "rs-fs-local"
+        local_files_path = fs_path.parent / "rs-local-files"
+        allowed_paths = {
+            "qubit-fs": fs_path,
+            "qubit-fs-local": fs_local_path,
+            "qubit-local-files": local_files_path,
+        }
         own = {"name": "qubit-fs-registry", "source": None, "manifest_path": str(root / "Cargo.toml")}
-        fs = {"name": "qubit-fs", "source": "registry+https://example.invalid/index", "manifest_path": "/registry/fs/Cargo.toml"}
-        checker.validate_graph({"packages": [own, fs]}, "qubit-fs-registry", root)
-        for bad in [dict(fs, source=None), dict(fs, source="git+https://example.invalid/repo")]:
+        fs = {"name": "qubit-fs", "version": "0.3.0", "source": None,
+              "manifest_path": str(fs_path / "Cargo.toml")}
+        fs_local = {"name": "qubit-fs-local", "version": "0.11.0", "source": None,
+                    "manifest_path": str(fs_local_path / "Cargo.toml")}
+        local_files = {"name": "qubit-local-files", "version": "0.5.0", "source": None,
+                       "manifest_path": str(local_files_path / "Cargo.toml")}
+        checker.validate_graph({"packages": [own, fs, fs_local, local_files]}, "qubit-fs-registry", root, allowed_paths)
+        for bad in [
+            dict(fs, manifest_path="/unlisted/rs-fs/Cargo.toml"),
+            dict(fs_local, source="git+https://example.invalid/repo"),
+        ]:
             with self.assertRaises(ValueError):
-                checker.validate_graph({"packages": [own, bad]}, "qubit-fs-registry", root)
+                checker.validate_graph({"packages": [own, bad]}, "qubit-fs-registry", root, allowed_paths)
         with self.assertRaises(ValueError):
-            checker.validate_graph({"packages": [own, fs, dict(fs, version="0.2")]}, "qubit-fs-registry", root)
+            checker.validate_graph({"packages": [own, fs, dict(fs, version="0.2")]}, "qubit-fs-registry", root, allowed_paths)
+        for unexpected_name in ["qubit-unlisted", "ordinary-local"]:
+            unexpected = {
+                "name": unexpected_name,
+                "version": "1.0.0",
+                "source": None,
+                "manifest_path": "/unlisted/Cargo.toml",
+            }
+            with self.assertRaisesRegex(ValueError, "unexpected local dependency"):
+                checker.validate_graph({"packages": [own, unexpected]}, "qubit-fs-registry", root,
+                                       allowed_paths)
+        with self.assertRaisesRegex(ValueError, "unrecognized local dependency allowlist"):
+            checker.validate_graph({"packages": [own]}, "qubit-fs-registry", root,
+                                   {"qubit-unlisted": fs_path})
 
 
 if __name__ == "__main__":

@@ -138,9 +138,13 @@ The published dependency check requires Python 3.12+ and Rust 1.94.0.
 It runs default and all-feature Rustdoc tests on the extracted package archive,
 then checks the Markdown examples, including both complete async-resolution
 appendices. It must succeed for the same source state you intend to publish.
-Rerun it after changing source files, the manifest, or examples. CI runs it for
-pull requests, pushes to `main`, and manual workflow runs; failures must not
-fall back to local dependency overrides.
+The check uses sibling `qubit-fs` 0.3.0 and `qubit-fs-local` 0.11.0 sources,
+and `qubit-local-files` 0.5.0 for the complete local-provider examples, because
+these required releases are unavailable from crates.io. The provider is shimmed
+to reference the tested archive. The graph check allows only these named sibling
+paths, the archive, and the generated Markdown-example crate root; every other dependency must come from a registry. Rerun it after changing source
+files, the manifest, or examples. CI runs it for pull requests, pushes to `main`,
+and manual workflow runs; failures must not fall back to other local overrides.
 
 ## License
 

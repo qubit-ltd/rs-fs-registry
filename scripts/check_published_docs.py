@@ -33,6 +33,7 @@ def isolated_environment(workspace: Path) -> dict[str, str]:
         "CARGO_TARGET_DIR": str(workspace / "target"),
         "RUSTUP_TOOLCHAIN": "1.94.0",
         "QUBIT_FS_REGISTRY_DOC_DEPS": "published",
+        "QUBIT_FS_SIBLING_ROOT": str(workspace / "sibling-root"),
     })
     return environment
 
@@ -49,17 +50,29 @@ def validate_manifest(manifest: dict) -> None:
                     raise ValueError(f"published dependency {name} retains a local/git/workspace source")
 
 
-def validate_graph(metadata: dict, package: str, root: Path) -> None:
-    """Require all dependencies to come from registries, with only the tested archive local."""
+def validate_graph(metadata: dict, package: str, root: Path,
+                   allowed_local_paths: dict[str, Path]) -> None:
+    """Require registry dependencies except the archive and exact named sibling overrides."""
+    allowed_names = {"qubit-fs", "qubit-fs-local", "qubit-local-files"}
+    unexpected_names = set(allowed_local_paths) - allowed_names
+    if unexpected_names:
+        raise ValueError(f"unrecognized local dependency allowlist entries: {sorted(unexpected_names)}")
     seen: set[str] = set()
     for entry in metadata["packages"]:
         name = entry["name"]
         if entry.get("source") is None:
-            if name != package or Path(entry["manifest_path"]).resolve() != root / "Cargo.toml":
+            manifest_path = Path(entry["manifest_path"]).resolve()
+            if name == package and manifest_path == root / "Cargo.toml":
+                pass
+            elif name in allowed_local_paths and manifest_path == allowed_local_paths[name] / "Cargo.toml":
+                sibling_manifest = tomllib.loads((allowed_local_paths[name] / "Cargo.toml").read_text())
+                if entry.get("version") != sibling_manifest["package"]["version"]:
+                    raise ValueError(f"{name} path override resolved an unexpected version")
+            else:
                 raise ValueError(f"unexpected local dependency: {name}")
         elif not entry["source"].startswith("registry+"):
             raise ValueError(f"non-registry dependency: {name}")
-        if name in {"qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi"}:
+        if name in {"qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi", "qubit-local-files"}:
             if name in seen:
                 raise ValueError(f"duplicate filesystem package identity: {name}")
             seen.add(name)
@@ -401,25 +414,52 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
     return out
 
 
-def package_source(cargo: str, root: Path, workspace: Path, environment: dict[str, str]) -> None:
+def configure_qubit_fs_override(environment: dict[str, str], fs_path: Path) -> None:
+    """Write the sole Cargo config override into this check's isolated Cargo home."""
+    cargo_home = Path(environment["CARGO_HOME"])
+    cargo_home.mkdir(parents=True, exist_ok=True)
+    (cargo_home / "config.toml").write_text(
+        "[patch.crates-io]\nqubit-fs = { path = " + json.dumps(str(fs_path)) + " }\n"
+    )
+
+
+def sibling_fs_path(root: Path) -> Path:
+    """Find the qubit-fs sibling checkout from either the main checkout or a worktree."""
+    for parent in root.parents:
+        candidate = (parent / "rs-fs").resolve()
+        if (candidate / "Cargo.toml").is_file():
+            return candidate
+    raise ValueError(f"required sibling qubit-fs path override is missing above {root}")
+
+
+def package_source(cargo: str, root: Path, workspace: Path, environment: dict[str, str],
+                   fs_path: Path) -> None:
     """Package a source manifest without discovering Cargo config above it."""
     command_cwd = workspace / "cargo-command"
     command_cwd.mkdir()
-    run(
-        cargo,
-        [
-            "package",
-            "--manifest-path",
-            str(root / "Cargo.toml"),
-            "--allow-dirty",
-            "--no-verify",
-        ],
-        command_cwd,
-        environment,
-        workspace / "package.log",
-        timeout_seconds=900,
-        context="Cargo package",
-    )
+    lockfile = root / "Cargo.lock"
+    original_lockfile = lockfile.read_bytes() if lockfile.exists() else None
+    try:
+        run(
+            cargo,
+            [
+                "package",
+                "--manifest-path",
+                str(root / "Cargo.toml"),
+                "--allow-dirty",
+                "--no-verify",
+            ],
+            command_cwd,
+            environment,
+            workspace / "package.log",
+            timeout_seconds=900,
+            context="Cargo package",
+        )
+    finally:
+        if original_lockfile is None:
+            lockfile.unlink(missing_ok=True)
+        elif not lockfile.exists() or lockfile.read_bytes() != original_lockfile:
+            lockfile.write_bytes(original_lockfile)
 
 
 def check(root: Path, workspace: Path) -> None:
@@ -429,12 +469,30 @@ def check(root: Path, workspace: Path) -> None:
         raise ValueError("source manifest has local overrides; published checks cannot use them")
     package = manifest["package"]["name"]
     version = manifest["package"]["version"]
+    fs_path = sibling_fs_path(root)
+    fs_version = tomllib.loads((fs_path / "Cargo.toml").read_text())["package"]["version"]
+    if fs_version != "0.3.0":
+        raise ValueError(f"expected sibling qubit-fs 0.3.0, found {fs_version}")
+    fs_local_path = (fs_path.parent / "rs-fs-local").resolve()
+    if not (fs_local_path / "Cargo.toml").is_file():
+        raise ValueError(f"required sibling qubit-fs-local path source is missing: {fs_local_path}")
+    fs_local_version = tomllib.loads((fs_local_path / "Cargo.toml").read_text())["package"]["version"]
+    if fs_local_version != "0.11.0":
+        raise ValueError(f"expected sibling qubit-fs-local 0.11.0, found {fs_local_version}")
+    local_files_path = (fs_path.parent / "rs-local-files").resolve()
+    if not (local_files_path / "Cargo.toml").is_file():
+        raise ValueError(f"required sibling qubit-local-files path source is missing: {local_files_path}")
+    local_files_version = tomllib.loads((local_files_path / "Cargo.toml").read_text())["package"]["version"]
+    if local_files_version != "0.5.0":
+        raise ValueError(f"expected sibling qubit-local-files 0.5.0, found {local_files_version}")
     environment = isolated_environment(workspace)
+    environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
+    configure_qubit_fs_override(environment, fs_path)
     cargo = shutil.which("cargo")
     if cargo is None:
         raise RuntimeError("cargo is required")
     # --no-verify skips only the redundant package build, not dependency resolution.
-    package_source(cargo, root, workspace, environment)
+    package_source(cargo, root, workspace, environment, fs_path)
     archive = workspace / "target" / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
@@ -448,7 +506,11 @@ def check(root: Path, workspace: Path) -> None:
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
     metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo metadata")
-    validate_graph(json.loads(metadata), package, extracted)
+    validate_graph(json.loads(metadata), package, extracted, {
+        "qubit-fs": fs_path,
+        "qubit-fs-local": fs_local_path,
+        "qubit-local-files": local_files_path,
+    })
     run(cargo, ["test", "--locked", "--doc"], extracted, environment,
         workspace / "doctests-default.log", timeout_seconds=900,
         context="Cargo published default doctests")
@@ -457,7 +519,10 @@ def check(root: Path, workspace: Path) -> None:
         context="Cargo published all-feature doctests")
     run(cargo, ["test", "--locked", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"], extracted, environment,
         workspace / "examples.log", timeout_seconds=3600, context="Cargo published examples")
-    print(f"Published archive and examples verified: {package} {version}")
+    print(f"Published archive and examples verified: {package} {version} "
+          f"(qubit-fs path override: {fs_path} {fs_version}; "
+          f"qubit-fs-local Markdown path source: {fs_local_path} {fs_local_version}, shimmed to the tested archive; "
+          f"qubit-local-files shim path: {local_files_path} {local_files_version})")
 
 
 def main() -> int:

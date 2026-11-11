@@ -279,7 +279,12 @@ pub(crate) fn local_provider_uses_registry(local_provider: &Path, registry: &Pat
     matches!((provider_registry, current_registry), (Ok(provider), Ok(current)) if provider == current)
 }
 
-pub(crate) fn local_provider_manifest(local_provider: &Path, registry: &Path, destination: &Path) -> PathBuf {
+pub(crate) fn local_provider_manifest(
+    local_provider: &Path,
+    registry: &Path,
+    sibling_root: &Path,
+    destination: &Path,
+) -> PathBuf {
     let local_root = local_provider.canonicalize().expect("local provider must exist");
     let source = fs::read_to_string(local_root.join("Cargo.toml")).expect("read local provider manifest");
     let mut manifest: Value = from_str(&source).expect("parse local provider manifest");
@@ -287,7 +292,7 @@ pub(crate) fn local_provider_manifest(local_provider: &Path, registry: &Path, de
     let scopes = manifest.as_table_mut().expect("local provider manifest table");
     for name in ["dependencies", "build-dependencies"] {
         if let Some(dependencies) = scopes.get_mut(name).and_then(Value::as_table_mut) {
-            rewrite_local_provider_paths(dependencies, &local_root, &registry);
+            rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root);
         }
     }
     if let Some(targets) = scopes.get_mut("target").and_then(Value::as_table_mut) {
@@ -297,13 +302,14 @@ pub(crate) fn local_provider_manifest(local_provider: &Path, registry: &Path, de
             };
             for name in ["dependencies", "build-dependencies"] {
                 if let Some(dependencies) = target.get_mut(name).and_then(Value::as_table_mut) {
-                    rewrite_local_provider_paths(dependencies, &local_root, &registry);
+                    rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root);
                 }
             }
         }
     }
     scopes.remove("dev-dependencies");
     scopes.remove("patch");
+    scopes.remove("bench");
     let library_path = scopes
         .get("lib")
         .and_then(Value::as_table)
@@ -333,8 +339,7 @@ pub(crate) fn local_provider_manifest(local_provider: &Path, registry: &Path, de
     manifest_path
 }
 
-fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, registry: &Path) {
-    let sibling_root = registry.parent().expect("registry must have a sibling root");
+fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, registry: &Path, sibling_root: &Path) {
     for (name, dependency) in dependencies {
         let Some(declaration) = dependency.as_table_mut() else {
             continue;
@@ -342,14 +347,12 @@ fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, reg
         let Some(path) = declaration.get("path").and_then(Value::as_str) else {
             continue;
         };
-        let resolved = if name == "qubit-fs-registry" {
-            registry.to_path_buf()
-        } else if let Some(suffix) = name.strip_prefix("qubit-")
-            && sibling_root.join(format!("rs-{suffix}")).join("Cargo.toml").is_file()
-        {
-            sibling_root.join(format!("rs-{suffix}"))
-        } else {
-            local_root.join(path)
+        let resolved = match name.as_str() {
+            "qubit-fs-registry" => registry.to_path_buf(),
+            "qubit-fs" => sibling_root.join("rs-fs"),
+            "qubit-fs-local" => sibling_root.join("rs-fs-local"),
+            "qubit-local-files" => sibling_root.join("rs-local-files"),
+            _ => local_root.join(path),
         };
         declaration.insert(
             "path".into(),
@@ -428,34 +431,79 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
 
 /// Rejects duplicate filesystem/SPI package identities and a downstream using
 /// another registry.
-pub fn check_graph(
-    metadata: &Json,
-    package: &str,
-    root: &Path,
-    published: bool,
-    asynchronous: bool,
-    local: bool,
-    inventory: bool,
-) {
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GraphOptions<'a> {
+    pub published: bool,
+    pub asynchronous: bool,
+    pub local: bool,
+    pub inventory: bool,
+    pub qubit_fs_override: Option<&'a Path>,
+    pub qubit_fs_local_override: Option<&'a Path>,
+    pub qubit_local_files_override: Option<&'a Path>,
+    pub example_manifest: Option<&'a Path>,
+}
+
+pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOptions<'_>) {
     let mut ids = BTreeMap::new();
     for entry in metadata["packages"].as_array().expect("metadata packages") {
         let name = entry["name"].as_str().expect("package name");
-        if matches!(name, "qubit-fs" | "qubit-fs-registry" | "qubit-spi" | "qubit-fs-local") {
+        if options.published {
+            let source = entry["source"].as_str();
+            let manifest_path = Path::new(entry["manifest_path"].as_str().expect("manifest path"))
+                .canonicalize()
+                .expect("manifest exists");
+            let expected_example_manifest = (name == "filesystem-documentation-check")
+                .then(|| options.example_manifest.and_then(|path| path.canonicalize().ok()))
+                .flatten();
+            if name == package {
+                assert_eq!(source, None, "tested package must be the extracted archive");
+                assert_eq!(
+                    manifest_path,
+                    root.join("Cargo.toml").canonicalize().expect("tested manifest exists")
+                );
+            } else if name == "filesystem-documentation-check" {
+                assert_eq!(source, None, "example consumer must be the generated manifest");
+                assert_eq!(
+                    Some(manifest_path),
+                    expected_example_manifest,
+                    "unexpected generated example consumer manifest"
+                );
+            } else if source.is_none() {
+                let expected_path = match name {
+                    "qubit-fs" => options.qubit_fs_override,
+                    "qubit-fs-local" => options.qubit_fs_local_override,
+                    "qubit-local-files" => options.qubit_local_files_override,
+                    _ => None,
+                }
+                .and_then(|path| path.join("Cargo.toml").canonicalize().ok());
+                assert_eq!(
+                    Path::new(entry["manifest_path"].as_str().expect("manifest path"))
+                        .canonicalize()
+                        .ok(),
+                    expected_path,
+                    "unexpected local source in published dependency graph: {name}"
+                );
+            } else {
+                assert!(
+                    source.is_some_and(|source| source.starts_with("registry+")),
+                    "published dependency uses a non-registry source: {name}"
+                );
+            }
+        }
+        if matches!(
+            name,
+            "qubit-fs" | "qubit-fs-registry" | "qubit-spi" | "qubit-fs-local" | "qubit-local-files"
+        ) {
             assert!(
                 ids.insert(name, entry["id"].as_str().expect("package ID")).is_none(),
                 "duplicate package identity: {name}"
             );
-            if name == package {
+            if name == package && !options.published {
                 assert_eq!(
                     Path::new(entry["manifest_path"].as_str().expect("manifest path"))
                         .canonicalize()
                         .expect("manifest exists"),
                     root.join("Cargo.toml").canonicalize().expect("tested manifest exists")
-                );
-            } else if published {
-                assert!(
-                    entry["source"].as_str().is_some_and(|s| s.starts_with("registry+")),
-                    "published dependency uses a local source: {name}"
                 );
             }
         }
@@ -470,17 +518,17 @@ pub fn check_graph(
     let features = registry_node["features"].as_array().expect("resolve features");
     assert_eq!(
         features.iter().any(|feature| feature.as_str() == Some("async")),
-        asynchronous,
+        options.asynchronous,
         "tested registry async feature does not match example requirements"
     );
     assert_eq!(
         features.iter().any(|feature| feature.as_str() == Some("inventory")),
-        inventory || local,
+        options.inventory || options.local,
         "tested registry inventory feature does not match example requirements"
     );
     assert_eq!(
         ids.contains_key(&"qubit-fs-local"),
-        local,
+        options.local,
         "local provider dependency does not match example requirements"
     );
     if let (Some(local), Some(registry)) = (ids.get("qubit-fs-local"), ids.get("qubit-fs-registry")) {
@@ -499,6 +547,16 @@ pub fn check_graph(
             "local provider must use the tested registry identity"
         );
     }
+}
+
+/// Reads the exact `qubit-fs` patch from this check's isolated Cargo home.
+fn cargo_qubit_fs_override() -> Option<PathBuf> {
+    let cargo_home = std::env::var_os("CARGO_HOME")?;
+    let source = fs::read_to_string(PathBuf::from(cargo_home).join("config.toml")).ok()?;
+    let config: Value = from_str(&source).ok()?;
+    config["patch"]["crates-io"]["qubit-fs"]["path"]
+        .as_str()
+        .map(PathBuf::from)
 }
 
 /// Runs one Cargo operation and includes the command in a failed assertion.
@@ -560,6 +618,9 @@ pub fn check_documents(root: &Path, include_async: bool) {
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
+    let qubit_fs_override = if published { cargo_qubit_fs_override() } else { None };
+    let sibling_root = std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from);
+    let qubit_local_files_override = sibling_root.as_ref().map(|parent| parent.join("rs-local-files"));
     let target = root.join("target/documentation-examples");
     for asynchronous in [false, true] {
         for local in [false, true] {
@@ -603,34 +664,47 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 );
                 let mut example_manifest =
                     documentation_manifest(root, &input, published, asynchronous, local, inventory);
-                if local && !published {
-                    let sibling_local = root
-                        .parent()
-                        .expect("registry has a parent directory")
-                        .join("rs-fs-local");
-                    if sibling_local.join("Cargo.toml").is_file() && !local_provider_uses_registry(&sibling_local, root)
+                let mut local_provider_alias = None;
+                if local {
+                    let sibling_local = if published {
+                        sibling_root.as_ref().map(|parent| parent.join("rs-fs-local"))
+                    } else {
+                        root.parent().map(|parent| parent.join("rs-fs-local"))
+                    };
+                    if let Some(sibling_local) = sibling_local.filter(|path| path.join("Cargo.toml").is_file())
+                        && (published || !local_provider_uses_registry(&sibling_local, root))
                     {
                         let shim = local_provider_manifest(
                             &sibling_local,
                             root,
+                            sibling_root
+                                .as_deref()
+                                .or_else(|| root.parent())
+                                .expect("sibling root is required for local provider shim"),
                             &workspace.path().join("local-provider-shim"),
                         );
-                        example_manifest["patch"]["crates-io"]
-                            .as_table_mut()
-                            .expect("patch table")
-                            .insert(
-                                "qubit-fs-local".into(),
-                                Value::Table(Table::from_iter([(
+                        let shim_dir = shim.parent().expect("shim manifest has a parent");
+                        if published {
+                            example_manifest["dependencies"]["qubit-fs-local"]
+                                .as_table_mut()
+                                .expect("local provider dependency table")
+                                .insert(
                                     "path".into(),
-                                    Value::String(
-                                        shim.parent()
-                                            .expect("shim manifest has a parent")
-                                            .to_str()
-                                            .expect("UTF-8 shim directory")
-                                            .into(),
-                                    ),
-                                )])),
-                            );
+                                    Value::String(shim_dir.to_str().expect("UTF-8 shim directory").into()),
+                                );
+                        } else {
+                            example_manifest["patch"]["crates-io"]
+                                .as_table_mut()
+                                .expect("patch table")
+                                .insert(
+                                    "qubit-fs-local".into(),
+                                    Value::Table(Table::from_iter([(
+                                        "path".into(),
+                                        Value::String(shim_dir.to_str().expect("UTF-8 shim directory").into()),
+                                    )])),
+                                );
+                        }
+                        local_provider_alias = Some(shim_dir.to_path_buf());
                     }
                 }
                 fs::write(
@@ -654,10 +728,16 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
                     package,
                     root,
-                    published,
-                    asynchronous,
-                    local,
-                    inventory,
+                    GraphOptions {
+                        published,
+                        asynchronous,
+                        local,
+                        inventory,
+                        qubit_fs_override: qubit_fs_override.as_deref(),
+                        qubit_fs_local_override: local_provider_alias.as_deref(),
+                        qubit_local_files_override: qubit_local_files_override.as_deref(),
+                        example_manifest: Some(&project.join("Cargo.toml")),
+                    },
                 );
                 let build = cargo(
                     &project,
