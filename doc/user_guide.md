@@ -494,7 +494,7 @@ cargo add qubit-fs-registry@0.8 --features async
 cargo add futures@0.3
 ```
 
-This complete in-memory provider demonstrates async creation and resolution only; its SPI methods return unsupported errors because file IO is outside the example. `futures` supplies the executor and is not a registry runtime dependency.
+This helper function demonstrates ownership of an asynchronous resolution future using an already registered provider. See the linked [complete provider example](async_resolution_example.md) for registration and execution. The registry has no executor runtime dependency.
 
 Pass a registry that your application has already populated. `resolve_uri` creates an owned future; after creating it, this function drops its registry handle and awaits the result. Other registry clones may still exist: the example shows that this future does not borrow the handle passed here. See the [complete runnable provider example](async_resolution_example.md) for registration and setup.
 

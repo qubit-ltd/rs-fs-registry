@@ -458,7 +458,7 @@ cargo add qubit-fs-registry@0.8 --features async
 cargo add futures@0.3
 ```
 
-这个完整的内存 provider 示例只演示异步创建与解析；由于示例不执行文件 IO，其 SPI 方法会返回不支持错误。`futures` 只提供执行器，不是注册表的运行时依赖。
+下面的辅助函数使用已经完成注册的提供者，演示异步解析 future 的所有权。注册和运行步骤见下方链接的[完整 provider 示例](async_resolution_example.zh_CN.md)；注册表本身不依赖执行器运行时。
 
 传入应用已经完成注册的 registry。`resolve_uri` 会创建拥有输入的 future；创建后，本函数释放自己的 registry 句柄并等待结果。其他 registry 克隆可能仍存在；本例说明该 future 不借用此处传入的句柄。注册和初始化过程见[完整可运行的 provider 示例](async_resolution_example.zh_CN.md)。
 
