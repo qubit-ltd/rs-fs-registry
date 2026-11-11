@@ -701,6 +701,92 @@ qubit-local-files = "0.5.0"
                 self.assertTrue((prepared.registry / "executable.sh").stat().st_mode & 0o111)
             self.assertFalse((prepared.registry / "ignored.txt").exists())
 
+    @unittest.skipIf(os.name == "nt", "requires Unix executable bits")
+    def test_unix_snapshot_uses_worktree_executable_bit_and_digest_tracks_both_directions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            initialize_git(root)
+            script = root / "tool.sh"
+            script.write_text("#!/bin/sh\nexit 0\n")
+            script.chmod(0o755)
+            subprocess.run(["git", "-C", str(root), "add", "tool.sh"], check=True)
+            subprocess.run(["git", "-C", str(root), "update-index", "--chmod=+x", "tool.sh"], check=True)
+            script.chmod(0o644)
+
+            inputs = checker._collect_git_inputs(root)
+            self.assertFalse(inputs["tool.sh"][1])
+            destination = root.parent / (root.name + "-snapshot")
+            checker._copy_git_inputs(root, destination, checker._input_digest(inputs))
+            self.assertFalse((destination / "tool.sh").stat().st_mode & 0o111)
+
+            script.chmod(0o755)
+            executable_digest = checker._input_digest(checker._collect_git_inputs(root))
+            self.assertNotEqual(executable_digest, checker._input_digest(inputs))
+            script.chmod(0o644)
+            self.assertEqual(checker._input_digest(checker._collect_git_inputs(root)), checker._input_digest(inputs))
+
+    @unittest.skipIf(os.name == "nt", "requires Unix executable bits")
+    def test_unix_snapshot_preserves_unstaged_executable_addition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            initialize_git(root)
+            script = root / "tool.sh"
+            script.write_text("#!/bin/sh\nexit 0\n")
+            subprocess.run(["git", "-C", str(root), "add", "tool.sh"], check=True)
+            script.chmod(0o755)
+            inputs = checker._collect_git_inputs(root)
+            self.assertTrue(inputs["tool.sh"][1])
+            destination = root.parent / (root.name + "-snapshot")
+            checker._copy_git_inputs(root, destination, checker._input_digest(inputs))
+            self.assertTrue((destination / "tool.sh").stat().st_mode & 0o111)
+
+    @unittest.skipIf(os.name == "nt", "requires Unix executable bits")
+    def test_unix_snapshot_rejects_executable_changes_during_copy_in_both_directions(self):
+        for starting_mode, changed_mode in ((0o755, 0o644), (0o644, 0o755)):
+            with self.subTest(starting_mode=oct(starting_mode), changed_mode=oct(changed_mode)):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    initialize_git(root)
+                    script = root / "tool.sh"
+                    script.write_text("#!/bin/sh\nexit 0\n")
+                    script.chmod(0o755)
+                    subprocess.run(["git", "-C", str(root), "add", "tool.sh"], check=True)
+                    subprocess.run(["git", "-C", str(root), "update-index", "--chmod=+x", "tool.sh"], check=True)
+                    script.chmod(starting_mode)
+                    expected = checker._input_digest(checker._collect_git_inputs(root))
+                    real_copy = checker.shutil.copy2
+
+                    def copy_then_change(source, target):
+                        result = real_copy(source, target)
+                        if Path(source) == script:
+                            script.chmod(changed_mode)
+                        return result
+
+                    with patch.object(checker.shutil, "copy2", side_effect=copy_then_change):
+                        with self.assertRaisesRegex(ValueError, "changed while snapshotting"):
+                            checker._copy_git_inputs(root, root.parent / (root.name + "-snapshot"), expected)
+
+    def test_windows_snapshot_keeps_index_executable_compensation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            initialize_git(root)
+            script = root / "tool.sh"
+            script.write_text("#!/bin/sh\nexit 0\n")
+            script.chmod(0o644)
+            subprocess.run(["git", "-C", str(root), "add", "tool.sh"], check=True)
+            subprocess.run(["git", "-C", str(root), "update-index", "--chmod=+x", "tool.sh"], check=True)
+            real_stat = Path.stat
+
+            def stat_without_executable_bits(path, *args, **kwargs):
+                result = real_stat(path, *args, **kwargs)
+                if path == script:
+                    return SimpleNamespace(st_mode=result.st_mode & ~0o111)
+                return result
+
+            with patch.object(checker, "os", SimpleNamespace(name="nt")):
+                with patch.object(Path, "stat", stat_without_executable_bits):
+                    self.assertTrue(checker._collect_git_inputs(root)["tool.sh"][1])
+
     def test_input_snapshot_rejects_copy_time_changes_and_preserves_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)

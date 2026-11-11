@@ -467,7 +467,7 @@ def sibling_fs_path(root: Path) -> Path:
 
 
 def _collect_git_inputs(root: Path) -> dict[str, tuple[bytes, bool]]:
-    """Read Git-visible regular inputs and their build-relevant executable bits."""
+    """Read Git-visible inputs, using Unix worktree mode and Windows index fallback."""
     root = root.resolve()
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
@@ -503,11 +503,10 @@ def _collect_git_inputs(root: Path) -> dict[str, tuple[bytes, bool]]:
         mode = source.stat().st_mode
         if not stat.S_ISREG(mode):
             raise ValueError(f"non-regular package input: {relative}")
-        inputs[relative.as_posix()] = (
-            source.read_bytes(),
-            bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
-            or indexed_executable.get(relative.as_posix(), False),
-        )
+        executable = bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+        if os.name == "nt":
+            executable = executable or indexed_executable.get(relative.as_posix(), False)
+        inputs[relative.as_posix()] = (source.read_bytes(), executable)
     return inputs
 
 
