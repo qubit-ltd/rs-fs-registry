@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ import tarfile
 import tempfile
 import time
 import tomllib
+from types import SimpleNamespace
 from ctypes import wintypes
 
 _WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
@@ -464,16 +466,16 @@ def sibling_fs_path(root: Path) -> Path:
     raise ValueError(f"required sibling qubit-fs path override is missing above {root}")
 
 
-def _copy_git_inputs(root: Path, destination: Path) -> None:
-    """Copy the current Git-visible regular files, excluding local Cargo/build state."""
+def _collect_git_inputs(root: Path) -> dict[str, tuple[bytes, bool]]:
+    """Read Git-visible regular inputs and their build-relevant executable bits."""
     root = root.resolve()
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    destination.mkdir(parents=True, exist_ok=True)
     paths = set(filter(None, result.stdout.decode("utf-8", errors="surrogateescape").split("\0")))
     paths.add("Cargo.lock")
+    inputs = {}
     for name in sorted(paths):
         relative = Path(name)
         if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
@@ -493,9 +495,95 @@ def _copy_git_inputs(root: Path, destination: Path) -> None:
         mode = source.stat().st_mode
         if not stat.S_ISREG(mode):
             raise ValueError(f"non-regular package input: {relative}")
-        target = destination / relative
+        inputs[relative.as_posix()] = (
+            source.read_bytes(), bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)),
+        )
+    return inputs
+
+
+def _input_digest(inputs: dict[str, tuple[bytes, bool]]) -> str:
+    """Hash sorted paths, lengths, content, and executable state without ambiguity."""
+    digest = hashlib.sha256()
+    digest.update(len(inputs).to_bytes(8, "big"))
+    for name, (content, executable) in sorted(inputs.items()):
+        path = os.fsencode(name)
+        digest.update(len(path).to_bytes(8, "big"))
+        digest.update(path)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+        digest.update(b"\x01" if executable else b"\x00")
+    return digest.hexdigest()
+
+
+def _copy_git_inputs(root: Path, destination: Path, expected_digest: str) -> None:
+    """Copy inputs only if their content is stable and matches the prepared evidence."""
+    root = root.resolve()
+    before = _collect_git_inputs(root)
+    before_digest = _input_digest(before)
+    if before_digest != expected_digest:
+        raise ValueError(f"source inputs changed before snapshot copy: {root}")
+    destination.mkdir(parents=True, exist_ok=True)
+    for name, (content, executable) in sorted(before.items()):
+        source = root / name
+        target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+        if executable:
+            target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        else:
+            target.chmod(target.stat().st_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+    after_digest = _input_digest(_collect_git_inputs(root))
+    if after_digest != before_digest:
+        raise ValueError(f"source inputs changed while snapshotting: {root}")
+    snapshot_inputs = {}
+    for name in before:
+        target = destination / name
+        if target.is_symlink() or not target.is_file():
+            raise ValueError(f"snapshot input missing or non-regular: {target}")
+        mode = target.stat().st_mode
+        snapshot_inputs[name] = (
+            target.read_bytes(), bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)),
+        )
+    snapshot_files = {
+        path.relative_to(destination).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+    if snapshot_files != set(before):
+        raise ValueError(f"snapshot input set does not match source inputs: {root}")
+    if _input_digest(snapshot_inputs) != before_digest:
+        raise ValueError(f"snapshot content does not match source inputs: {root}")
+
+
+def _source_record(name: str, source: Path, snapshot: Path,
+                   inputs: dict[str, tuple[bytes, bool]]) -> dict:
+    """Build safe provenance evidence for the input manifest."""
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(source), "rev-parse", "HEAD"], check=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        ).stdout.strip()
+        dirty = bool(subprocess.run(
+            ["git", "-C", str(source), "status", "--porcelain", "--untracked-files=all"],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        ).stdout)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f"cannot read Git provenance for {source}: {error}") from error
+    manifest_path = source / "Cargo.toml"
+    try:
+        package = tomllib.loads(manifest_path.read_text())["package"]
+        package_name, version = package["name"], package["version"]
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        raise ValueError(f"invalid package manifest for {name}: {error}") from error
+    return {
+        "name": package_name,
+        "version": version,
+        "source_path": str(source.resolve()),
+        "snapshot_path": str(snapshot.resolve()),
+        "git_head": head,
+        "dirty": dirty,
+        "sha256": _input_digest(inputs),
+    }
 
 
 def _validate_snapshot_path_dependencies(source: Path, snapshot: Path, fs_source: Path,
@@ -516,77 +604,85 @@ def _validate_snapshot_path_dependencies(source: Path, snapshot: Path, fs_source
                     raise ValueError(f"unsupported path dependency {name}: {dependency['path']}")
 
 
-def prepare_package_source(root: Path, workspace: Path, fs_path: Path) -> Path:
-    """Create an isolated, current-input snapshot for Cargo packaging."""
+def prepare_package_source(root: Path, workspace: Path, fs_path: Path,
+                           fs_local_path: Path, local_files_path: Path) -> SimpleNamespace:
+    """Prepare one stable four-project source snapshot for all published checks."""
     package_root = workspace / "package-input"
-    snapshot = package_root / "rs-fs-registry"
-    fs_snapshot = package_root / "rs-fs"
-    _copy_git_inputs(root, snapshot)
-    _copy_git_inputs(fs_path, fs_snapshot)
-    _validate_snapshot_path_dependencies(root, snapshot, fs_path, fs_snapshot)
-    _validate_snapshot_path_dependencies(fs_path, fs_snapshot, fs_path, fs_snapshot)
-    return snapshot
+    paths = {
+        "registry": (root, package_root / "rs-fs-registry"),
+        "fs": (fs_path, package_root / "rs-fs"),
+        "fs_local": (fs_local_path, package_root / "rs-fs-local"),
+        "local_files": (local_files_path, package_root / "rs-local-files"),
+    }
+    collected = {key: _collect_git_inputs(source) for key, (source, _) in paths.items()}
+    records = tuple(
+        _source_record(key, source, snapshot, collected[key])
+        for key, (source, snapshot) in paths.items()
+    )
+    (workspace / "input-manifest.json").write_text(
+        json.dumps({"inputs": records}, indent=2, sort_keys=True) + "\n"
+    )
+    record_digests = {record["name"]: record["sha256"] for record in records}
+    for key, (source, snapshot) in paths.items():
+        package_name = tomllib.loads((source / "Cargo.toml").read_text())["package"]["name"]
+        _copy_git_inputs(source, snapshot, record_digests[package_name])
+    _validate_snapshot_path_dependencies(root, paths["registry"][1], fs_path, paths["fs"][1])
+    _validate_snapshot_path_dependencies(fs_path, paths["fs"][1], fs_path, paths["fs"][1])
+    return SimpleNamespace(
+        registry=paths["registry"][1], fs=paths["fs"][1],
+        fs_local=paths["fs_local"][1], local_files=paths["local_files"][1], records=records,
+    )
 
 
 def package_source(cargo: str, root: Path, workspace: Path, environment: dict[str, str],
                    fs_path: Path) -> None:
-    """Package a source manifest without discovering Cargo config above it."""
+    """Package an already prepared source snapshot without changing its inputs."""
     command_cwd = workspace / "cargo-command"
     command_cwd.mkdir()
-    package_root = prepare_package_source(root, workspace, fs_path)
-    configure_qubit_fs_override(environment, package_root.parent / "rs-fs")
-    try:
-        run(
-            cargo,
-            [
-                "package",
-                "--manifest-path",
-                str(package_root / "Cargo.toml"),
-                "--allow-dirty",
-                "--no-verify",
-            ],
-            command_cwd,
-            environment,
-            workspace / "package.log",
-            timeout_seconds=900,
-            context="Cargo package",
-        )
-    finally:
-        configure_qubit_fs_override(environment, fs_path)
+    configure_qubit_fs_override(environment, fs_path)
+    run(
+        cargo,
+        ["package", "--manifest-path", str(root / "Cargo.toml"), "--allow-dirty", "--no-verify"],
+        command_cwd,
+        environment,
+        workspace / "package.log",
+        timeout_seconds=900,
+        context="Cargo package",
+    )
 
 
 def check(root: Path, workspace: Path) -> None:
     """Produce a normalized archive with Cargo, unpack it, and run the shipped examples."""
-    toolchain, expected_versions = load_check_settings(root)
-    manifest = tomllib.loads((root / "Cargo.toml").read_text())
+    fs_path = sibling_fs_path(root)
+    fs_local_path = (fs_path.parent / "rs-fs-local").resolve()
+    local_files_path = (fs_path.parent / "rs-local-files").resolve()
+    for label, path in (("qubit-fs-local", fs_local_path), ("qubit-local-files", local_files_path)):
+        if not (path / "Cargo.toml").is_file():
+            raise ValueError(f"required sibling {label} path source is missing: {path}")
+    prepared = prepare_package_source(root, workspace, fs_path, fs_local_path, local_files_path)
+    toolchain, expected_versions = load_check_settings(prepared.registry)
+    manifest = tomllib.loads((prepared.registry / "Cargo.toml").read_text())
     if "patch" in manifest or "replace" in manifest:
         raise ValueError("source manifest has local overrides; published checks cannot use them")
     package = manifest["package"]["name"]
     version = manifest["package"]["version"]
-    fs_path = sibling_fs_path(root)
-    fs_version = tomllib.loads((fs_path / "Cargo.toml").read_text())["package"]["version"]
+    fs_version = tomllib.loads((prepared.fs / "Cargo.toml").read_text())["package"]["version"]
     if fs_version != expected_versions["qubit-fs"]:
         raise ValueError(f"qubit-fs expected {expected_versions['qubit-fs']}, actual {fs_version}")
-    fs_local_path = (fs_path.parent / "rs-fs-local").resolve()
-    if not (fs_local_path / "Cargo.toml").is_file():
-        raise ValueError(f"required sibling qubit-fs-local path source is missing: {fs_local_path}")
-    fs_local_version = tomllib.loads((fs_local_path / "Cargo.toml").read_text())["package"]["version"]
+    fs_local_version = tomllib.loads((prepared.fs_local / "Cargo.toml").read_text())["package"]["version"]
     if fs_local_version != expected_versions["qubit-fs-local"]:
         raise ValueError(f"qubit-fs-local expected {expected_versions['qubit-fs-local']}, actual {fs_local_version}")
-    local_files_path = (fs_path.parent / "rs-local-files").resolve()
-    if not (local_files_path / "Cargo.toml").is_file():
-        raise ValueError(f"required sibling qubit-local-files path source is missing: {local_files_path}")
-    local_files_version = tomllib.loads((local_files_path / "Cargo.toml").read_text())["package"]["version"]
+    local_files_version = tomllib.loads((prepared.local_files / "Cargo.toml").read_text())["package"]["version"]
     if local_files_version != expected_versions["qubit-local-files"]:
         raise ValueError(f"qubit-local-files expected {expected_versions['qubit-local-files']}, actual {local_files_version}")
     environment = isolated_environment(workspace, toolchain)
-    environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
-    configure_qubit_fs_override(environment, fs_path)
+    environment["QUBIT_FS_SIBLING_ROOT"] = str(prepared.registry.parent)
+    configure_qubit_fs_override(environment, prepared.fs)
     cargo = shutil.which("cargo")
     if cargo is None:
         raise RuntimeError("cargo is required")
     # --no-verify skips only the redundant package build, not dependency resolution.
-    package_source(cargo, root, workspace, environment, fs_path)
+    package_source(cargo, prepared.registry, workspace, environment, prepared.fs)
     archive = workspace / "target" / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
@@ -602,9 +698,9 @@ def check(root: Path, workspace: Path) -> None:
     metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo metadata")
     validate_graph(json.loads(metadata), package, extracted, {
-        "qubit-fs": fs_path,
-        "qubit-fs-local": fs_local_path,
-        "qubit-local-files": local_files_path,
+        "qubit-fs": prepared.fs,
+        "qubit-fs-local": prepared.fs_local,
+        "qubit-local-files": prepared.local_files,
     })
     run(cargo, ["test", "--locked", "--doc"], extracted, environment,
         workspace / "doctests-default.log", timeout_seconds=900,
@@ -615,9 +711,11 @@ def check(root: Path, workspace: Path) -> None:
     run(cargo, ["test", "--locked", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"], extracted, environment,
         workspace / "examples.log", timeout_seconds=3600, context="Cargo published examples")
     print(f"Published archive and examples verified: {package} {version} "
-          f"(qubit-fs path override: {fs_path} {fs_version}; "
-          f"qubit-fs-local Markdown path source: {fs_local_path} {fs_local_version}, shimmed to the tested archive; "
-          f"qubit-local-files shim path: {local_files_path} {local_files_version})")
+          f"(fixed sibling snapshots: qubit-fs {fs_version}, qubit-fs-local {fs_local_version}, "
+          f"qubit-local-files {local_files_version}; snapshot paths: "
+          f"{', '.join(record['name'] + '=' + record['snapshot_path'] for record in prepared.records)}; "
+          f"all checks use the prepared snapshots; "
+          f"input SHA-256: {', '.join(record['name'] + '=' + record['sha256'] for record in prepared.records)})")
 
 
 def main() -> int:

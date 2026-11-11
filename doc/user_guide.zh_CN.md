@@ -520,6 +520,16 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 - provider 特有的 URI 解码、路径规则、capability 和 secret 来源解释仍是 provider 的职责。
 - 保持配置非敏感。`CredentialRef` 是引用边界，而不是 secret 存储。
 
+## 发布文档检查
+
+发布前，使用 Python 3.12+ 和 `rust-toolchain.toml` 中的 Rust 工具链运行
+`python3 scripts/check_published_docs.py .`。检查器会在打包和编译示例前，固定 registry、
+`qubit-fs`、`qubit-fs-local` 与 `qubit-local-files` 的源码输入，并记录版本、源路径、Git HEAD、dirty
+状态，以及基于排序输入路径、长度、内容和执行位生成的 SHA-256 摘要。复制期间输入发生变化时，
+检查会失败并保留诊断；之后源目录变化不会影响已经准备的输入。本检查使用这些固定 sibling
+源码快照验证包归档和示例，不代表验证了对应 crates.io 发布包的内容。修改源码、manifest 或示例后，
+应重新运行检查。
+
 ## 延伸阅读
 
 - [README](../README.zh_CN.md)

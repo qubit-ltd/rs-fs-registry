@@ -95,9 +95,12 @@ and raw URI text are not concatenated or reinterpreted as selector input.
    Before publishing, run `python3 scripts/check_published_docs.py .` from the project root
    with Python 3.12+ and Rust 1.94.0 installed. Publish only after this check succeeds for
    the same source state you will publish. Rerun it after changing source, the manifest, or
-   examples. CI runs this check for pull requests, pushes to `main`, and manual workflow
-   runs. If it fails, do not fall back to local dependency overrides; fix the issue and
-   rerun the check. Manual workflow dispatch has no option to skip this gate. Do not treat
-   unpublished packages as released.
+   examples. The checker snapshots the registry and the three sibling sources before
+   packaging, records Git HEAD, dirty state, versions, and content SHA-256 digests, and
+   fails if inputs change during copying. The archive and examples use those snapshots;
+   this does not establish that corresponding crates.io release contents match them.
+   CI runs this check for pull requests, pushes to `main`, and manual workflow runs. If it
+   fails, do not fall back to local dependency overrides; fix the issue and rerun the
+   check. Manual workflow dispatch has no option to skip this gate.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

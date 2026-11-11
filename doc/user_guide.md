@@ -572,6 +572,19 @@ cross-provider global identity.
 - Keep configuration non-sensitive. `CredentialRef` is a reference boundary,
   not secret storage.
 
+## Published Documentation Check
+
+Before publishing, run `python3 scripts/check_published_docs.py .` with Python
+3.12+ and the Rust toolchain from `rust-toolchain.toml`. The checker snapshots
+the registry and the `qubit-fs`, `qubit-fs-local`, and `qubit-local-files`
+sibling inputs before packaging and compiling examples. It records versions,
+source paths, Git HEAD and dirty state, plus a SHA-256 digest over sorted input
+paths, lengths, contents, and executable bits. A change during copying fails
+the check and preserves diagnostics; later source changes do not alter the
+prepared inputs. This validates the package archive and examples against those
+fixed sibling source snapshots, not the contents of their crates.io releases.
+Rerun the check after changing source, the manifest, or examples.
+
 ## Further Reading
 
 - [README](../README.md)

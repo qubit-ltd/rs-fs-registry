@@ -1,5 +1,6 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -88,6 +89,7 @@ qubit-local-files = "0.6.4"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "registry"
             root.mkdir()
+            initialize_git(root)
             (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.95.2"\n')
             (root / "Cargo.toml").write_text("""[package]
 name = "qubit-fs-registry"
@@ -168,6 +170,9 @@ qubit-local-files = "0.5.0"
             cargo_homes.append(Path(environment["CARGO_HOME"]))
             if arguments[-4:] == ["metadata", "--locked", "--format-version", "1"]:
                 metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
+                metadata_template["packages"][1]["manifest_path"] = str(
+                    workspace / "package-input" / "rs-fs" / "Cargo.toml"
+                )
                 return __import__("json").dumps(metadata_template)
             return ""
 
@@ -176,13 +181,15 @@ qubit-local-files = "0.5.0"
             workspace.mkdir()
             with patch.object(checker.shutil, "which", return_value="cargo"), \
                     patch.object(checker, "sibling_fs_path", return_value=fs_path), \
+                    patch.object(checker, "_validate_snapshot_path_dependencies"), \
                     patch.object(checker, "package_source", side_effect=make_archive), \
                     patch.object(checker, "run", side_effect=record_run):
                 checker.check(repository, workspace)
 
         doctest_calls = [call for call in calls if "test" in call[0] and "--doc" in call[0]]
+        expected_fs_snapshot = workspace / "package-input" / "rs-fs"
         expected_config = (
-            f'[patch.crates-io]\nqubit-fs = {{ path = {__import__("json").dumps(str(fs_path))} }}\n'
+            f'[patch.crates-io]\nqubit-fs = {{ path = {__import__("json").dumps(str(expected_fs_snapshot))} }}\n'
         )
         self.assertEqual([call[0] for call in doctest_calls], [
             ["test", "--locked", "--doc"],
@@ -192,7 +199,7 @@ qubit-local-files = "0.5.0"
         self.assertTrue(all(call[1] == extracted for call in doctest_calls))
         channel, _ = checker.load_check_settings(repository)
         expected_environment = checker.isolated_environment(workspace, channel)
-        expected_environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
+        expected_environment["QUBIT_FS_SIBLING_ROOT"] = str(workspace / "package-input")
         self.assertTrue(all(call[2] == expected_environment for call in doctest_calls))
         self.assertEqual([call[3].name for call in doctest_calls], [
             "doctests-default.log", "doctests-all-features.log",
@@ -213,14 +220,19 @@ qubit-local-files = "0.5.0"
             subprocess.run(["git", "-C", str(package_repository), "add", "Cargo.toml"], check=True)
             subprocess.run(["git", "-C", str(package_repository), "commit", "-qm", "package inputs"], check=True)
             original_fs = fs_path
-            with patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
-                checker.package_source("cargo", package_repository, workspace,
+            prepared = checker.prepare_package_source(
+                package_repository, workspace, original_fs,
+                sibling_sources["qubit-fs-local"], sibling_sources["qubit-local-files"],
+            )
+            with patch.object(checker, "_validate_snapshot_path_dependencies"), \
+                    patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
+                checker.package_source("cargo", prepared.registry, workspace,
                                        checker.isolated_environment(workspace, checker.load_check_settings(repository)[0]),
-                                       original_fs)
-            self.assertIn(__import__("json").dumps(str(original_fs)),
+                                       prepared.fs)
+            self.assertIn(__import__("json").dumps(str(prepared.fs)),
                           (workspace / "cargo-home/config.toml").read_text())
         self.assertEqual(package_calls[0][1], ["package", "--manifest-path",
-                                                str(workspace / "package-input" / "rs-fs-registry" / "Cargo.toml"),
+                                                str(prepared.registry / "Cargo.toml"),
                                                 "--allow-dirty", "--no-verify"])
 
         for failed_command in [
@@ -233,6 +245,9 @@ qubit-local-files = "0.5.0"
                 calls.append((arguments, cwd, environment, log, timeout_seconds, context))
                 if arguments[-4:] == ["metadata", "--locked", "--format-version", "1"]:
                     metadata_template["packages"][0]["manifest_path"] = str(cwd / "Cargo.toml")
+                    metadata_template["packages"][1]["manifest_path"] = str(
+                        failed_workspace / "package-input" / "rs-fs" / "Cargo.toml"
+                    )
                     return __import__("json").dumps(metadata_template)
                 if arguments == failed_command:
                     raise RuntimeError("doctest failure marker")
@@ -244,6 +259,7 @@ qubit-local-files = "0.5.0"
                 output = StringIO()
                 with patch.object(checker.shutil, "which", return_value="cargo"), \
                         patch.object(checker, "sibling_fs_path", return_value=fs_path), \
+                        patch.object(checker, "_validate_snapshot_path_dependencies"), \
                         patch.object(checker, "package_source", side_effect=make_archive), \
                         patch.object(checker, "run", side_effect=fail_doctest), \
                         redirect_stdout(output):
@@ -603,9 +619,24 @@ qubit-local-files = "0.5.0"
             (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
             subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
             subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
+            fs_local_path = temporary / "rs-fs-local"
+            fs_local_path.mkdir()
+            initialize_git(fs_local_path)
+            (fs_local_path / "Cargo.toml").write_text('[package]\nname="qubit-fs-local"\nversion="0.11.0"\n')
+            subprocess.run(["git", "-C", str(fs_local_path), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(fs_local_path), "commit", "-qm", "inputs"], check=True)
+            local_files_path = temporary / "rs-local-files"
+            local_files_path.mkdir()
+            initialize_git(local_files_path)
+            (local_files_path / "Cargo.toml").write_text('[package]\nname="qubit-local-files"\nversion="0.5.0"\n')
+            subprocess.run(["git", "-C", str(local_files_path), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(local_files_path), "commit", "-qm", "inputs"], check=True)
             workspace = temporary / "isolated"
             workspace.mkdir()
-            snapshot = checker.prepare_package_source(source, workspace, fs_path)
+            prepared = checker.prepare_package_source(
+                source, workspace, fs_path, fs_local_path, local_files_path,
+            )
+            snapshot = prepared.registry
             self.assertEqual(snapshot, workspace / "package-input" / "rs-fs-registry")
             self.assertEqual((snapshot / "src/lib.rs").read_text(), "// embedded source\n")
             self.assertEqual((snapshot / "tests/support/data.txt").read_text(), "support\n")
@@ -620,7 +651,134 @@ qubit-local-files = "0.5.0"
                 '[package]\nname="fixture"\nversion="0.1.0"\n[dependencies]\nother={path="../external"}\n'
             )
             with self.assertRaisesRegex(ValueError, r"unsupported path dependency other: ../external"):
-                checker.prepare_package_source(source, workspace, fs_path)
+                checker.prepare_package_source(source, workspace, fs_path, fs_local_path, local_files_path)
+
+    def test_input_snapshot_records_all_siblings_and_content_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            registry = temporary / "rs-fs-registry"
+            registry.mkdir()
+            initialize_git(registry)
+            (registry / "Cargo.toml").write_text('[package]\nname="qubit-fs-registry"\nversion="0.8.0"\n[dependencies]\nqubit-fs={path="../rs-fs"}\n')
+            (registry / "tracked.txt").write_text("tracked input\n")
+            (registry / "executable.sh").write_text("#!/bin/sh\nexit 0\n")
+            (registry / "executable.sh").chmod(0o755)
+            (registry / "Cargo.lock").write_text("lock input\n")
+            subprocess.run(["git", "-C", str(registry), "add", "Cargo.toml", "tracked.txt", "executable.sh"], check=True)
+            subprocess.run(["git", "-C", str(registry), "commit", "-qm", "registry inputs"], check=True)
+            (registry / "untracked.txt").write_text("untracked input\n")
+            (registry / "ignored.txt").write_text("ignored input\n")
+
+            siblings = make_sibling_sources(temporary)
+            workspace = temporary / "isolated"
+            workspace.mkdir()
+            prepared = checker.prepare_package_source(
+                registry, workspace, siblings["qubit-fs"],
+                siblings["qubit-fs-local"], siblings["qubit-local-files"],
+            )
+            manifest = json.loads((workspace / "input-manifest.json").read_text())
+            records = {record["name"]: record for record in manifest["inputs"]}
+            self.assertEqual(set(records), {
+                "qubit-fs-registry", "qubit-fs", "qubit-fs-local", "qubit-local-files",
+            })
+            record = records["qubit-fs-registry"]
+            self.assertEqual(record["version"], "0.8.0")
+            self.assertEqual(record["source_path"], str(registry.resolve()))
+            self.assertEqual(record["snapshot_path"], str(prepared.registry))
+            self.assertEqual(record["git_head"], subprocess.run(
+                ["git", "-C", str(registry), "rev-parse", "HEAD"], check=True,
+                capture_output=True, text=True,
+            ).stdout.strip())
+            self.assertTrue(record["dirty"])
+            self.assertRegex(record["sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue((prepared.registry / "tracked.txt").is_file())
+            self.assertTrue((prepared.registry / "untracked.txt").is_file())
+            self.assertTrue((prepared.registry / "Cargo.lock").is_file())
+            self.assertTrue((prepared.registry / "executable.sh").stat().st_mode & 0o111)
+            self.assertFalse((prepared.registry / "ignored.txt").exists())
+
+    def test_input_snapshot_rejects_copy_time_changes_and_preserves_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            registry = temporary / "rs-fs-registry"
+            registry.mkdir()
+            initialize_git(registry)
+            (registry / "Cargo.toml").write_text('[package]\nname="qubit-fs-registry"\nversion="0.8.0"\n')
+            subprocess.run(["git", "-C", str(registry), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(registry), "commit", "-qm", "registry inputs"], check=True)
+            siblings = make_sibling_sources(temporary)
+            workspace = temporary / "isolated"
+            workspace.mkdir()
+            original_collect = checker._collect_git_inputs
+            calls = {}
+
+            def mutate_during_copy(root):
+                source_path = Path(root).resolve()
+                calls[source_path] = calls.get(source_path, 0) + 1
+                if source_path == registry.resolve() and calls[source_path] == 3:
+                    (registry / "new-input.txt").write_text("changed while copying\n")
+                return original_collect(root)
+
+            with patch.object(checker, "_collect_git_inputs", side_effect=mutate_during_copy):
+                with self.assertRaisesRegex(ValueError, "changed while snapshotting"):
+                    checker.prepare_package_source(
+                        registry, workspace, siblings["qubit-fs"],
+                        siblings["qubit-fs-local"], siblings["qubit-local-files"],
+                    )
+            manifest_path = workspace / "input-manifest.json"
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue((workspace / "package-input" / "rs-fs-registry").is_dir())
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(len(manifest["inputs"]), 4)
+
+    def test_checker_consumes_snapshots_after_source_changes_and_reports_hashes(self):
+        repository = Path(__file__).parents[2]
+        sibling_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_directory.cleanup)
+        siblings = make_sibling_sources(Path(sibling_directory.name))
+        observed = []
+
+        def package_snapshot(cargo, source, workspace, environment, fs_path):
+            observed.append((source, fs_path, environment["QUBIT_FS_SIBLING_ROOT"]))
+            original_fs_manifest = (fs_path / "Cargo.toml").read_text()
+            (siblings["qubit-fs"] / "Cargo.toml").write_text("source changed after snapshot\n")
+            self.assertNotEqual((source / "Cargo.toml").read_text(), "source changed after snapshot\n")
+            self.assertEqual((fs_path / "Cargo.toml").read_text(), original_fs_manifest)
+            archive = workspace / "target" / "package" / "qubit-fs-registry-0.8.0.crate"
+            archive.parent.mkdir(parents=True)
+            content = b'[package]\nname="qubit-fs-registry"\nversion="0.8.0"\n'
+            with tarfile.open(archive, "w:gz") as output_file:
+                member = tarfile.TarInfo("qubit-fs-registry-0.8.0/Cargo.toml")
+                member.size = len(content)
+                output_file.addfile(member, __import__("io").BytesIO(content))
+
+        def fake_run(_cargo, arguments, cwd, *_args, **_kwargs):
+            if arguments[:3] == ["metadata", "--locked", "--format-version"]:
+                return json.dumps({"packages": [
+                    {"name": "qubit-fs-registry", "source": None,
+                     "manifest_path": str(cwd / "Cargo.toml")},
+                    {"name": "qubit-fs", "version": "0.3.0", "source": None,
+                     "manifest_path": str(Path(cwd).parents[1] / "package-input" / "rs-fs" / "Cargo.toml")},
+                ]})
+            return ""
+
+        output = StringIO()
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(checker.shutil, "which", return_value="cargo"), \
+                patch.object(checker, "sibling_fs_path", return_value=siblings["qubit-fs"]), \
+                patch.object(checker, "_validate_snapshot_path_dependencies"), \
+                patch.object(checker, "package_source", side_effect=package_snapshot), \
+                patch.object(checker, "run", side_effect=fake_run), \
+                redirect_stdout(output):
+            workspace = Path(directory) / "isolated"
+            workspace.mkdir()
+            checker.check(repository, workspace)
+            self.assertEqual(observed[0][0], workspace / "package-input" / "rs-fs-registry")
+            self.assertEqual(observed[0][1], workspace / "package-input" / "rs-fs")
+            self.assertEqual(observed[0][2], str(workspace / "package-input"))
+            self.assertIn("SHA-256", output.getvalue())
+            self.assertIn("0.3.0", output.getvalue())
+            self.assertIn(str(workspace / "package-input" / "rs-fs-local"), output.getvalue())
 
     def test_package_snapshot_rejects_symbolic_links_with_path(self):
         if sys.platform == "win32":
@@ -633,7 +791,10 @@ qubit-local-files = "0.5.0"
             target.write_text("outside")
             (root / "link.txt").symlink_to(target)
             with self.assertRaisesRegex(ValueError, "link.txt"):
-                checker.prepare_package_source(root, Path(directory) / "workspace", Path(directory) / "rs-fs")
+                checker.prepare_package_source(
+                    root, Path(directory) / "workspace", Path(directory) / "rs-fs",
+                    Path(directory) / "rs-fs-local", Path(directory) / "rs-local-files",
+                )
 
     def test_packaging_does_not_overwrite_concurrent_source_lock_on_success_or_failure(self):
         for outcome in ("success", "failure", "timeout"):
@@ -645,12 +806,11 @@ qubit-local-files = "0.5.0"
                 (root / "Cargo.lock").write_text("initial source lock\n")
                 workspace = Path(directory) / "isolated"
                 workspace.mkdir()
-                fs_path = Path(directory) / "rs-fs"
-                fs_path.mkdir()
-                initialize_git(fs_path)
-                (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
-                subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
-                subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
+                siblings = make_sibling_sources(Path(directory) / "siblings")
+                prepared = checker.prepare_package_source(
+                    root, workspace, siblings["qubit-fs"],
+                    siblings["qubit-fs-local"], siblings["qubit-local-files"],
+                )
                 environment = {"CARGO_HOME": str(workspace / "cargo-home")}
 
                 def fake_cargo(_cargo, arguments, *_args, **kwargs):
@@ -666,10 +826,10 @@ qubit-local-files = "0.5.0"
                 expected_error = {"success": None, "failure": "package failed", "timeout": "timed out"}[outcome]
                 if expected_error:
                     with patch.object(checker, "run", side_effect=fake_cargo), self.assertRaisesRegex(RuntimeError, expected_error):
-                        checker.package_source("cargo", root, workspace, environment, fs_path)
+                        checker.package_source("cargo", prepared.registry, workspace, environment, prepared.fs)
                 else:
                     with patch.object(checker, "run", side_effect=fake_cargo):
-                        checker.package_source("cargo", root, workspace, environment, fs_path)
+                        checker.package_source("cargo", prepared.registry, workspace, environment, prepared.fs)
                 self.assertEqual((root / "Cargo.lock").read_text(), "concurrent source update\n")
 
     def test_packaging_keeps_absent_source_lock_absent(self):
@@ -678,17 +838,16 @@ qubit-local-files = "0.5.0"
             root.mkdir()
             initialize_git(root)
             (root / "Cargo.toml").write_text('[package]\nname="fixture"\nversion="0.1.0"\n')
-            fs_path = Path(directory) / "rs-fs"
-            fs_path.mkdir()
-            initialize_git(fs_path)
-            (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
-            subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
-            subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
             workspace = Path(directory) / "isolated"
             workspace.mkdir()
+            siblings = make_sibling_sources(Path(directory) / "siblings")
+            prepared = checker.prepare_package_source(
+                root, workspace, siblings["qubit-fs"],
+                siblings["qubit-fs-local"], siblings["qubit-local-files"],
+            )
             with patch.object(checker, "run", return_value=""):
-                checker.package_source("cargo", root, workspace,
-                                       {"CARGO_HOME": str(workspace / "cargo-home")}, fs_path)
+                checker.package_source("cargo", prepared.registry, workspace,
+                                       {"CARGO_HOME": str(workspace / "cargo-home")}, prepared.fs)
             self.assertFalse((root / "Cargo.lock").exists())
 
     def test_environment_drops_inherited_build_overrides(self):

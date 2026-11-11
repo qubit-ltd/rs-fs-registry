@@ -278,21 +278,33 @@ set. Short guide examples use `rust,no_run`: they compile but are not executed.
 Unknown directives and unclosed fences fail. Programs run in separate working
 directories and prepare their own input files.
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. `published` packages
-a snapshot of Git-tracked and non-ignored untracked inputs and uses the tested archive, sibling
-`qubit-fs` 0.3.0 and `qubit-fs-local` 0.11.0 sources, and sibling `qubit-local-files` 0.5.0 for complete local-provider
-examples. The provider is shimmed to reference the tested archive. Only these
-named sibling paths and the generated Markdown-example crate root are allowed; all other dependencies must come from registries.
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. The published
+checker snapshots the registry and all three sibling inputs before packaging or
+compiling examples: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
+`qubit-local-files` 0.5.0. Snapshots contain Git-tracked and non-ignored
+untracked regular files plus `Cargo.lock`, excluding `.git`, `target`, and
+`.cargo`. Its `input-manifest.json` records package/version, source and snapshot
+paths, Git HEAD, dirty state, and SHA-256 over sorted relative paths, lengths,
+contents, and executable bits. Source inputs are checked before and after
+copying and the destination digest is verified; any copy-time change fails and
+preserves diagnostics. Later changes to source checkouts do not alter that run.
+The tested archive remains the registry package consumed by doctests and the
+provider shim. The checker uses sibling source snapshots to complete local
+provider examples; it does not validate the contents of those packages' crates.io
+releases. Only the named sibling paths, tested archive, and generated
+Markdown-example crate root are allowed; all other dependencies must come from registries.
 Both validate unique fs/registry/spi identities and the local provider's registry edge.
 The sole source of exact sibling versions is
 `[package.metadata.documentation.published-check.sibling-versions]` in `Cargo.toml`;
 the checker rejects missing, extra, or non-exact entries. The Rust toolchain channel
 comes from `rust-toolchain.toml`, also used by CI. From the project root, run
 `python3 scripts/check_published_docs.py .` with Python 3.12 or newer and that toolchain installed. It checks in an isolated
-Cargo environment with the override written only to its isolated Cargo home. On the extracted archive it runs
+Cargo environment with the override written only to its isolated Cargo home. The
+Cargo override, sibling root, graph allowlist, and provider shim all resolve to
+the prepared snapshot tree. On the extracted archive it runs
 `cargo test --locked --doc` and `cargo test --locked --doc --all-features` before the
 Markdown example harness; each command keeps its own diagnostic log. Success output
-reports each allowed sibling path and version. A missing sibling checkout or other unavailable
+reports each sibling version and input digest. A missing sibling checkout or other unavailable
 requirements fail explicitly. Mechanical style and coverage checks do not replace semantic test assertions
 or an item-by-item Rustdoc review.
 

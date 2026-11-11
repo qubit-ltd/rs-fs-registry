@@ -126,6 +126,7 @@ InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造
 相关示例应统一依赖版本。发布前，从项目根目录运行
 `python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0。
 只有同一源码状态的检查成功后才能发布；修改源码、manifest 或示例后必须重新运行。
+检查会在打包前固定 registry 和三个 sibling 源码输入，记录 Git HEAD、dirty 状态、版本及内容 SHA-256；复制期间输入变化会导致失败。归档和示例使用这些快照，因此本检查不能证明 crates.io 对应发布包内容与本地快照一致。
 CI 会在 pull request、推送到 `main` 和手动运行时自动执行此检查。检查失败时不得回退到本地依赖覆盖，应修复问题并重新检查。手动触发 workflow
 也没有跳过该门禁的选项。开发期间带本地补丁的打包成功不能替代这一验证。
 

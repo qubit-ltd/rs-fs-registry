@@ -139,15 +139,26 @@ channel configured in `rust-toolchain.toml`.
 It runs default and all-feature Rustdoc tests on the extracted package archive,
 then checks the Markdown examples, including both complete async-resolution
 appendices. It must succeed for the same source state you intend to publish.
-The check packages a snapshot of Git-tracked and non-ignored untracked inputs. Its sole source of
-the exact sibling versions is `[package.metadata.documentation.published-check.sibling-versions]`
-in `Cargo.toml`; these are `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
-`qubit-local-files` 0.5.0. These required releases are unavailable from crates.io.
-The provider is shimmed
-to reference the tested archive. The graph check allows only these named sibling
-paths, the archive, and the generated Markdown-example crate root; every other dependency must come from a registry. Rerun it after changing source
-files, the manifest, or examples. CI runs it for pull requests, pushes to `main`,
-and manual workflow runs; failures must not fall back to other local overrides.
+The check snapshots the registry and its three sibling inputs (`qubit-fs`,
+`qubit-fs-local`, and `qubit-local-files`) before packaging or compiling examples.
+Each snapshot includes Git-tracked and non-ignored untracked regular files,
+including `Cargo.lock`, while excluding `.git`, `target`, and `.cargo`. The
+`input-manifest.json` records each package version, source and snapshot paths,
+Git HEAD, dirty state, and a SHA-256 digest over sorted relative paths, contents,
+lengths, and executable bits. The checker compares source inputs before and after
+copying and verifies the snapshot digest; a copy-time change fails and retains
+diagnostics. Changes after copying do not change the inputs used by that run.
+The exact sibling versions still come from
+`[package.metadata.documentation.published-check.sibling-versions]` in
+`Cargo.toml`: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
+`qubit-local-files` 0.5.0. The provider shim references the tested archive. This
+checks the archive and examples against fixed sibling source snapshots; it does
+not verify the contents of corresponding crates.io releases. The graph check
+allows only these named sibling paths, the archive, and the generated
+Markdown-example crate root; every other dependency must come from a registry.
+Rerun it after changing source files, the manifest, or examples. CI runs it for
+pull requests, pushes to `main`, and manual workflow runs; failures must not fall
+back to other local overrides.
 
 ## License
 
