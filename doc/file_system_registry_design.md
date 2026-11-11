@@ -278,14 +278,17 @@ set. Short guide examples use `rust,no_run`: they compile but are not executed.
 Unknown directives and unclosed fences fail. Programs run in separate working
 directories and prepare their own input files.
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. `published` uses
-the tested archive, sibling `qubit-fs` 0.3.0 and `qubit-fs-local` 0.11.0
-sources, and sibling `qubit-local-files` 0.5.0 for complete local-provider
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. `published` packages
+a snapshot of Git-tracked and non-ignored untracked inputs and uses the tested archive, sibling
+`qubit-fs` 0.3.0 and `qubit-fs-local` 0.11.0 sources, and sibling `qubit-local-files` 0.5.0 for complete local-provider
 examples. The provider is shimmed to reference the tested archive. Only these
 named sibling paths and the generated Markdown-example crate root are allowed; all other dependencies must come from registries.
 Both validate unique fs/registry/spi identities and the local provider's registry edge.
-From the project root, run `python3 scripts/check_published_docs.py .` with
-Python 3.12 or newer and Rust 1.94.0 installed. It packages and checks in an isolated
+The sole source of exact sibling versions is
+`[package.metadata.documentation.published-check.sibling-versions]` in `Cargo.toml`;
+the checker rejects missing, extra, or non-exact entries. The Rust toolchain channel
+comes from `rust-toolchain.toml`, also used by CI. From the project root, run
+`python3 scripts/check_published_docs.py .` with Python 3.12 or newer and that toolchain installed. It checks in an isolated
 Cargo environment with the override written only to its isolated Cargo home. On the extracted archive it runs
 `cargo test --locked --doc` and `cargo test --locked --doc --all-features` before the
 Markdown example harness; each command keeps its own diagnostic log. Success output

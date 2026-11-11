@@ -490,10 +490,12 @@ README、指南和异步解析附录中的 Rust 代码块是完整程序；六�
 附录中的完整异步程序以 `<!-- registry-example: async -->` 标记，并在最小异步依赖工程中运行。
 指南中的短示例使用 `rust,no_run`：会编译但不执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖；`published` 使用被测归档、sibling `qubit-fs` 0.3.0 与 `qubit-fs-local` 0.11.0 源码，并通过 sibling `qubit-local-files` 0.5.0 运行完整 local-provider 示例。
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖；`published` 会打包 Git 已跟踪及未被忽略的未跟踪源码输入快照，并使用被测归档、sibling `qubit-fs` 0.3.0 与 `qubit-fs-local` 0.11.0 源码，以及 sibling `qubit-local-files` 0.5.0 运行完整 local-provider 示例。
 该 provider 通过 shim 指向被测归档；只允许这些具名 sibling 路径、被测归档和生成的 Markdown 示例 crate 根，其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
-是否引用当前被测 registry。从项目根目录执行 `python3 scripts/check_published_docs.py .`，
-需要 Python 3.12 或更新版本和 Rust 1.94.0，在隔离 Cargo 环境中生成规范化包、解包并验证。
+是否引用当前被测 registry。精确 sibling 版本的唯一来源是 Cargo.toml 中的
+`[package.metadata.documentation.published-check.sibling-versions]`；缺失、多余或非精确版本都会失败。
+Rust 工具链 channel 从 `rust-toolchain.toml` 读取，CI 也使用该配置。从项目根目录执行
+`python3 scripts/check_published_docs.py .`，需要 Python 3.12 或更新版本和该工具链，在隔离 Cargo 环境中生成规范化包、解包并验证。
 它先在同一解包归档上运行 `cargo test --locked --doc` 和
 `cargo test --locked --doc --all-features`，然后执行 Markdown 示例检查；每条命令保留独立诊断日志，并在成功信息中报告各 sibling 路径和版本。
 检查只在隔离 Cargo home 中写入 `qubit-fs` 覆盖，并将 sibling local-provider 源码改写为指向被测归档的 shim；`qubit-local-files` 使用显式 sibling 路径；缺少 sibling checkout 或其他依赖时明确失败。

@@ -8,6 +8,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import stat
@@ -22,7 +23,34 @@ from ctypes import wintypes
 _WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
 
 
-def isolated_environment(workspace: Path) -> dict[str, str]:
+_SIBLING_NAMES = {"qubit-fs", "qubit-fs-local", "qubit-local-files"}
+_EXACT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
+
+def load_check_settings(root: Path) -> tuple[str, dict[str, str]]:
+    """Load and validate the published check's pinned toolchain and sibling packages."""
+    try:
+        toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text())
+        channel = toolchain["toolchain"]["channel"]
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        raise ValueError(f"invalid rust-toolchain.toml [toolchain].channel: {error}") from error
+    if not isinstance(channel, str) or not _EXACT_VERSION.fullmatch(channel):
+        raise ValueError(f"toolchain channel must be an exact three-part version, found {channel!r}")
+    try:
+        manifest = tomllib.loads((root / "Cargo.toml").read_text())
+        versions = manifest["package"]["metadata"]["documentation"]["published-check"]["sibling-versions"]
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        raise ValueError(f"invalid published-check sibling-versions metadata: {error}") from error
+    if not isinstance(versions, dict) or set(versions) != _SIBLING_NAMES:
+        actual = sorted(versions) if isinstance(versions, dict) else type(versions).__name__
+        raise ValueError(f"published-check sibling-versions must contain exactly {sorted(_SIBLING_NAMES)}, found {actual}")
+    for name, version in versions.items():
+        if not isinstance(version, str) or not _EXACT_VERSION.fullmatch(version):
+            raise ValueError(f"published-check sibling version for {name} must be an exact three-part version, found {version!r}")
+    return channel, versions
+
+
+def isolated_environment(workspace: Path, toolchain: str) -> dict[str, str]:
     """Preserve network/tool discovery while discarding Cargo/build overrides."""
     environment = {
         key: value for key, value in os.environ.items()
@@ -34,7 +62,7 @@ def isolated_environment(workspace: Path) -> dict[str, str]:
     environment.update({
         "CARGO_HOME": str(workspace / "cargo-home"),
         "CARGO_TARGET_DIR": str(workspace / "target"),
-        "RUSTUP_TOOLCHAIN": "1.94.0",
+        "RUSTUP_TOOLCHAIN": toolchain,
         "QUBIT_FS_REGISTRY_DOC_DEPS": "published",
         "QUBIT_FS_SIBLING_ROOT": str(workspace / "sibling-root"),
     })
@@ -529,6 +557,7 @@ def package_source(cargo: str, root: Path, workspace: Path, environment: dict[st
 
 def check(root: Path, workspace: Path) -> None:
     """Produce a normalized archive with Cargo, unpack it, and run the shipped examples."""
+    toolchain, expected_versions = load_check_settings(root)
     manifest = tomllib.loads((root / "Cargo.toml").read_text())
     if "patch" in manifest or "replace" in manifest:
         raise ValueError("source manifest has local overrides; published checks cannot use them")
@@ -536,21 +565,21 @@ def check(root: Path, workspace: Path) -> None:
     version = manifest["package"]["version"]
     fs_path = sibling_fs_path(root)
     fs_version = tomllib.loads((fs_path / "Cargo.toml").read_text())["package"]["version"]
-    if fs_version != "0.3.0":
-        raise ValueError(f"expected sibling qubit-fs 0.3.0, found {fs_version}")
+    if fs_version != expected_versions["qubit-fs"]:
+        raise ValueError(f"qubit-fs expected {expected_versions['qubit-fs']}, actual {fs_version}")
     fs_local_path = (fs_path.parent / "rs-fs-local").resolve()
     if not (fs_local_path / "Cargo.toml").is_file():
         raise ValueError(f"required sibling qubit-fs-local path source is missing: {fs_local_path}")
     fs_local_version = tomllib.loads((fs_local_path / "Cargo.toml").read_text())["package"]["version"]
-    if fs_local_version != "0.11.0":
-        raise ValueError(f"expected sibling qubit-fs-local 0.11.0, found {fs_local_version}")
+    if fs_local_version != expected_versions["qubit-fs-local"]:
+        raise ValueError(f"qubit-fs-local expected {expected_versions['qubit-fs-local']}, actual {fs_local_version}")
     local_files_path = (fs_path.parent / "rs-local-files").resolve()
     if not (local_files_path / "Cargo.toml").is_file():
         raise ValueError(f"required sibling qubit-local-files path source is missing: {local_files_path}")
     local_files_version = tomllib.loads((local_files_path / "Cargo.toml").read_text())["package"]["version"]
-    if local_files_version != "0.5.0":
-        raise ValueError(f"expected sibling qubit-local-files 0.5.0, found {local_files_version}")
-    environment = isolated_environment(workspace)
+    if local_files_version != expected_versions["qubit-local-files"]:
+        raise ValueError(f"qubit-local-files expected {expected_versions['qubit-local-files']}, actual {local_files_version}")
+    environment = isolated_environment(workspace, toolchain)
     environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
     configure_qubit_fs_override(environment, fs_path)
     cargo = shutil.which("cargo")

@@ -49,6 +49,61 @@ def initialize_git(root):
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_load_check_settings_reads_exact_toolchain_and_sibling_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.95.2"\n')
+            manifest = root / "Cargo.toml"
+            manifest.write_text("""[package.metadata.documentation.published-check.sibling-versions]
+qubit-fs = "0.4.2"
+qubit-fs-local = "0.12.3"
+qubit-local-files = "0.6.4"
+""")
+            self.assertEqual(checker.load_check_settings(root), ("1.95.2", {
+                "qubit-fs": "0.4.2", "qubit-fs-local": "0.12.3", "qubit-local-files": "0.6.4",
+            }))
+
+    def test_load_check_settings_rejects_invalid_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.94.0"\n')
+            valid = {"qubit-fs": "0.3.0", "qubit-fs-local": "0.11.0", "qubit-local-files": "0.5.0"}
+            for invalid in [
+                {}, {**valid, "other": "1.0.0"}, {**valid, "qubit-fs": ""},
+                {**valid, "qubit-fs": 3}, {**valid, "qubit-fs": "0.3"},
+            ]:
+                (root / "Cargo.toml").write_text("[package.metadata.documentation.published-check.sibling-versions]\n" +
+                    "\n".join(f'{key} = {__import__("json").dumps(value)}' for key, value in invalid.items()))
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    checker.load_check_settings(root)
+            (root / "Cargo.toml").write_text("[package.metadata.documentation.published-check.sibling-versions]\n" +
+                "\n".join(f'{key} = {__import__("json").dumps(value)}' for key, value in valid.items()))
+            for channel in ["", 3, "stable", "1.94"]:
+                (root / "rust-toolchain.toml").write_text(
+                    "[toolchain]\nchannel = " + __import__("json").dumps(channel))
+                with self.subTest(channel=channel), self.assertRaises(ValueError):
+                    checker.load_check_settings(root)
+
+    def test_check_reports_configured_expected_and_actual_sibling_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "registry"
+            root.mkdir()
+            (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.95.2"\n')
+            (root / "Cargo.toml").write_text("""[package]
+name = "qubit-fs-registry"
+version = "0.8.0"
+[package.metadata.documentation.published-check.sibling-versions]
+qubit-fs = "0.4.2"
+qubit-fs-local = "0.11.0"
+qubit-local-files = "0.5.0"
+""")
+            siblings = make_sibling_sources(Path(directory) / "siblings")
+            workspace = Path(directory) / "workspace"
+            workspace.mkdir()
+            with patch.object(checker, "sibling_fs_path", return_value=siblings["qubit-fs"]):
+                with self.assertRaisesRegex(ValueError, r"qubit-fs expected 0\.4\.2, actual 0\.3\.0"):
+                    checker.check(root, workspace)
+
     def test_windows_run_assigns_suspended_process_to_job_before_polling(self):
         events = []
 
@@ -135,7 +190,8 @@ class PublishedDocsTests(unittest.TestCase):
         ])
         extracted = (workspace / "unpacked" / f"{package}-{version}").resolve()
         self.assertTrue(all(call[1] == extracted for call in doctest_calls))
-        expected_environment = checker.isolated_environment(workspace)
+        channel, _ = checker.load_check_settings(repository)
+        expected_environment = checker.isolated_environment(workspace, channel)
         expected_environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
         self.assertTrue(all(call[2] == expected_environment for call in doctest_calls))
         self.assertEqual([call[3].name for call in doctest_calls], [
@@ -152,7 +208,8 @@ class PublishedDocsTests(unittest.TestCase):
             workspace = Path(directory)
             original_fs = checker.sibling_fs_path(repository)
             with patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
-                checker.package_source("cargo", repository, workspace, checker.isolated_environment(workspace),
+                checker.package_source("cargo", repository, workspace,
+                                       checker.isolated_environment(workspace, checker.load_check_settings(repository)[0]),
                                        original_fs)
             self.assertIn(__import__("json").dumps(str(original_fs)),
                           (workspace / "cargo-home/config.toml").read_text())
@@ -630,7 +687,7 @@ class PublishedDocsTests(unittest.TestCase):
 
     def test_environment_drops_inherited_build_overrides(self):
         with patch.dict("os.environ", {"CARGO_HOME": "/old", "CARGO_ENCODED_RUSTFLAGS": "unsafe", "RUSTFLAGS": "unsafe", "CARGO_REGISTRIES_CRATES_IO_INDEX": "local", "RUSTC_WRAPPER": "wrapper"}):
-            env = checker.isolated_environment(Path("/isolated"))
+            env = checker.isolated_environment(Path("/isolated"), "1.94.0")
         self.assertEqual(Path(env["CARGO_HOME"]), Path("/isolated") / "cargo-home")
         self.assertEqual(env["QUBIT_FS_REGISTRY_DOC_DEPS"], "published")
         for key in ["CARGO_ENCODED_RUSTFLAGS", "CARGO_REGISTRIES_CRATES_IO_INDEX", "RUSTFLAGS", "RUSTC_WRAPPER"]:
