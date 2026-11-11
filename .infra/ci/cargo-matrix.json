@@ -8,22 +8,10 @@
       "features": []
     },
     {
-      "name": "async-only",
+      "name": "no-default-features",
       "commands": ["check", "test", "doc"],
       "defaultFeatures": false,
-      "features": ["async"]
-    },
-    {
-      "name": "inventory-only",
-      "commands": ["check", "test", "doc"],
-      "defaultFeatures": false,
-      "features": ["inventory"]
-    },
-    {
-      "name": "async-inventory",
-      "commands": ["check", "test", "doc"],
-      "defaultFeatures": false,
-      "features": ["async", "inventory"]
+      "features": []
     }
   ]
 }
