@@ -7,6 +7,7 @@
 // =============================================================================
 
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::path::PathConstraints;
@@ -72,6 +73,8 @@ fn test_resolution_rejects_unadvertised_canonical_uri_scheme() {
     let error = sync_resolution_with_scheme("resolution-provider", "accepted", "rejected:///resource")
         .expect_err("unadvertised scheme must fail");
     assert_eq!(error.kind(), FsErrorKind::InvalidUri);
+    assert_eq!(error.operation(), FsOperation::Provider);
+    assert_eq!(error.provider(), Some("resolution-provider"));
 }
 
 /// A resolution must come from a filesystem that declares its URI scheme.
@@ -85,4 +88,6 @@ fn test_resolution_rejects_canonical_uri_when_no_scheme_is_advertised() {
     )
     .expect_err("a scheme-less filesystem cannot publish a URI resolution");
     assert_eq!(error.kind(), FsErrorKind::InvalidUri);
+    assert_eq!(error.operation(), FsOperation::Provider);
+    assert_eq!(error.provider(), Some("resolution-provider"));
 }

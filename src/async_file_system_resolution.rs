@@ -87,7 +87,8 @@ impl AsyncFileSystemResolution {
                 FsErrorKind::InvalidUri,
                 FsOperation::Provider,
                 "canonical URI scheme is not supported by the filesystem",
-            ));
+            )
+            .with_provider(p.info().provider_id().to_owned()));
         }
         Ok(Self {
             file_system,
