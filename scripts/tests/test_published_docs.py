@@ -119,7 +119,7 @@ class PublishedDocsTests(unittest.TestCase):
             ["test", "--locked", "--doc"],
             ["test", "--locked", "--doc", "--all-features"],
         ])
-        extracted = workspace / "unpacked" / f"{package}-{version}"
+        extracted = (workspace / "unpacked" / f"{package}-{version}").resolve()
         self.assertTrue(all(call[1] == extracted for call in doctest_calls))
         expected_environment = checker.isolated_environment(workspace)
         expected_environment["QUBIT_FS_SIBLING_ROOT"] = str(fs_path.parent)
