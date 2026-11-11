@@ -114,7 +114,9 @@ class PublishedDocsTests(unittest.TestCase):
                 checker.check(repository, workspace)
 
         doctest_calls = [call for call in calls if "test" in call[0] and "--doc" in call[0]]
-        expected_config = f'[patch.crates-io]\nqubit-fs = {{ path = "{fs_path}" }}\n'
+        expected_config = (
+            f'[patch.crates-io]\nqubit-fs = {{ path = {__import__("json").dumps(str(fs_path))} }}\n'
+        )
         self.assertEqual([call[0] for call in doctest_calls], [
             ["test", "--locked", "--doc"],
             ["test", "--locked", "--doc", "--all-features"],
