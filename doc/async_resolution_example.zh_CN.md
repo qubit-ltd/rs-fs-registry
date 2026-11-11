@@ -3,11 +3,12 @@
 [返回用户指南](user_guide.zh_CN.md) · [English](async_resolution_example.md)
 
 ```bash
+cargo add qubit-fs@0.3 qubit-spi@0.14
 cargo add qubit-fs-registry@0.8 --features async
 cargo add futures@0.3
 ```
 
-这个完整的内存 provider 示例只演示异步创建与解析；由于示例不执行文件 IO，其 SPI 方法会返回不支持错误。`futures` 只提供执行器，不是注册表的运行时依赖。
+示例直接使用文件系统和 SPI API，因此必须显式声明这两个依赖；传递依赖不能代替调用方的直接依赖。文件系统、SPI 和注册表的版本要求以本 package 的 manifest 为准；`futures` 只提供执行器，不是注册表的运行时依赖。这个完整的内存 provider 示例只演示异步创建与解析；由于示例不执行文件 IO，其 SPI 方法会返回不支持错误。
 
 <!-- registry-example: async -->
 ```rust

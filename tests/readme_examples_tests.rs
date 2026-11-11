@@ -62,6 +62,127 @@ fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, S
     (sync_command, local_command, async_command)
 }
 
+fn async_installation_commands(root: &Path, input: &toml::Value) -> Vec<String> {
+    let version = |name: &str| {
+        dependency(root, &input["dependencies"][name], true)["version"]
+            .as_str()
+            .expect("dependency version must be a string")
+            .trim_start_matches('^')
+            .to_owned()
+    };
+    let futures_version = input["package"]["metadata"]["documentation"]["dependencies"]["futures"]["version"]
+        .as_str()
+        .expect("futures documentation version must be a string")
+        .trim_start_matches('^');
+    vec![
+        format!(
+            "cargo add qubit-fs@{} qubit-spi@{}",
+            version("qubit-fs"),
+            version("qubit-spi")
+        ),
+        format!(
+            "cargo add qubit-fs-registry@{} --features async",
+            release_line(input["package"]["version"].as_str().expect("package version"))
+        ),
+        format!("cargo add futures@{futures_version}"),
+    ]
+}
+
+fn first_bash_installation_commands(source: &str) -> Result<Vec<String>, String> {
+    let mut lines = source.lines();
+    if !lines.any(|line| line.trim() == "```bash") {
+        return Err("missing bash installation fence".into());
+    }
+    let mut commands = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            if trimmed != "```" {
+                return Err("malformed bash installation fence".into());
+            }
+            return Ok(commands);
+        }
+        if trimmed.starts_with("cargo add ") {
+            commands.push(trimmed.to_owned());
+        }
+    }
+    Err("unterminated bash installation fence".into())
+}
+
+fn validate_async_installation(source: &str, expected: &[String], document: &str) -> Result<(), String> {
+    let actual = first_bash_installation_commands(source).map_err(|error| format!("{document}: {error}"))?;
+    if actual != expected {
+        return Err(format!(
+            "{document}: installation commands do not match manifest; expected {expected:?}, found {actual:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_async_example_installation_dependencies() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let expected = async_installation_commands(root, &input);
+    for relative in [
+        "doc/async_resolution_example.md",
+        "doc/async_resolution_example.zh_CN.md",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("appendix must be readable");
+        validate_async_installation(&source, &expected, relative).unwrap();
+    }
+
+    for source in ["no bash fence", "```bash\ncargo add x\n", "```bash extra\n```"] {
+        assert!(
+            first_bash_installation_commands(source).is_err(),
+            "must reject {source:?}"
+        );
+    }
+    let mut changed = input.clone();
+    changed["package"]["version"] = toml::Value::String("0.99.1".into());
+    changed["dependencies"]["qubit-fs"]["version"] = toml::Value::String("^0.98".into());
+    changed["dependencies"]["qubit-spi"] = toml::Value::String("^0.99".into());
+    changed["package"]["metadata"]["documentation"]["dependencies"]["futures"]["version"] =
+        toml::Value::String("^0.45".into());
+    assert_eq!(
+        async_installation_commands(root, &changed),
+        [
+            "cargo add qubit-fs@0.98 qubit-spi@0.99",
+            "cargo add qubit-fs-registry@0.99 --features async",
+            "cargo add futures@0.45",
+        ]
+    );
+    for commands in [
+        vec![
+            "cargo add qubit-spi@0.14".to_owned(),
+            expected[1].clone(),
+            expected[2].clone(),
+        ],
+        vec![
+            expected[0].clone(),
+            "cargo add qubit-fs-registry@0.8".into(),
+            expected[2].clone(),
+        ],
+        vec![
+            expected[0].replace("qubit-fs@0.3", "qubit-fs@0.2"),
+            expected[1].clone(),
+            expected[2].clone(),
+        ],
+    ] {
+        let source = format!("```bash\n{}\n```", commands.join("\n"));
+        assert!(
+            validate_async_installation(&source, &expected, "synthetic.md").is_err(),
+            "incomplete or stale installation block must not satisfy the manifest contract"
+        );
+    }
+    let error = validate_async_installation("```bash\ncargo add x\n```", &expected, "fixture.md")
+        .expect_err("dependency omissions must be rejected");
+    assert!(
+        error.contains("fixture.md"),
+        "diagnostic should identify the document: {error}"
+    );
+}
+
 /// Future release lines change documented installation commands automatically.
 #[test]
 fn test_installation_commands_follow_changed_manifest_versions() {
@@ -250,7 +371,7 @@ fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
     )
     .expect("provider manifest");
 
-    let shim = local_provider_manifest(&local, &current, &siblings, &workspace.path().join("shim"));
+    let shim = local_provider_manifest(&local, &current, &siblings, false, &workspace.path().join("shim"));
     let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
     assert_eq!(
         manifest["dependencies"]["qubit-fs-registry"]["path"].as_str(),
@@ -402,6 +523,41 @@ fn test_graph_checks_registry_features() {
     assert!(
         std::panic::catch_unwind(|| check_graph(&duplicate, "qubit-fs-registry", root, GraphOptions::default()))
             .is_err()
+    );
+}
+
+/// Published local-provider shims follow Cargo's path-dependency normalization.
+#[test]
+fn test_published_local_provider_shim_uses_registry_for_versioned_paths() {
+    let workspace = tempfile::tempdir().expect("temporary published shim fixture");
+    let local = workspace.path().join("rs-fs-local");
+    let registry = workspace.path().join("rs-fs-registry");
+    let siblings = workspace.path().join("siblings");
+    std::fs::create_dir_all(local.join("src")).expect("provider source directory");
+    std::fs::create_dir_all(&registry).expect("registry directory");
+    std::fs::create_dir_all(&siblings).expect("sibling directory");
+    std::fs::write(local.join("src/lib.rs"), "pub fn example() {}\n").expect("provider source");
+    std::fs::write(
+        local.join("Cargo.toml"),
+        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[dependencies]\nqubit-redact={path='../rs-redact',version='0.10'}\n",
+    )
+    .expect("provider manifest");
+
+    let shim = local_provider_manifest(
+        &local,
+        &registry,
+        &siblings,
+        true,
+        &workspace.path().join("published-shim"),
+    );
+    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
+    assert_eq!(
+        manifest["dependencies"]["qubit-redact"]["version"].as_str(),
+        Some("0.10")
+    );
+    assert!(
+        manifest["dependencies"]["qubit-redact"].get("path").is_none(),
+        "published versioned dependencies should resolve from crates.io"
     );
 }
 

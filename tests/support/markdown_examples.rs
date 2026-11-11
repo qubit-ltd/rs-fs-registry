@@ -283,6 +283,7 @@ pub(crate) fn local_provider_manifest(
     local_provider: &Path,
     registry: &Path,
     sibling_root: &Path,
+    published: bool,
     destination: &Path,
 ) -> PathBuf {
     let local_root = local_provider.canonicalize().expect("local provider must exist");
@@ -292,7 +293,7 @@ pub(crate) fn local_provider_manifest(
     let scopes = manifest.as_table_mut().expect("local provider manifest table");
     for name in ["dependencies", "build-dependencies"] {
         if let Some(dependencies) = scopes.get_mut(name).and_then(Value::as_table_mut) {
-            rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root);
+            rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root, published);
         }
     }
     if let Some(targets) = scopes.get_mut("target").and_then(Value::as_table_mut) {
@@ -302,7 +303,7 @@ pub(crate) fn local_provider_manifest(
             };
             for name in ["dependencies", "build-dependencies"] {
                 if let Some(dependencies) = target.get_mut(name).and_then(Value::as_table_mut) {
-                    rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root);
+                    rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root, published);
                 }
             }
         }
@@ -339,7 +340,13 @@ pub(crate) fn local_provider_manifest(
     manifest_path
 }
 
-fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, registry: &Path, sibling_root: &Path) {
+fn rewrite_local_provider_paths(
+    dependencies: &mut Table,
+    local_root: &Path,
+    registry: &Path,
+    sibling_root: &Path,
+    published: bool,
+) {
     for (name, dependency) in dependencies {
         let Some(declaration) = dependency.as_table_mut() else {
             continue;
@@ -347,6 +354,19 @@ fn rewrite_local_provider_paths(dependencies: &mut Table, local_root: &Path, reg
         let Some(path) = declaration.get("path").and_then(Value::as_str) else {
             continue;
         };
+        if published
+            && !matches!(
+                name.as_str(),
+                "qubit-fs-registry" | "qubit-fs" | "qubit-fs-local" | "qubit-local-files"
+            )
+        {
+            assert!(
+                declaration.contains_key("version"),
+                "published local-provider path dependency `{name}` needs a registry version"
+            );
+            declaration.remove("path");
+            continue;
+        }
         let resolved = match name.as_str() {
             "qubit-fs-registry" => registry.to_path_buf(),
             "qubit-fs" => sibling_root.join("rs-fs"),
@@ -681,6 +701,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                                 .as_deref()
                                 .or_else(|| root.parent())
                                 .expect("sibling root is required for local provider shim"),
+                            published,
                             &workspace.path().join("local-provider-shim"),
                         );
                         let shim_dir = shim.parent().expect("shim manifest has a parent");
