@@ -776,7 +776,10 @@ qubit-local-files = "0.5.0"
             self.assertEqual(observed[0][0], workspace / "package-input" / "rs-fs-registry")
             self.assertEqual(observed[0][1], workspace / "package-input" / "rs-fs")
             self.assertEqual(observed[0][2], str(workspace / "package-input"))
-            self.assertIn("SHA-256", output.getvalue())
+            self.assertIn("inputs: qubit-fs-registry=", output.getvalue())
+            self.assertIn("dirty=", output.getvalue())
+            self.assertIn("sha256=", output.getvalue())
+            self.assertRegex(output.getvalue(), r"@[0-9a-f]{40} dirty=(true|false) sha256=[0-9a-f]{64}")
             self.assertIn("0.3.0", output.getvalue())
             self.assertIn(str(workspace / "package-input" / "rs-fs-local"), output.getvalue())
 

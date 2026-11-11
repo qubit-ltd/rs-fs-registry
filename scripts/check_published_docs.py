@@ -710,12 +710,16 @@ def check(root: Path, workspace: Path) -> None:
         context="Cargo published all-feature doctests")
     run(cargo, ["test", "--locked", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"], extracted, environment,
         workspace / "examples.log", timeout_seconds=3600, context="Cargo published examples")
+    provenance = "; ".join(
+        f"{record['name']}={record['version']}@{record['git_head']} "
+        f"dirty={str(record['dirty']).lower()} sha256={record['sha256']}"
+        for record in prepared.records
+    )
     print(f"Published archive and examples verified: {package} {version} "
           f"(fixed sibling snapshots: qubit-fs {fs_version}, qubit-fs-local {fs_local_version}, "
           f"qubit-local-files {local_files_version}; snapshot paths: "
           f"{', '.join(record['name'] + '=' + record['snapshot_path'] for record in prepared.records)}; "
-          f"all checks use the prepared snapshots; "
-          f"input SHA-256: {', '.join(record['name'] + '=' + record['sha256'] for record in prepared.records)})")
+          f"all checks use the prepared snapshots; inputs: {provenance})")
 
 
 def main() -> int:
