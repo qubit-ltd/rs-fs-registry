@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tarfile
@@ -435,20 +436,84 @@ def sibling_fs_path(root: Path) -> Path:
     raise ValueError(f"required sibling qubit-fs path override is missing above {root}")
 
 
+def _copy_git_inputs(root: Path, destination: Path) -> None:
+    """Copy the current Git-visible regular files, excluding local Cargo/build state."""
+    root = root.resolve()
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    destination.mkdir(parents=True, exist_ok=True)
+    paths = set(filter(None, result.stdout.decode("utf-8", errors="surrogateescape").split("\0")))
+    paths.add("Cargo.lock")
+    for name in sorted(paths):
+        relative = Path(name)
+        if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+            raise ValueError(f"invalid Git input path: {name}")
+        if any(part in {".git", "target", ".cargo"} for part in relative.parts):
+            continue
+        source = root / relative
+        cursor = root
+        for part in relative.parts:
+            cursor /= part
+            if cursor.is_symlink():
+                raise ValueError(f"symbolic link in package input: {relative}")
+        if not source.exists():  # A tracked file may have been deleted in the working tree.
+            continue
+        if not source.is_file():
+            continue
+        mode = source.stat().st_mode
+        if not stat.S_ISREG(mode):
+            raise ValueError(f"non-regular package input: {relative}")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def _validate_snapshot_path_dependencies(source: Path, snapshot: Path, fs_source: Path,
+                                         fs_snapshot: Path) -> None:
+    """Require every source path dependency to map to the prepared sibling layout."""
+    manifest = tomllib.loads((source / "Cargo.toml").read_text())
+    expected = (snapshot.parent / "rs-fs").resolve()
+    scopes = [manifest, *manifest.get("target", {}).values()]
+    if isinstance(manifest.get("workspace"), dict):
+        scopes.append({"dependencies": manifest["workspace"].get("dependencies", {})})
+    for scope in scopes:
+        for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+            for name, dependency in scope.get(section, {}).items():
+                if not isinstance(dependency, dict) or "path" not in dependency:
+                    continue
+                path = (source / dependency["path"]).resolve()
+                if name != "qubit-fs" or path != fs_source.resolve() or expected != fs_snapshot.resolve():
+                    raise ValueError(f"unsupported path dependency {name}: {dependency['path']}")
+
+
+def prepare_package_source(root: Path, workspace: Path, fs_path: Path) -> Path:
+    """Create an isolated, current-input snapshot for Cargo packaging."""
+    package_root = workspace / "package-input"
+    snapshot = package_root / "rs-fs-registry"
+    fs_snapshot = package_root / "rs-fs"
+    _copy_git_inputs(root, snapshot)
+    _copy_git_inputs(fs_path, fs_snapshot)
+    _validate_snapshot_path_dependencies(root, snapshot, fs_path, fs_snapshot)
+    _validate_snapshot_path_dependencies(fs_path, fs_snapshot, fs_path, fs_snapshot)
+    return snapshot
+
+
 def package_source(cargo: str, root: Path, workspace: Path, environment: dict[str, str],
                    fs_path: Path) -> None:
     """Package a source manifest without discovering Cargo config above it."""
     command_cwd = workspace / "cargo-command"
     command_cwd.mkdir()
-    lockfile = root / "Cargo.lock"
-    original_lockfile = lockfile.read_bytes() if lockfile.exists() else None
+    package_root = prepare_package_source(root, workspace, fs_path)
+    configure_qubit_fs_override(environment, package_root.parent / "rs-fs")
     try:
         run(
             cargo,
             [
                 "package",
                 "--manifest-path",
-                str(root / "Cargo.toml"),
+                str(package_root / "Cargo.toml"),
                 "--allow-dirty",
                 "--no-verify",
             ],
@@ -459,10 +524,7 @@ def package_source(cargo: str, root: Path, workspace: Path, environment: dict[st
             context="Cargo package",
         )
     finally:
-        if original_lockfile is None:
-            lockfile.unlink(missing_ok=True)
-        elif not lockfile.exists() or lockfile.read_bytes() != original_lockfile:
-            lockfile.write_bytes(original_lockfile)
+        configure_qubit_fs_override(environment, fs_path)
 
 
 def check(root: Path, workspace: Path) -> None:

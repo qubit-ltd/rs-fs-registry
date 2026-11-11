@@ -29,11 +29,23 @@ def make_sibling_sources(root):
     for directory, (name, version) in packages.items():
         package_path = root / directory
         package_path.mkdir(parents=True)
+        initialize_git(package_path)
         (package_path / "Cargo.toml").write_text(
             f"[package]\nname = '{name}'\nversion = '{version}'\n"
         )
+        subprocess.run(["git", "-C", str(package_path), "add", "Cargo.toml"], check=True)
+        subprocess.run(["git", "-C", str(package_path), "commit", "-qm", "inputs"], check=True)
         paths[name] = package_path
     return paths
+
+
+def initialize_git(root):
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
+    (root / ".gitignore").write_text("ignored.txt\ntarget/\n.cargo/\n")
+    subprocess.run(["git", "-C", str(root), "add", ".gitignore"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "fixture"], check=True)
 
 
 class PublishedDocsTests(unittest.TestCase):
@@ -138,11 +150,15 @@ class PublishedDocsTests(unittest.TestCase):
         package_calls = []
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
+            original_fs = checker.sibling_fs_path(repository)
             with patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
                 checker.package_source("cargo", repository, workspace, checker.isolated_environment(workspace),
-                                       fs_path)
+                                       original_fs)
+            self.assertIn(__import__("json").dumps(str(original_fs)),
+                          (workspace / "cargo-home/config.toml").read_text())
         self.assertEqual(package_calls[0][1], ["package", "--manifest-path",
-                                                str(repository / "Cargo.toml"), "--allow-dirty", "--no-verify"])
+                                                str(workspace / "package-input" / "rs-fs-registry" / "Cargo.toml"),
+                                                "--allow-dirty", "--no-verify"])
 
         for failed_command in [
             ["test", "--locked", "--doc"],
@@ -497,56 +513,120 @@ class PublishedDocsTests(unittest.TestCase):
         workflow = (repository / ".github/workflows/ci.yml").read_text()
         self.assertNotIn("verify_published_dependencies", workflow)
 
-    def test_packaging_uses_isolated_cwd_when_source_has_parent_cargo_config(self):
+    def test_package_snapshot_uses_git_inputs_and_supported_path_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
-            source = temporary / "user" / "project"
-            source.mkdir(parents=True)
-            cargo_config = temporary / ".cargo"
-            cargo_config.mkdir()
-            (cargo_config / "config.toml").write_text("[build]\ntarget-dir = 'inherited'\n")
+            source = temporary / "project"
+            source.mkdir()
+            initialize_git(source)
+            (source / "Cargo.toml").write_text('[package]\nname="fixture"\nversion="0.1.0"\n[dependencies]\nqubit-fs={path="../rs-fs"}\n')
+            (source / "src").mkdir()
+            (source / "src/lib.rs").write_text("// embedded source\n")
+            (source / "tests/support").mkdir(parents=True)
+            (source / "tests/support/data.txt").write_text("support\n")
+            (source / "ignored.txt").write_text("ignored\n")
+            (source / "target").mkdir()
+            (source / "target/build.txt").write_text("build\n")
+            (source / ".cargo").mkdir()
+            (source / ".cargo/config.toml").write_text("[build]\ntarget-dir='unsafe'\n")
+            (source / "gone.txt").write_text("tracked then removed\n")
+            subprocess.run(["git", "-C", str(source), "add", "Cargo.toml", "src", "tests", "gone.txt"], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-qm", "inputs"], check=True)
+            (source / "gone.txt").unlink()
+            (source / "untracked.txt").write_text("include me\n")
+            fs_path = temporary / "rs-fs"
+            fs_path.mkdir()
+            initialize_git(fs_path)
+            (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
+            subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
             workspace = temporary / "isolated"
             workspace.mkdir()
-            environment = {"CARGO_HOME": str(workspace / "cargo-home")}
-
-            with patch.object(checker, "run", return_value="") as run:
-                fs_path = temporary / "rs-fs"
-                checker.package_source("cargo", source, workspace, environment, fs_path)
-
-            command_cwd = workspace / "cargo-command"
-            self.assertTrue(command_cwd.is_dir())
-            run.assert_called_once_with(
-                "cargo",
-                [
-                    "package",
-                    "--manifest-path",
-                    str(source / "Cargo.toml"),
-                    "--allow-dirty",
-                    "--no-verify",
-                ],
-                command_cwd,
-                environment,
-                workspace / "package.log",
-                timeout_seconds=900,
-                context="Cargo package",
+            snapshot = checker.prepare_package_source(source, workspace, fs_path)
+            self.assertEqual(snapshot, workspace / "package-input" / "rs-fs-registry")
+            self.assertEqual((snapshot / "src/lib.rs").read_text(), "// embedded source\n")
+            self.assertEqual((snapshot / "tests/support/data.txt").read_text(), "support\n")
+            self.assertEqual((snapshot / "untracked.txt").read_text(), "include me\n")
+            self.assertFalse((snapshot / "gone.txt").exists())
+            self.assertFalse((snapshot / "ignored.txt").exists())
+            self.assertFalse((snapshot / "target").exists())
+            self.assertFalse((snapshot / ".cargo").exists())
+            self.assertEqual((snapshot.parent / "rs-fs/Cargo.toml").read_text(), (fs_path / "Cargo.toml").read_text())
+            self.assertEqual((snapshot / "Cargo.toml").read_text().count('path="../rs-fs"'), 1)
+            (source / "Cargo.toml").write_text(
+                '[package]\nname="fixture"\nversion="0.1.0"\n[dependencies]\nother={path="../external"}\n'
             )
+            with self.assertRaisesRegex(ValueError, r"unsupported path dependency other: ../external"):
+                checker.prepare_package_source(source, workspace, fs_path)
 
-    def test_packaging_restores_source_lockfile_after_path_override_resolution(self):
+    def test_package_snapshot_rejects_symbolic_links_with_path(self):
+        if sys.platform == "win32":
+            self.skipTest("symlink creation may require elevated privileges on Windows")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "project"
             root.mkdir()
-            lockfile = root / "Cargo.lock"
-            lockfile.write_text("source lock contents\n")
+            initialize_git(root)
+            target = Path(directory) / "outside.txt"
+            target.write_text("outside")
+            (root / "link.txt").symlink_to(target)
+            with self.assertRaisesRegex(ValueError, "link.txt"):
+                checker.prepare_package_source(root, Path(directory) / "workspace", Path(directory) / "rs-fs")
+
+    def test_packaging_does_not_overwrite_concurrent_source_lock_on_success_or_failure(self):
+        for outcome in ("success", "failure", "timeout"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "project"
+                root.mkdir()
+                initialize_git(root)
+                (root / "Cargo.toml").write_text('[package]\nname="fixture"\nversion="0.1.0"\n')
+                (root / "Cargo.lock").write_text("initial source lock\n")
+                workspace = Path(directory) / "isolated"
+                workspace.mkdir()
+                fs_path = Path(directory) / "rs-fs"
+                fs_path.mkdir()
+                initialize_git(fs_path)
+                (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
+                subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
+                subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
+                environment = {"CARGO_HOME": str(workspace / "cargo-home")}
+
+                def fake_cargo(_cargo, arguments, *_args, **kwargs):
+                    manifest = Path(arguments[arguments.index("--manifest-path") + 1])
+                    self.assertNotEqual(manifest.parent.resolve(), root.resolve())
+                    (manifest.parent / "Cargo.lock").write_text("generated snapshot lock\n")
+                    (root / "Cargo.lock").write_text("concurrent source update\n")
+                    if outcome == "failure":
+                        raise RuntimeError("package failed")
+                    if outcome == "timeout":
+                        raise RuntimeError("Cargo package timed out")
+
+                expected_error = {"success": None, "failure": "package failed", "timeout": "timed out"}[outcome]
+                if expected_error:
+                    with patch.object(checker, "run", side_effect=fake_cargo), self.assertRaisesRegex(RuntimeError, expected_error):
+                        checker.package_source("cargo", root, workspace, environment, fs_path)
+                else:
+                    with patch.object(checker, "run", side_effect=fake_cargo):
+                        checker.package_source("cargo", root, workspace, environment, fs_path)
+                self.assertEqual((root / "Cargo.lock").read_text(), "concurrent source update\n")
+
+    def test_packaging_keeps_absent_source_lock_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            root.mkdir()
+            initialize_git(root)
+            (root / "Cargo.toml").write_text('[package]\nname="fixture"\nversion="0.1.0"\n')
+            fs_path = Path(directory) / "rs-fs"
+            fs_path.mkdir()
+            initialize_git(fs_path)
+            (fs_path / "Cargo.toml").write_text('[package]\nname="qubit-fs"\nversion="0.3.0"\n')
+            subprocess.run(["git", "-C", str(fs_path), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(fs_path), "commit", "-qm", "inputs"], check=True)
             workspace = Path(directory) / "isolated"
             workspace.mkdir()
-
-            def mutate_lockfile(*args, **kwargs):
-                lockfile.write_text("Cargo package patch metadata\n")
-
-            with patch.object(checker, "run", side_effect=mutate_lockfile):
-                checker.package_source("cargo", root, workspace, {"CARGO_HOME": str(workspace / "cargo-home")},
-                                       Path(directory) / "rs-fs")
-            self.assertEqual(lockfile.read_text(), "source lock contents\n")
+            with patch.object(checker, "run", return_value=""):
+                checker.package_source("cargo", root, workspace,
+                                       {"CARGO_HOME": str(workspace / "cargo-home")}, fs_path)
+            self.assertFalse((root / "Cargo.lock").exists())
 
     def test_environment_drops_inherited_build_overrides(self):
         with patch.dict("os.environ", {"CARGO_HOME": "/old", "CARGO_ENCODED_RUSTFLAGS": "unsafe", "RUSTFLAGS": "unsafe", "CARGO_REGISTRIES_CRATES_IO_INDEX": "local", "RUSTC_WRAPPER": "wrapper"}):
