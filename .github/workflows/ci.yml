@@ -47,8 +47,29 @@ jobs:
           python-version: '3.12'
       - name: Install the documented Rust toolchain
         run: rustup toolchain install 1.94.0 --profile minimal
+      - name: Prepare pinned sibling path dependencies
+        run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Verify isolated published documentation
         run: python3 scripts/check_published_docs.py .
+
+  windows-process-cleanup:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the documented Rust toolchain
+        run: rustup toolchain install 1.94.0 --profile minimal
+      - name: Prepare pinned sibling path dependencies
+        run: ./.infra/bin/prepare-local-path-dependencies.sh
+      - name: Run published checker tests on Windows
+        run: python -B -m unittest discover -s scripts/tests -v
+      - name: Verify archive doctests and examples with Windows process cleanup
+        run: python scripts/check_published_docs.py .
 
   prepare-feature-matrix:
     runs-on: ubuntu-latest

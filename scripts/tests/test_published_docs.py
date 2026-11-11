@@ -18,6 +18,24 @@ checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
 
 
+def make_sibling_sources(root):
+    root = Path(root)
+    packages = {
+        "rs-fs": ("qubit-fs", "0.3.0"),
+        "rs-fs-local": ("qubit-fs-local", "0.11.0"),
+        "rs-local-files": ("qubit-local-files", "0.5.0"),
+    }
+    paths = {}
+    for directory, (name, version) in packages.items():
+        package_path = root / directory
+        package_path.mkdir(parents=True)
+        (package_path / "Cargo.toml").write_text(
+            f"[package]\nname = '{name}'\nversion = '{version}'\n"
+        )
+        paths[name] = package_path
+    return paths
+
+
 class PublishedDocsTests(unittest.TestCase):
     def test_check_runs_both_doctest_modes_from_the_extracted_archive(self):
         repository = Path(__file__).parents[2]
@@ -34,11 +52,15 @@ class PublishedDocsTests(unittest.TestCase):
                 member.size = len(content)
                 output.addfile(member, __import__("io").BytesIO(content))
 
+        sibling_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_directory.cleanup)
+        sibling_sources = make_sibling_sources(Path(sibling_directory.name))
+        fs_path = sibling_sources["qubit-fs"]
         metadata_template = {
             "packages": [
                 {"name": package, "source": None},
                 {"name": "qubit-fs", "version": "0.3.0", "source": None,
-                 "manifest_path": str(checker.sibling_fs_path(repository) / "Cargo.toml")},
+                 "manifest_path": str(fs_path / "Cargo.toml")},
             ],
         }
         calls = []
@@ -58,12 +80,12 @@ class PublishedDocsTests(unittest.TestCase):
             workspace = Path(directory) / "isolated"
             workspace.mkdir()
             with patch.object(checker.shutil, "which", return_value="cargo"), \
+                    patch.object(checker, "sibling_fs_path", return_value=fs_path), \
                     patch.object(checker, "package_source", side_effect=make_archive), \
                     patch.object(checker, "run", side_effect=record_run):
                 checker.check(repository, workspace)
 
         doctest_calls = [call for call in calls if "test" in call[0] and "--doc" in call[0]]
-        fs_path = checker.sibling_fs_path(repository)
         expected_config = f'[patch.crates-io]\nqubit-fs = {{ path = "{fs_path}" }}\n'
         self.assertEqual([call[0] for call in doctest_calls], [
             ["test", "--locked", "--doc"],
@@ -112,6 +134,7 @@ class PublishedDocsTests(unittest.TestCase):
                 failed_workspace.mkdir()
                 output = StringIO()
                 with patch.object(checker.shutil, "which", return_value="cargo"), \
+                        patch.object(checker, "sibling_fs_path", return_value=fs_path), \
                         patch.object(checker, "package_source", side_effect=make_archive), \
                         patch.object(checker, "run", side_effect=fail_doctest), \
                         redirect_stdout(output):
@@ -516,10 +539,12 @@ class PublishedDocsTests(unittest.TestCase):
 
     def test_graph_rejects_duplicate_versions_and_wrong_sources(self):
         root = Path("/isolated/package")
-        repository = Path(__file__).parents[2]
-        fs_path = checker.sibling_fs_path(repository)
-        fs_local_path = fs_path.parent / "rs-fs-local"
-        local_files_path = fs_path.parent / "rs-local-files"
+        sibling_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_directory.cleanup)
+        sibling_sources = make_sibling_sources(Path(sibling_directory.name))
+        fs_path = sibling_sources["qubit-fs"]
+        fs_local_path = sibling_sources["qubit-fs-local"]
+        local_files_path = sibling_sources["qubit-local-files"]
         allowed_paths = {
             "qubit-fs": fs_path,
             "qubit-fs-local": fs_local_path,

@@ -1,1 +1,4 @@
-# relative git root<TAB>repository URL<TAB>default branch
+# relative git root<TAB>repository URL<TAB>commit SHA or default branch
+../rs-fs	https://github.com/qubit-ltd/rs-fs.git	dfe07b71c16f238dbae7f89aa8e7f3d73a11119c
+../rs-fs-local	https://github.com/qubit-ltd/rs-fs-local.git	6ec43532467c739f984c5d6f1c69366bb478fc4f
+../rs-local-files	https://github.com/qubit-ltd/rs-local-files.git	f03ebf92c928e90ad812a3127d7ffb6e3b705534

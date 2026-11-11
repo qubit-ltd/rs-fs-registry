@@ -64,11 +64,11 @@
     },
     ".infra/ci/cargo-matrix.json": {
       "executable": false,
-      "sha256": "adc0973292e2ae3115d7939ea737eb72207115100defac930f5b673024a3e1a7"
+      "sha256": "f5d1af05adceddf638aace2b0c06c250b385b9166bb6290c98cfb39cdfff163d"
     },
     ".infra/ci/local-path-dependencies.tsv": {
       "executable": false,
-      "sha256": "cad0e7751664de89655111c4b859fe19d14940e755b4cca2ff6901cb1eaee52a"
+      "sha256": "eedb6e05e31524573ccc99c0ef7187262820168ec170d7c632f3816bb9faecc4"
     },
     ".infra/dependency/policy.toml": {
       "executable": false,
