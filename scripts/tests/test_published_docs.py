@@ -684,7 +684,7 @@ qubit-local-files = "0.5.0"
             record = records["qubit-fs-registry"]
             self.assertEqual(record["version"], "0.8.0")
             self.assertEqual(record["source_path"], str(registry.resolve()))
-            self.assertEqual(record["snapshot_path"], str(prepared.registry))
+            self.assertTrue(Path(record["snapshot_path"]).samefile(prepared.registry))
             self.assertEqual(record["git_head"], subprocess.run(
                 ["git", "-C", str(registry), "rev-parse", "HEAD"], check=True,
                 capture_output=True, text=True,
@@ -781,7 +781,11 @@ qubit-local-files = "0.5.0"
             self.assertIn("sha256=", output.getvalue())
             self.assertRegex(output.getvalue(), r"@[0-9a-f]{40} dirty=(true|false) sha256=[0-9a-f]{64}")
             self.assertIn("0.3.0", output.getvalue())
-            self.assertIn(str(workspace / "package-input" / "rs-fs-local"), output.getvalue())
+            snapshot_paths = output.getvalue().split("snapshot paths: ", 1)[1].split("; all checks", 1)[0]
+            reported_paths = dict(item.split("=", 1) for item in snapshot_paths.split(", "))
+            self.assertTrue(Path(reported_paths["qubit-fs-local"]).samefile(
+                workspace / "package-input" / "rs-fs-local"
+            ))
 
     def test_package_snapshot_rejects_symbolic_links_with_path(self):
         if sys.platform == "win32":
