@@ -206,9 +206,15 @@ qubit-local-files = "0.5.0"
         package_calls = []
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
-            original_fs = checker.sibling_fs_path(repository)
+            package_repository = Path(sibling_directory.name) / "rs-fs-registry"
+            package_repository.mkdir()
+            initialize_git(package_repository)
+            (package_repository / "Cargo.toml").write_text((repository / "Cargo.toml").read_text())
+            subprocess.run(["git", "-C", str(package_repository), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(package_repository), "commit", "-qm", "package inputs"], check=True)
+            original_fs = fs_path
             with patch.object(checker, "run", side_effect=lambda *args, **kwargs: package_calls.append(args)):
-                checker.package_source("cargo", repository, workspace,
+                checker.package_source("cargo", package_repository, workspace,
                                        checker.isolated_environment(workspace, checker.load_check_settings(repository)[0]),
                                        original_fs)
             self.assertIn(__import__("json").dumps(str(original_fs)),
