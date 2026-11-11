@@ -1,6 +1,7 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -665,6 +666,7 @@ qubit-local-files = "0.5.0"
             (registry / "executable.sh").chmod(0o755)
             (registry / "Cargo.lock").write_text("lock input\n")
             subprocess.run(["git", "-C", str(registry), "add", "Cargo.toml", "tracked.txt", "executable.sh"], check=True)
+            subprocess.run(["git", "-C", str(registry), "update-index", "--chmod=+x", "executable.sh"], check=True)
             subprocess.run(["git", "-C", str(registry), "commit", "-qm", "registry inputs"], check=True)
             (registry / "untracked.txt").write_text("untracked input\n")
             (registry / "ignored.txt").write_text("ignored input\n")
@@ -694,7 +696,9 @@ qubit-local-files = "0.5.0"
             self.assertTrue((prepared.registry / "tracked.txt").is_file())
             self.assertTrue((prepared.registry / "untracked.txt").is_file())
             self.assertTrue((prepared.registry / "Cargo.lock").is_file())
-            self.assertTrue((prepared.registry / "executable.sh").stat().st_mode & 0o111)
+            self.assertTrue(checker._collect_git_inputs(registry)["executable.sh"][1])
+            if os.name != "nt":
+                self.assertTrue((prepared.registry / "executable.sh").stat().st_mode & 0o111)
             self.assertFalse((prepared.registry / "ignored.txt").exists())
 
     def test_input_snapshot_rejects_copy_time_changes_and_preserves_evidence(self):

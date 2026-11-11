@@ -474,6 +474,14 @@ def _collect_git_inputs(root: Path) -> dict[str, tuple[bytes, bool]]:
         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     paths = set(filter(None, result.stdout.decode("utf-8", errors="surrogateescape").split("\0")))
+    staged = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--stage", "-z"],
+        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    indexed_executable = {}
+    for entry in filter(None, staged.stdout.decode("utf-8", errors="surrogateescape").split("\0")):
+        metadata, indexed_name = entry.split("\t", 1)
+        indexed_executable[indexed_name] = metadata.startswith("100755 ")
     paths.add("Cargo.lock")
     inputs = {}
     for name in sorted(paths):
@@ -496,7 +504,9 @@ def _collect_git_inputs(root: Path) -> dict[str, tuple[bytes, bool]]:
         if not stat.S_ISREG(mode):
             raise ValueError(f"non-regular package input: {relative}")
         inputs[relative.as_posix()] = (
-            source.read_bytes(), bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)),
+            source.read_bytes(),
+            bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+            or indexed_executable.get(relative.as_posix(), False),
         )
     return inputs
 
@@ -542,7 +552,9 @@ def _copy_git_inputs(root: Path, destination: Path, expected_digest: str) -> Non
             raise ValueError(f"snapshot input missing or non-regular: {target}")
         mode = target.stat().st_mode
         snapshot_inputs[name] = (
-            target.read_bytes(), bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)),
+            target.read_bytes(),
+            before[name][1] if os.name == "nt" else
+            bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)),
         )
     snapshot_files = {
         path.relative_to(destination).as_posix()
