@@ -18,6 +18,8 @@ import time
 import tomllib
 from ctypes import wintypes
 
+_WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
+
 
 def isolated_environment(workspace: Path) -> dict[str, str]:
     """Preserve network/tool discovery while discarding Cargo/build overrides."""
@@ -62,9 +64,10 @@ def validate_graph(metadata: dict, package: str, root: Path,
         name = entry["name"]
         if entry.get("source") is None:
             manifest_path = Path(entry["manifest_path"]).resolve()
-            if name == package and manifest_path == root / "Cargo.toml":
+            if name == package and manifest_path == (root / "Cargo.toml").resolve():
                 pass
-            elif name in allowed_local_paths and manifest_path == allowed_local_paths[name] / "Cargo.toml":
+            elif (name in allowed_local_paths
+                  and manifest_path == (allowed_local_paths[name] / "Cargo.toml").resolve()):
                 sibling_manifest = tomllib.loads((allowed_local_paths[name] / "Cargo.toml").read_text())
                 if entry.get("version") != sibling_manifest["package"]["version"]:
                     raise ValueError(f"{name} path override resolved an unexpected version")
@@ -322,7 +325,7 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
             if os.name == "nt":
                 process = subprocess.Popen(command, cwd=cwd, env=environment, text=True,
                                            stdout=stdout, stderr=stderr,
-                                           creationflags=subprocess.CREATE_SUSPENDED)
+                                           creationflags=_WIN32_CREATE_SUSPENDED)
                 tree_job = _configure_windows_job(_windows_job_functions(), process)
             else:
                 process = subprocess.Popen(command, cwd=cwd, env=environment, text=True,
@@ -496,12 +499,13 @@ def check(root: Path, workspace: Path) -> None:
     archive = workspace / "target" / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
+    unpacked_root = unpacked.resolve()
     with tarfile.open(archive) as source:
         for member in source.getmembers():
-            destination = (unpacked / member.name).resolve()
-            if not destination.is_relative_to(unpacked) or not (member.isfile() or member.isdir()):
+            destination = (unpacked_root / member.name).resolve()
+            if not destination.is_relative_to(unpacked_root) or not (member.isfile() or member.isdir()):
                 raise ValueError(f"unexpected archive member: {member.name}")
-        source.extractall(unpacked, filter="data")
+        source.extractall(unpacked_root, filter="data")
     extracted = (unpacked / f"{package}-{version}").resolve()
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
     metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,

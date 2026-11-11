@@ -37,6 +37,34 @@ def make_sibling_sources(root):
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_windows_run_assigns_suspended_process_to_job_before_polling(self):
+        events = []
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, *args, creationflags, **kwargs):
+                events.append(("spawn", creationflags))
+                self.pid = 123
+                self._handle = 456
+
+            def poll(self):
+                events.append(("poll", None))
+                return self.returncode
+
+        fake_subprocess = SimpleNamespace(Popen=FakeProcess,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(checker, "os", SimpleNamespace(name="nt")), \
+                    patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker, "_windows_job_functions", return_value=object()), \
+                    patch.object(checker, "_configure_windows_job",
+                                 side_effect=lambda _kernel, _process: events.append(("job", None)) or object()), \
+                    patch.object(checker, "close_windows_job"):
+                checker.run("fake-cargo", [], Path(directory), {}, Path(directory) / "run.log",
+                            timeout_seconds=1)
+        self.assertEqual(events, [("spawn", 0x00000004), ("job", None), ("poll", None)])
+
     def test_check_runs_both_doctest_modes_from_the_extracted_archive(self):
         repository = Path(__file__).parents[2]
         manifest = __import__("tomllib").loads((repository / "Cargo.toml").read_text())
@@ -352,18 +380,18 @@ class PublishedDocsTests(unittest.TestCase):
             log = Path(directory) / "grandchild.log"
             child_code = "import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); n=0; exec('while True: n+=1; p.write_text(str(n)); time.sleep(0.02)')"
             code = (
-                "import subprocess,sys,time; "
+                "import pathlib,subprocess,sys,time; p=pathlib.Path(sys.argv[1]); p.write_text('parent'); "
                 f"subprocess.Popen([sys.executable,'-c',{child_code!r},sys.argv[1]]); "
-                "print('parent marker',flush=True); time.sleep(30)"
+                "deadline=time.monotonic()+2; "
+                "exec('while p.read_text()==\"parent\" and time.monotonic()<deadline: time.sleep(0.01)'); "
+                "assert p.read_text()!=\"parent\"; print('parent marker',flush=True); time.sleep(30)"
             )
             with self.assertRaises(RuntimeError):
                 checker.run(sys.executable, ["-c", code, str(heartbeat)], Path(directory), {}, log,
-                            timeout_seconds=0.3, context="grandchild timeout")
-            deadline = time.monotonic() + 2
-            while not heartbeat.exists() and time.monotonic() < deadline:
-                time.sleep(0.01)
+                            timeout_seconds=3, context="grandchild timeout")
             self.assertTrue(heartbeat.exists())
             first = heartbeat.read_text()
+            self.assertNotEqual(first, "parent", "grandchild must run before timeout cleanup")
             time.sleep(0.1)
             self.assertEqual(first, heartbeat.read_text())
 
@@ -412,7 +440,8 @@ class PublishedDocsTests(unittest.TestCase):
                 with patch("sys.argv", ["check_published_docs.py", directory]), redirect_stderr(stderr):
                     self.assertEqual(checker.main(), 1)
             self.assertTrue(workspace.is_dir())
-            self.assertIn(str(workspace), stderr.getvalue())
+            message = stderr.getvalue().split("Diagnostics preserved at ", 1)[1].strip()
+            self.assertTrue(Path(message).samefile(workspace))
 
     def test_ci_runs_published_documentation_gate_for_all_required_events(self):
         repository = Path(__file__).parents[2]
@@ -520,7 +549,7 @@ class PublishedDocsTests(unittest.TestCase):
     def test_environment_drops_inherited_build_overrides(self):
         with patch.dict("os.environ", {"CARGO_HOME": "/old", "CARGO_ENCODED_RUSTFLAGS": "unsafe", "RUSTFLAGS": "unsafe", "CARGO_REGISTRIES_CRATES_IO_INDEX": "local", "RUSTC_WRAPPER": "wrapper"}):
             env = checker.isolated_environment(Path("/isolated"))
-        self.assertEqual(env["CARGO_HOME"], "/isolated/cargo-home")
+        self.assertEqual(Path(env["CARGO_HOME"]), Path("/isolated") / "cargo-home")
         self.assertEqual(env["QUBIT_FS_REGISTRY_DOC_DEPS"], "published")
         for key in ["CARGO_ENCODED_RUSTFLAGS", "CARGO_REGISTRIES_CRATES_IO_INDEX", "RUSTFLAGS", "RUSTC_WRAPPER"]:
             self.assertNotIn(key, env)
@@ -538,7 +567,10 @@ class PublishedDocsTests(unittest.TestCase):
         checker.validate_manifest({"package": {"metadata": {"documentation": {"path": "../inert"}}}, "dependencies": {"qubit-fs": {"version": "0.3"}}})
 
     def test_graph_rejects_duplicate_versions_and_wrong_sources(self):
-        root = Path("/isolated/package")
+        temporary_root = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_root.cleanup)
+        root = Path(temporary_root.name) / "package"
+        root.mkdir()
         sibling_directory = tempfile.TemporaryDirectory()
         self.addCleanup(sibling_directory.cleanup)
         sibling_sources = make_sibling_sources(Path(sibling_directory.name))
