@@ -269,6 +269,10 @@ rotation/revocation must invalidate reuse. No cache is introduced in this revisi
 
 ## 16. Documentation and Published Dependency Checks
 
+The CI Cargo matrix runs `check`, `test`, and `doc` for the default,
+`async`-only, `inventory`-only, and combined `async` plus `inventory`
+feature sets.
+
 Example versions come from manifest dependencies and
 `package.metadata.documentation.dependencies`. README, guide, and async-resolution
 appendix Rust blocks are complete programs. The six checked documents include both
@@ -281,7 +285,7 @@ directories and prepare their own input files.
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. The published
 checker snapshots the registry and all three sibling inputs before packaging or
 compiling examples: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
-`qubit-local-files` 0.5.0. Snapshots contain Git-tracked and non-ignored
+`qubit-local-files` 0.5.1. Snapshots contain Git-tracked and non-ignored
 untracked regular files plus `Cargo.lock`, excluding `.git`, `target`, and
 `.cargo`. Its `input-manifest.json` records package/version, source and snapshot
 paths, Git HEAD, dirty state, and SHA-256 over sorted relative paths, lengths,
@@ -307,5 +311,16 @@ Markdown example harness; each command keeps its own diagnostic log. Success out
 reports each sibling version and input digest. A missing sibling checkout or other unavailable
 requirements fail explicitly. Mechanical style and coverage checks do not replace semantic test assertions
 or an item-by-item Rustdoc review.
+
+The no-argument command selects snapshot mode for coordinated development; it
+does not prove that the same dependency versions are available from crates.io.
+Before publishing the registry, publish the required sibling releases and run
+`python3 scripts/check_published_docs.py . --dependency-source registry`.
+Strict mode resolves dependencies from crates.io, checks the archive and each
+Markdown example graph, and uses no sibling override or local provider shim.
+Missing releases and non-crates.io sources fail without fallback. Run the
+manual **Published Registry Consumption** workflow on the release ref and
+publish only after success. The result includes the source digest and actual
+resolved versions; failed checks retain separate command logs.
 
 [Migration](registry_contract_migration.md) · [User guide](user_guide.md)

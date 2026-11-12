@@ -522,6 +522,8 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 
 ## 发布文档检查
 
+CI feature 矩阵会检查默认组合、仅 `async`、仅 `inventory`，以及 `async` 与 `inventory` 同时启用的组合。
+
 发布前，使用 Python 3.12+ 和 `rust-toolchain.toml` 中的 Rust 工具链运行
 `python3 scripts/check_published_docs.py .`。检查器会在打包和编译示例前，固定 registry、
 `qubit-fs`、`qubit-fs-local` 与 `qubit-local-files` 的源码输入，并记录版本、源路径、Git HEAD、dirty
@@ -529,6 +531,14 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 检查会失败并保留诊断；之后源目录变化不会影响已经准备的输入。本检查使用这些固定 sibling
 源码快照验证包归档和示例，不代表验证了对应 crates.io 发布包的内容。修改源码、manifest 或示例后，
 应重新运行检查。
+
+发布 registry 前，先发布所需 sibling crate，再运行严格消费检查：
+
+```bash
+python3 scripts/check_published_docs.py . --dependency-source registry
+```
+
+严格模式从 crates.io 解析声明的依赖，检查打包归档、默认及全部 feature 的 Rustdoc 测试和所有 Markdown 示例；不使用 sibling 路径覆盖或 provider shim。如果所需版本不可用，或依赖解析到 crates.io 以外，检查会失败且不会回退。请在拟发布的同一 ref 上手动运行 **Published Registry Consumption** workflow，并仅在成功后发布。结果记录实际解析的包版本和源码输入摘要；失败运行保留独立 Cargo 日志。
 
 ## 延伸阅读
 

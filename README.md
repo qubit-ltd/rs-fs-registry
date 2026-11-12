@@ -117,6 +117,9 @@ for programmatic handling. Application-default redactor changes do not alter thi
 
 ## Testing
 
+CI checks four feature combinations: the default set, `async` only,
+`inventory` only, and `async` plus `inventory`.
+
 ```bash
 # Run tests with the default feature set
 cargo test
@@ -151,7 +154,7 @@ diagnostics. Changes after copying do not change the inputs used by that run.
 The exact sibling versions still come from
 `[package.metadata.documentation.published-check.sibling-versions]` in
 `Cargo.toml`: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
-`qubit-local-files` 0.5.0. The provider shim references the tested archive. This
+`qubit-local-files` 0.5.1. The provider shim references the tested archive. This
 checks the archive and examples against fixed sibling source snapshots; it does
 not verify the contents of corresponding crates.io releases. The graph check
 allows only these named sibling paths, the archive, and the generated
@@ -159,6 +162,22 @@ Markdown-example crate root; every other dependency must come from a registry.
 Rerun it after changing source files, the manifest, or examples. CI runs it for
 pull requests, pushes to `main`, and manual workflow runs; failures must not fall
 back to other local overrides.
+
+For a release, first publish the required `qubit-fs`, `qubit-fs-local`, and
+`qubit-local-files` crates, then run the strict registry consumer check:
+
+```bash
+python3 scripts/check_published_docs.py . --dependency-source registry
+```
+
+This mode resolves the declared dependencies from crates.io and checks the
+packaged archive, default and all-feature doctests, and all shipped Markdown
+examples. It uses no sibling overrides or provider shim, and fails without
+falling back when a required release is unavailable or a dependency resolves
+outside crates.io. Run the manual **Published Registry Consumption** workflow
+on the exact release ref; publish only after it succeeds. The result records
+the source digest and resolved package versions. Failed runs preserve separate
+Cargo logs for diagnosis.
 
 ## License
 

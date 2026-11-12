@@ -107,6 +107,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 测试
 
+CI 检查四种 feature 组合：默认组合、仅 `async`、仅 `inventory`，以及 `async` 与 `inventory` 同时启用。
+
 ```bash
 # 使用默认 feature 集运行测试
 cargo test
@@ -126,8 +128,16 @@ python3 scripts/check_published_docs.py .
 
 发布依赖检查需要 Python 3.12+，Rust 工具链版本从 `rust-toolchain.toml` 读取。
 检查会在打包或编译示例前，固定 registry 与三个 sibling（`qubit-fs`、`qubit-fs-local`、`qubit-local-files`）的源码输入。每份快照包含 Git 已跟踪及未被忽略的未跟踪普通文件，也包含 `Cargo.lock`；`.git`、`target` 和 `.cargo` 会排除。`input-manifest.json` 记录包版本、源路径和快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、内容、长度和执行位计算的 SHA-256 摘要。检查会比较复制前后的源输入并校验快照摘要；复制期间有变化就失败并保留诊断。复制完成后的源目录变化不会影响本次检查。
-三个 sibling 精确版本仍以 Cargo.toml 中的 `[package.metadata.documentation.published-check.sibling-versions]` 为准：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.0。provider 通过 shim 指向被测归档。本检查使用固定的 sibling 源码快照验证归档和示例，不代表验证了对应 crates.io 发布包的内容。依赖图只允许这些具名 sibling 路径、被测归档和生成的 Markdown 示例 crate 根；其他依赖必须来自 registry。修改源码、manifest 或示例后必须重新运行。
+三个 sibling 精确版本仍以 Cargo.toml 中的 `[package.metadata.documentation.published-check.sibling-versions]` 为准：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.1。provider 通过 shim 指向被测归档。本检查使用固定的 sibling 源码快照验证归档和示例，不代表验证了对应 crates.io 发布包的内容。依赖图只允许这些具名 sibling 路径、被测归档和生成的 Markdown 示例 crate 根；其他依赖必须来自 registry。修改源码、manifest 或示例后必须重新运行。
 CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得回退到其他本地依赖覆盖。
+
+发布 registry 前，先发布所需的 `qubit-fs`、`qubit-fs-local` 和 `qubit-local-files`，再运行严格消费检查：
+
+```bash
+python3 scripts/check_published_docs.py . --dependency-source registry
+```
+
+该模式从 crates.io 解析声明的依赖，并检查打包归档、默认及全部 feature 的 Rustdoc 测试和所有 Markdown 示例；不使用 sibling 覆盖或 provider shim。所需版本不可用或任何依赖来自 crates.io 以外时都会失败，绝不回退到快照模式。请在拟发布的同一 ref 上手动运行 **Published Registry Consumption** workflow，并仅在成功后发布。结果记录输入摘要和实际解析的包版本；失败时保留独立 Cargo 日志供诊断。
 
 ## 许可证
 

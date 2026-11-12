@@ -485,12 +485,14 @@ helper 类型。共享无状态验证 helper 保持私有自由函数，不暴�
 
 ## 16. 文档与发布验证
 
+CI Cargo 矩阵对默认、仅 `async`、仅 `inventory` 及 `async` 与 `inventory` 同时启用四种组合分别运行 `check`、`test` 和 `doc`。
+
 示例版本来自 Cargo.toml 的正常依赖和 `package.metadata.documentation.dependencies`，不在测试源码重复维护。
 README、指南和异步解析附录中的 Rust 代码块是完整程序；六份受检文档包含双语异步附录。
 附录中的完整异步程序以 `<!-- registry-example: async -->` 标记，并在最小异步依赖工程中运行。
 指南中的短示例使用 `rust,no_run`：会编译但不执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖。发布检查器会在打包或编译示例前，固定 registry 与三个 sibling 输入：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.0。快照包含 Git 已跟踪及未被忽略的未跟踪普通文件和 `Cargo.lock`，排除 `.git`、`target`、`.cargo`。`input-manifest.json` 记录包名/版本、源与快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、长度、内容和执行位计算的 SHA-256。复制前后会校验源输入集合与摘要，并验证目标摘要；复制期间发生变化会失败并保留诊断，之后源目录的变化不会影响本次检查。
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖。发布检查器会在打包或编译示例前，固定 registry 与三个 sibling 输入：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.1。快照包含 Git 已跟踪及未被忽略的未跟踪普通文件和 `Cargo.lock`，排除 `.git`、`target`、`.cargo`。`input-manifest.json` 记录包名/版本、源与快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、长度、内容和执行位计算的 SHA-256。复制前后会校验源输入集合与摘要，并验证目标摘要；复制期间发生变化会失败并保留诊断，之后源目录的变化不会影响本次检查。
 Rustdoc 仍在被测归档上运行，provider shim 也指向该归档；完整 local-provider 示例和归档依赖解析使用 sibling 源码快照。本检查不代表验证了这些 sibling 对应 crates.io 发布包的内容。只允许具名 sibling 快照路径、被测归档和生成的 Markdown 示例 crate 根，其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
 是否引用当前被测 registry。精确 sibling 版本的唯一来源是 Cargo.toml 中的
 `[package.metadata.documentation.published-check.sibling-versions]`；缺失、多余或非精确版本都会失败。
@@ -499,6 +501,9 @@ Rust 工具链 channel 从 `rust-toolchain.toml` 读取，CI 也使用该配置�
 打包 override、sibling root、依赖图 allowlist 和 provider shim 均使用同一快照树。它先在同一解包归档上运行 `cargo test --locked --doc` 和
 `cargo test --locked --doc --all-features`，然后执行 Markdown 示例检查；每条命令保留独立诊断日志，并在成功信息中报告各 sibling 路径和版本。
 检查只在隔离 Cargo home 中写入指向快照的 `qubit-fs` 覆盖；成功信息报告每个 sibling 的版本和输入摘要。缺少 sibling checkout 或其他依赖时明确失败。
+
+不带参数的命令选择快照模式，供 sibling 协同开发使用；它不能证明相同依赖版本可从 crates.io 消费。发布 registry 前，先发布所需 sibling crate，再运行
+`python3 scripts/check_published_docs.py . --dependency-source registry`。严格模式从 crates.io 解析依赖，检查打包归档和每个 Markdown 示例的依赖图，不使用 sibling 覆盖或本地 provider shim。缺少发布版本或出现 crates.io 以外的来源时失败且不回退。请在拟发布的 ref 上手动运行 **Published Registry Consumption** workflow，成功后再发布。结果包含源码摘要和实际解析版本；失败时保留各命令独立日志。
 
 契约回归通过信号控制创建期间的目录修改与异步 Pending，检查未轮询 future 不触发创建、
 注册 descriptor 保持快照、身份失败遵守 fallback，以及路径字节数与语义边界。CI 的覆盖率与

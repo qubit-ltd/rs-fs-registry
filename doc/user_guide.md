@@ -574,6 +574,9 @@ cross-provider global identity.
 
 ## Published Documentation Check
 
+The CI feature matrix checks the default, `async`-only, `inventory`-only, and
+combined `async` plus `inventory` configurations.
+
 Before publishing, run `python3 scripts/check_published_docs.py .` with Python
 3.12+ and the Rust toolchain from `rust-toolchain.toml`. The checker snapshots
 the registry and the `qubit-fs`, `qubit-fs-local`, and `qubit-local-files`
@@ -584,6 +587,21 @@ the check and preserves diagnostics; later source changes do not alter the
 prepared inputs. This validates the package archive and examples against those
 fixed sibling source snapshots, not the contents of their crates.io releases.
 Rerun the check after changing source, the manifest, or examples.
+
+Before publishing the registry, publish the required sibling releases first,
+then run strict registry consumption:
+
+```bash
+python3 scripts/check_published_docs.py . --dependency-source registry
+```
+
+Strict mode resolves dependencies from crates.io and checks the packaged
+archive, default and all-feature doctests, and all shipped Markdown examples.
+It uses no sibling path overrides or provider shim and fails without fallback
+if a required release is unavailable or a dependency resolves outside crates.io.
+Run the manual **Published Registry Consumption** workflow on the exact release
+ref, and publish only after success. The result records resolved versions and
+the source digest; failed runs preserve individual Cargo logs.
 
 ## Further Reading
 

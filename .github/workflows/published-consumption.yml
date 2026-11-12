@@ -1,0 +1,37 @@
+name: Published Registry Consumption
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  published-consumption:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the locked Rust toolchain
+        run: |
+          toolchain=$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          rustup toolchain install "$toolchain" --profile minimal
+          rustc +"$toolchain" --version
+      - name: Run published checker unit tests
+        run: python3 -B -m unittest discover -s scripts/tests -v
+      - name: Verify published registry consumption
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: python3 scripts/check_published_docs.py . --dependency-source registry
+      - name: Upload failed registry diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-registry-diagnostics
+          path: ${{ runner.temp }}/qubit-registry-published-*
+          if-no-files-found: ignore
+          retention-days: 7
