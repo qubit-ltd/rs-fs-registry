@@ -588,8 +588,24 @@ prepared inputs. This validates the package archive and examples against those
 fixed sibling source snapshots, not the contents of their crates.io releases.
 Rerun the check after changing source, the manifest, or examples.
 
-Before publishing the registry, publish the required sibling releases first,
-then run strict registry consumption:
+Before following the release sequence, verify that every registry version
+required by the documentation providers is already published and satisfies
+their normal dependency requirements. The 0.8 documentation line requires
+`qubit-fs` 0.3, `qubit-local-files` 0.5.1, and `qubit-fs-local` 0.11. An
+optional normal dependency still appears in a published crate's dependency
+metadata; disabling its feature does not remove the release prerequisite.
+`qubit-fs-local` 0.11 declares the optional `qubit-fs-registry ^0.8`
+dependency, while the strict check for registry 0.8 needs the documented local
+provider 0.11 release. While registry 0.8 is unpublished, this first-release order has a cycle: local
+0.11 requires registry 0.8, while the registry 0.8 strict check requires local
+0.11. Stop and record all missing versions and the dependency chain. Snapshot
+success does not resolve this cycle; these commands do not authorize a
+bootstrap exception. Resolve the release policy or dependency design through
+separate review before proceeding.
+
+If a compatible registry prerequisite is already published, publish any missing
+sibling releases, then run strict registry consumption for the exact registry
+source ref:
 
 ```bash
 python3 scripts/check_published_docs.py . --dependency-source registry
@@ -600,8 +616,10 @@ archive, default and all-feature doctests, and all shipped Markdown examples.
 It uses no sibling path overrides or provider shim and fails without fallback
 if a required release is unavailable or a dependency resolves outside crates.io.
 Run the manual **Published Registry Consumption** workflow on the exact release
-ref, and publish only after success. The result records resolved versions and
-the source digest; failed runs preserve individual Cargo logs.
+ref, and publish the registry only after success. If a required release is
+missing or the check fails for another reason, preserve its diagnostics and do
+not treat the snapshot check as a substitute. The result records resolved
+versions and the source digest; failed runs preserve individual Cargo logs.
 
 ## Further Reading
 

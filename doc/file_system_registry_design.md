@@ -314,13 +314,20 @@ or an item-by-item Rustdoc review.
 
 The no-argument command selects snapshot mode for coordinated development; it
 does not prove that the same dependency versions are available from crates.io.
-Before publishing the registry, publish the required sibling releases and run
-`python3 scripts/check_published_docs.py . --dependency-source registry`.
+The 0.8 documentation line has a first-release cycle while registry 0.8 is
+unpublished: local provider 0.11 requires registry `^0.8`, while the registry
+0.8 strict check requires local provider 0.11. Stop and record all missing
+versions; snapshot success does not resolve the cycle, and these commands do
+not authorize a bootstrap exception. Resolve the release policy or dependency
+design through separate review. See the [user guide](user_guide.md) for the
+release prerequisites and procedure. When they are satisfied, run
+`python3 scripts/check_published_docs.py . --dependency-source registry` on the
+exact release ref and manually run the **Published Registry Consumption**
+workflow there. Publish only after it succeeds.
 Strict mode resolves dependencies from crates.io, checks the archive and each
 Markdown example graph, and uses no sibling override or local provider shim.
-Missing releases and non-crates.io sources fail without fallback. Run the
-manual **Published Registry Consumption** workflow on the release ref and
-publish only after success. The result includes the source digest and actual
-resolved versions; failed checks retain separate command logs.
+Missing releases and non-crates.io sources fail without fallback. Preserve
+failure diagnostics; a successful snapshot cannot replace strict consumption. The result includes the source digest and actual resolved versions;
+failed checks retain separate command logs.
 
 [Migration](registry_contract_migration.md) · [User guide](user_guide.md)

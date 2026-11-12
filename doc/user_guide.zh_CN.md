@@ -532,13 +532,15 @@ CI feature 矩阵会检查默认组合、仅 `async`、仅 `inventory`，以及 
 源码快照验证包归档和示例，不代表验证了对应 crates.io 发布包的内容。修改源码、manifest 或示例后，
 应重新运行检查。
 
-发布 registry 前，先发布所需 sibling crate，再运行严格消费检查：
+执行发布顺序前，先核实文档 provider 所需的 registry 版本已发布，并满足普通依赖版本要求。0.8 这条文档依赖线要求 `qubit-fs` 0.3、`qubit-local-files` 0.5.1 和 `qubit-fs-local` 0.11。可选的普通依赖仍会出现在已发布 crate 的依赖元数据中；关闭对应 feature 不会移除发布前提。`qubit-fs-local` 0.11 声明了可选依赖 `qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查也需要文档所用的 local provider 0.11 已发布。registry 0.8 尚未发布时，首次发布顺序会形成依赖闭环：local 0.11 需要 registry 0.8，registry 0.8 的严格检查又需要 local 0.11。此时应停止发布并记录所有缺失版本及依赖链。快照检查成功不能解除该闭环；这些命令不授权绕过门禁。继续前须另行评审发布政策或依赖设计。
+
+若兼容的 registry 前置版本已发布，可先发布缺少的 sibling，再针对 registry 的精确源码 ref 运行严格消费检查：
 
 ```bash
 python3 scripts/check_published_docs.py . --dependency-source registry
 ```
 
-严格模式从 crates.io 解析声明的依赖，检查打包归档、默认及全部 feature 的 Rustdoc 测试和所有 Markdown 示例；不使用 sibling 路径覆盖或 provider shim。如果所需版本不可用，或依赖解析到 crates.io 以外，检查会失败且不会回退。请在拟发布的同一 ref 上手动运行 **Published Registry Consumption** workflow，并仅在成功后发布。结果记录实际解析的包版本和源码输入摘要；失败运行保留独立 Cargo 日志。
+严格模式从 crates.io 解析声明的依赖，检查打包归档、默认及全部 feature 的 Rustdoc 测试和所有 Markdown 示例；不使用 sibling 路径覆盖或 provider shim。如果所需版本不可用，或依赖解析到 crates.io 以外，检查会失败且不会回退。请在拟发布的同一 ref 上手动运行 **Published Registry Consumption** workflow，并仅在成功后发布 registry。若缺少依赖版本或检查因其他原因失败，应保留诊断，不能以快照检查替代。结果记录实际解析的包版本和源码输入摘要；失败运行保留独立 Cargo 日志。
 
 ## 延伸阅读
 

@@ -125,8 +125,7 @@ InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造
 
 相关示例应统一依赖版本。协同开发期间，从项目根目录运行快照检查
 `python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0；它固定 registry 与三个 sibling 源码输入，但不能证明 crates.io 发布包可被实际消费。
-发布前，先发布所需 sibling crate，再对拟发布的同一 ref 运行严格检查
-`python3 scripts/check_published_docs.py . --dependency-source registry`。严格模式只从 crates.io 解析依赖，不使用本地覆盖或快照回退；只有检查成功后才能发布。两种检查都会在源码、manifest 或示例变化后重新运行。失败时保留诊断日志。
+registry 0.8 尚未发布时，首次发布存在依赖闭环：local provider 0.11 需要 registry `^0.8`，而 registry 0.8 的严格检查需要 local provider 0.11 已发布。此时停止并记录缺失版本；快照成功不能解除闭环，这些命令也不授权绕过门禁。完整发布前提和步骤见[用户指南](user_guide.zh_CN.md)。满足前提后，针对拟发布的同一 ref 运行 `python3 scripts/check_published_docs.py . --dependency-source registry`，成功后才能发布 registry。源码、manifest 或示例变化后重新运行适用检查。若失败，保留诊断；成功的快照检查不能代替严格消费检查。
 CI 会在 pull request、推送到 `main` 和手动运行时执行快照检查；独立的 **Published Registry Consumption** workflow 需手动在发布 ref 上触发。两者都没有跳过验证的输入。开发期间带本地补丁的打包成功不能替代严格消费检查。
 
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)

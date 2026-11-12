@@ -502,8 +502,9 @@ Rust 工具链 channel 从 `rust-toolchain.toml` 读取，CI 也使用该配置�
 `cargo test --locked --doc --all-features`，然后执行 Markdown 示例检查；每条命令保留独立诊断日志，并在成功信息中报告各 sibling 路径和版本。
 检查只在隔离 Cargo home 中写入指向快照的 `qubit-fs` 覆盖；成功信息报告每个 sibling 的版本和输入摘要。缺少 sibling checkout 或其他依赖时明确失败。
 
-不带参数的命令选择快照模式，供 sibling 协同开发使用；它不能证明相同依赖版本可从 crates.io 消费。发布 registry 前，先发布所需 sibling crate，再运行
-`python3 scripts/check_published_docs.py . --dependency-source registry`。严格模式从 crates.io 解析依赖，检查打包归档和每个 Markdown 示例的依赖图，不使用 sibling 覆盖或本地 provider shim。缺少发布版本或出现 crates.io 以外的来源时失败且不回退。请在拟发布的 ref 上手动运行 **Published Registry Consumption** workflow，成功后再发布。结果包含源码摘要和实际解析版本；失败时保留各命令独立日志。
+不带参数的命令选择快照模式，供 sibling 协同开发使用；它不能证明相同依赖版本可从 crates.io 消费。registry 0.8 尚未发布时，首次发布存在依赖闭环：local provider 0.11 需要 registry `^0.8`，而 registry 0.8 的严格检查需要 local provider 0.11 已发布。此时停止并记录所有缺失版本；快照成功不能解除闭环，这些命令也不授权绕过门禁。发布前提和步骤见[用户指南](user_guide.zh_CN.md)。
+
+严格模式从 crates.io 解析依赖，检查打包归档和每个 Markdown 示例的依赖图，不使用 sibling 覆盖或本地 provider shim。缺少发布版本或出现 crates.io 以外的来源时失败且不回退。满足前提后，针对拟发布的同一 ref 运行 `python3 scripts/check_published_docs.py . --dependency-source registry`，并在该 ref 上手动运行 **Published Registry Consumption** workflow。全部成功后才能发布。失败时保留诊断；成功的快照检查不能替代严格检查。结果包含源码摘要和实际解析版本；失败时保留各命令独立日志。
 
 契约回归通过信号控制创建期间的目录修改与异步 Pending，检查未轮询 future 不触发创建、
 注册 descriptor 保持快照、身份失败遵守 fallback，以及路径字节数与语义边界。CI 的覆盖率与
