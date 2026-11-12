@@ -34,6 +34,9 @@ pub const CHECKED_DOCUMENTS: &[&str] = &[
     "doc/async_resolution_example.zh_CN.md",
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentationDependencySource { Local, Published, Registry }
+
 /// One complete Markdown program and its minimum feature requirement.
 #[derive(Debug, PartialEq)]
 pub struct Snippet {
@@ -123,7 +126,7 @@ pub fn manifest(root: &Path) -> Value {
 pub fn documentation_manifest(
     root: &Path,
     input: &Value,
-    published: bool,
+    source: DocumentationDependencySource,
     asynchronous: bool,
     local: bool,
     inventory: bool,
@@ -138,7 +141,7 @@ pub fn documentation_manifest(
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
-            dependencies.insert(name.into(), dependency(root, value, published));
+            dependencies.insert(name.into(), dependency(root, value, source != DocumentationDependencySource::Local));
         }
     }
     let extra = input["package"]
@@ -153,7 +156,7 @@ pub fn documentation_manifest(
             {
                 continue;
             }
-            dependencies.insert(name.clone(), dependency(root, value, published));
+            dependencies.insert(name.clone(), dependency(root, value, source != DocumentationDependencySource::Local));
         }
     }
     let mut current = Table::new();
@@ -188,7 +191,7 @@ pub fn documentation_manifest(
         Value::String(package_root.to_str().expect("UTF-8 root").into())
     );
     let mut patch: Value = from_str(&patch_source).expect("self patch");
-    if !published {
+    if source == DocumentationDependencySource::Local {
         let sibling_fs = root.parent().expect("registry has a parent directory").join("rs-fs");
         if sibling_fs.join("Cargo.toml").is_file() {
             patch["crates-io"].as_table_mut().expect("patch table").insert(
@@ -454,6 +457,7 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GraphOptions<'a> {
     pub published: bool,
+    pub registry: bool,
     pub asynchronous: bool,
     pub local: bool,
     pub inventory: bool,
@@ -489,6 +493,7 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                     "unexpected generated example consumer manifest"
                 );
             } else if source.is_none() {
+                assert!(!options.registry, "strict registry graph contains an unexpected local package: {name}");
                 let expected_path = match name {
                     "qubit-fs" => options.qubit_fs_override,
                     "qubit-fs-local" => options.qubit_fs_local_override,
@@ -504,10 +509,15 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                     "unexpected local source in published dependency graph: {name}"
                 );
             } else {
-                assert!(
-                    source.is_some_and(|source| source.starts_with("registry+")),
-                    "published dependency uses a non-registry source: {name}"
-                );
+                let source_is_registry = source.is_some_and(|source| {
+                    if options.registry {
+                        source == "registry+https://github.com/rust-lang/crates.io-index"
+                            || source == "registry+https://index.crates.io/"
+                    } else {
+                        source.starts_with("registry+")
+                    }
+                });
+                assert!(source_is_registry, "published dependency uses an unexpected registry source: {name}");
             }
         }
         if matches!(
@@ -630,18 +640,24 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
 /// Checks the shipped programs in isolated directories with an explicit feature
 /// matrix.
 pub fn check_documents(root: &Path, include_async: bool) {
-    let published = match std::env::var("QUBIT_FS_REGISTRY_DOC_DEPS").as_deref() {
-        Ok("published") => true,
-        Ok("local") | Err(_) => false,
+    let source = match std::env::var("QUBIT_FS_REGISTRY_DOC_DEPS").as_deref() {
+        Ok("published") => DocumentationDependencySource::Published,
+        Ok("registry") => DocumentationDependencySource::Registry,
+        Ok("local") | Err(_) => DocumentationDependencySource::Local,
         Ok(value) => panic!("unknown documentation dependency mode: {value}"),
     };
+    let published = source != DocumentationDependencySource::Local;
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
-    let qubit_fs_override = if published { cargo_qubit_fs_override() } else { None };
-    let sibling_root = std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from);
+    let qubit_fs_override = if source == DocumentationDependencySource::Published { cargo_qubit_fs_override() } else { None };
+    let sibling_root = if source == DocumentationDependencySource::Registry { None } else { std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from) };
     let qubit_local_files_override = sibling_root.as_ref().map(|parent| parent.join("rs-local-files"));
-    let target = root.join("target/documentation-examples");
+    let target = if source == DocumentationDependencySource::Registry {
+        workspace.path().join("target")
+    } else {
+        root.join("target/documentation-examples")
+    };
     for asynchronous in [false, true] {
         for local in [false, true] {
             for inventory in [false, true] {
@@ -683,9 +699,9 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
                 let mut example_manifest =
-                    documentation_manifest(root, &input, published, asynchronous, local, inventory);
+                    documentation_manifest(root, &input, source, asynchronous, local, inventory);
                 let mut local_provider_alias = None;
-                if local {
+                if local && source != DocumentationDependencySource::Registry {
                     let sibling_local = if published {
                         sibling_root.as_ref().map(|parent| parent.join("rs-fs-local"))
                     } else {
@@ -751,6 +767,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     root,
                     GraphOptions {
                         published,
+                        registry: source == DocumentationDependencySource::Registry,
                         asynchronous,
                         local,
                         inventory,

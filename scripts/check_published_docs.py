@@ -52,7 +52,7 @@ def load_check_settings(root: Path) -> tuple[str, dict[str, str]]:
     return channel, versions
 
 
-def isolated_environment(workspace: Path, toolchain: str) -> dict[str, str]:
+def isolated_environment(workspace: Path, toolchain: str, dependency_source: str = "snapshot") -> dict[str, str]:
     """Preserve network/tool discovery while discarding Cargo/build overrides."""
     environment = {
         key: value for key, value in os.environ.items()
@@ -65,9 +65,10 @@ def isolated_environment(workspace: Path, toolchain: str) -> dict[str, str]:
         "CARGO_HOME": str(workspace / "cargo-home"),
         "CARGO_TARGET_DIR": str(workspace / "target"),
         "RUSTUP_TOOLCHAIN": toolchain,
-        "QUBIT_FS_REGISTRY_DOC_DEPS": "published",
-        "QUBIT_FS_SIBLING_ROOT": str(workspace / "sibling-root"),
+        "QUBIT_FS_REGISTRY_DOC_DEPS": "published" if dependency_source == "snapshot" else "registry",
     })
+    if dependency_source == "snapshot":
+        environment["QUBIT_FS_SIBLING_ROOT"] = str(workspace / "sibling-root")
     return environment
 
 
@@ -83,8 +84,34 @@ def validate_manifest(manifest: dict) -> None:
                     raise ValueError(f"published dependency {name} retains a local/git/workspace source")
 
 
+def _normalize_registry_package_manifest(path: Path) -> None:
+    """Remove Cargo-only path hints from the isolated package copy, retaining version requirements."""
+    source = path.read_text()
+    manifest = tomllib.loads(source)
+    scopes = [manifest, *manifest.get("target", {}).values()]
+    for scope in scopes:
+        for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+            for name, dependency in scope.get(section, {}).items():
+                if isinstance(dependency, dict) and "path" in dependency:
+                    if "version" not in dependency:
+                        raise ValueError(f"registry package dependency {name} needs an explicit version")
+                    # Cargo's published manifest removes path hints. The source checkout
+                    # may use them to develop sibling crates; never resolve them here.
+                    pattern = re.compile(r"(\{[^{}]*?)\bpath\s*=\s*\"[^\"]*\"\s*,?")
+                    source = pattern.sub(lambda match: match.group(1), source)
+    rewritten = path.with_name("Cargo.toml.registry")
+    rewritten.write_text(source)
+    try:
+        rewritten.replace(path)
+        validate_manifest(tomllib.loads(path.read_text()))
+    except BaseException:
+        rewritten.unlink(missing_ok=True)
+        raise
+
+
 def validate_graph(metadata: dict, package: str, root: Path,
-                   allowed_local_paths: dict[str, Path]) -> None:
+                   allowed_local_paths: dict[str, Path], dependency_source: str = "snapshot",
+                   example_root: Path | None = None) -> None:
     """Require registry dependencies except the archive and exact named sibling overrides."""
     allowed_names = {"qubit-fs", "qubit-fs-local", "qubit-local-files"}
     unexpected_names = set(allowed_local_paths) - allowed_names
@@ -93,19 +120,26 @@ def validate_graph(metadata: dict, package: str, root: Path,
     seen: set[str] = set()
     for entry in metadata["packages"]:
         name = entry["name"]
-        if entry.get("source") is None:
+        if (dependency_source == "registry" and name == "filesystem-documentation-check"
+                and entry.get("source") is None and example_root is not None
+                and Path(entry["manifest_path"]).resolve() == (example_root / "Cargo.toml").resolve()):
+            pass
+        elif entry.get("source") is None:
             manifest_path = Path(entry["manifest_path"]).resolve()
             if name == package and manifest_path == (root / "Cargo.toml").resolve():
                 pass
-            elif (name in allowed_local_paths
+            elif (dependency_source == "snapshot" and name in allowed_local_paths
                   and manifest_path == (allowed_local_paths[name] / "Cargo.toml").resolve()):
                 sibling_manifest = tomllib.loads((allowed_local_paths[name] / "Cargo.toml").read_text())
                 if entry.get("version") != sibling_manifest["package"]["version"]:
                     raise ValueError(f"{name} path override resolved an unexpected version")
             else:
                 raise ValueError(f"unexpected local dependency: {name}")
-        elif not entry["source"].startswith("registry+"):
-            raise ValueError(f"non-registry dependency: {name}")
+        elif entry["source"] not in {
+            "registry+https://github.com/rust-lang/crates.io-index",
+            "registry+https://index.crates.io/",
+        }:
+            raise ValueError(f"non-crates.io registry dependency: {name}: {entry['source']}")
         if name in {"qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi", "qubit-local-files"}:
             if name in seen:
                 raise ValueError(f"duplicate filesystem package identity: {name}")
@@ -662,8 +696,11 @@ def package_source(cargo: str, root: Path, workspace: Path, environment: dict[st
     )
 
 
-def check(root: Path, workspace: Path) -> None:
+def check(root: Path, workspace: Path, dependency_source: str = "snapshot") -> None:
     """Produce a normalized archive with Cargo, unpack it, and run the shipped examples."""
+    if dependency_source == "registry":
+        check_registry(root, workspace)
+        return
     fs_path = sibling_fs_path(root)
     fs_local_path = (fs_path.parent / "rs-fs-local").resolve()
     local_files_path = (fs_path.parent / "rs-local-files").resolve()
@@ -733,14 +770,61 @@ def check(root: Path, workspace: Path) -> None:
           f"all checks use the prepared snapshots; inputs: {provenance})")
 
 
+def check_registry(root: Path, workspace: Path) -> None:
+    """Validate a package archive using only crates.io dependencies."""
+    try:
+        toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        raise ValueError(f"invalid rust-toolchain.toml [toolchain].channel: {error}") from error
+    if not isinstance(toolchain, str) or not _EXACT_VERSION.fullmatch(toolchain):
+        raise ValueError(f"toolchain channel must be an exact three-part version, found {toolchain!r}")
+    inputs = _collect_git_inputs(root)
+    snapshot = workspace / "package-input" / "rs-fs-registry"
+    _copy_git_inputs(root, snapshot, _input_digest(inputs))
+    (snapshot / "Cargo.lock").unlink(missing_ok=True)
+    manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
+    package, version = manifest["package"]["name"], manifest["package"]["version"]
+    _normalize_registry_package_manifest(snapshot / "Cargo.toml")
+    environment = isolated_environment(workspace, toolchain, dependency_source="registry")
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        raise RuntimeError("cargo is required")
+    command_cwd = workspace / "cargo-command"
+    command_cwd.mkdir()
+    run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
+        command_cwd, environment, workspace / "package.log", timeout_seconds=900, context="Cargo package (registry)")
+    archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
+    unpacked = workspace / "unpacked"
+    unpacked.mkdir()
+    with tarfile.open(archive) as source:
+        for member in source.getmembers():
+            destination = (unpacked.resolve() / member.name).resolve()
+            if not destination.is_relative_to(unpacked.resolve()) or not (member.isfile() or member.isdir()):
+                raise ValueError(f"unexpected archive member: {member.name}")
+        source.extractall(unpacked.resolve(), filter="data")
+    extracted = (unpacked / f"{package}-{version}").resolve()
+    validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
+    metadata = run(cargo, ["metadata", "--format-version", "1"], extracted, environment,
+                   workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata")
+    validate_graph(json.loads(metadata), package, extracted, {}, dependency_source="registry")
+    run(cargo, ["test", "--doc"], extracted, environment, workspace / "doctests-default.log",
+        timeout_seconds=900, context="Cargo registry default doctests")
+    run(cargo, ["test", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
+        timeout_seconds=900, context="Cargo registry all-feature doctests")
+    run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
+        extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
+    print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; input_sha256={_input_digest(inputs)}")
+
+
 def main() -> int:
     """Retain a uniquely owned diagnostic workspace until a check succeeds."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--dependency-source", choices=("snapshot", "registry"), default="snapshot")
     args = parser.parse_args()
     workspace = Path(tempfile.mkdtemp(prefix="qubit-registry-published-")).resolve()
     try:
-        check(args.root.resolve(), workspace)
+        check(args.root.resolve(), workspace, args.dependency_source)
     except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, tarfile.TarError) as error:
         print(f"{error}\nDiagnostics preserved at {workspace}", file=sys.stderr)
         return 1

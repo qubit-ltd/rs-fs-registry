@@ -51,6 +51,53 @@ def initialize_git(root):
 
 
 class PublishedDocsTests(unittest.TestCase):
+    def test_registry_environment_has_no_sibling_or_override_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = checker.isolated_environment(Path(directory), "1.95.2", dependency_source="registry")
+            self.assertEqual(env["QUBIT_FS_REGISTRY_DOC_DEPS"], "registry")
+            self.assertNotIn("QUBIT_FS_SIBLING_ROOT", env)
+            self.assertEqual(env["CARGO_HOME"], str(Path(directory) / "cargo-home"))
+
+    def test_registry_graph_allows_only_archive_and_optional_example_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "archive"
+            root.mkdir()
+            (root / "Cargo.toml").write_text("[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n")
+            metadata = {"packages": [
+                {"name": "qubit-fs-registry", "source": None, "manifest_path": str(root / "Cargo.toml")},
+                {"name": "qubit-fs", "source": "registry+https://github.com/rust-lang/crates.io-index", "manifest_path": "/registry/qubit-fs/Cargo.toml"},
+            ]}
+            checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
+            metadata["packages"][1]["source"] = "registry+https://example.invalid/index"
+            with self.assertRaisesRegex(ValueError, "non-crates.io"):
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
+            metadata["packages"][1]["source"] = "registry+https://github.com/rust-lang/crates.io-index"
+            metadata["packages"].append({"name": "foreign", "source": None, "manifest_path": "/tmp/foreign/Cargo.toml"})
+            with self.assertRaisesRegex(ValueError, "unexpected local"):
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
+
+    def test_registry_check_never_probes_siblings_or_falls_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "source"
+            root.mkdir()
+            workspace = Path(directory) / "work"
+            with patch.object(checker, "check_registry", side_effect=RuntimeError("registry unavailable")) as strict, \
+                    patch.object(checker, "sibling_fs_path", side_effect=AssertionError("sibling lookup")):
+                with self.assertRaisesRegex(RuntimeError, "registry unavailable"):
+                    checker.check(root, workspace, "registry")
+            strict.assert_called_once_with(root, workspace)
+
+    def test_registry_package_copy_drops_only_local_path_hints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "Cargo.toml"
+            original = '[package]\nname="fixture"\nversion="1.0.0"\n[dependencies]\nqubit-fs = { path="../rs-fs", version="^0.3", default-features=false }\n'
+            manifest.write_text(original)
+            checker._normalize_registry_package_manifest(manifest)
+            parsed = __import__("tomllib").loads(manifest.read_text())
+            self.assertEqual(parsed["dependencies"]["qubit-fs"]["version"], "^0.3")
+            self.assertNotIn("path", parsed["dependencies"]["qubit-fs"])
+            self.assertEqual(original.splitlines()[0:3], manifest.read_text().splitlines()[0:3])
+
     def test_load_check_settings_reads_exact_toolchain_and_sibling_versions(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
