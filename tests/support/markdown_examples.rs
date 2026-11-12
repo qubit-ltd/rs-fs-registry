@@ -35,7 +35,11 @@ pub const CHECKED_DOCUMENTS: &[&str] = &[
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DocumentationDependencySource { Local, Published, Registry }
+pub enum DocumentationDependencySource {
+    Local,
+    Published,
+    Registry,
+}
 
 /// One complete Markdown program and its minimum feature requirement.
 #[derive(Debug, PartialEq)]
@@ -141,7 +145,10 @@ pub fn documentation_manifest(
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
-            dependencies.insert(name.into(), dependency(root, value, source != DocumentationDependencySource::Local));
+            dependencies.insert(
+                name.into(),
+                dependency(root, value, source != DocumentationDependencySource::Local),
+            );
         }
     }
     let extra = input["package"]
@@ -156,7 +163,10 @@ pub fn documentation_manifest(
             {
                 continue;
             }
-            dependencies.insert(name.clone(), dependency(root, value, source != DocumentationDependencySource::Local));
+            dependencies.insert(
+                name.clone(),
+                dependency(root, value, source != DocumentationDependencySource::Local),
+            );
         }
     }
     let mut current = Table::new();
@@ -493,7 +503,10 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                     "unexpected generated example consumer manifest"
                 );
             } else if source.is_none() {
-                assert!(!options.registry, "strict registry graph contains an unexpected local package: {name}");
+                assert!(
+                    !options.registry,
+                    "strict registry graph contains an unexpected local package: {name}"
+                );
                 let expected_path = match name {
                     "qubit-fs" => options.qubit_fs_override,
                     "qubit-fs-local" => options.qubit_fs_local_override,
@@ -517,7 +530,10 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                         source.starts_with("registry+")
                     }
                 });
-                assert!(source_is_registry, "published dependency uses an unexpected registry source: {name}");
+                assert!(
+                    source_is_registry,
+                    "published dependency uses an unexpected registry source: {name}"
+                );
             }
         }
         if matches!(
@@ -598,9 +614,27 @@ fn cargo(root: &Path, target: &Path, arguments: &[&str], context: &str) -> std::
         .env("CARGO_TARGET_DIR", target);
     let output =
         run_with_timeout(&mut command, Duration::from_secs(900), context).unwrap_or_else(|error| panic!("{error}"));
+    let stdout = if output.status.success() {
+        String::new()
+    } else {
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let rendered = raw
+            .lines()
+            .filter_map(|line| from_str::<Json>(line).ok())
+            .filter(|message| message["reason"] == "compiler-message")
+            .filter_map(|message| message["message"]["rendered"].as_str().map(str::to_owned))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if rendered.is_empty() {
+            raw.into_owned()
+        } else {
+            rendered
+        }
+    };
     assert!(
         output.status.success(),
-        "cargo {arguments:?}: {}",
+        "cargo {arguments:?} failed\nstdout:\n{}\nstderr:\n{}",
+        stdout,
         String::from_utf8_lossy(&output.stderr)
     );
     output
@@ -650,8 +684,16 @@ pub fn check_documents(root: &Path, include_async: bool) {
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
-    let qubit_fs_override = if source == DocumentationDependencySource::Published { cargo_qubit_fs_override() } else { None };
-    let sibling_root = if source == DocumentationDependencySource::Registry { None } else { std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from) };
+    let qubit_fs_override = if source == DocumentationDependencySource::Published {
+        cargo_qubit_fs_override()
+    } else {
+        None
+    };
+    let sibling_root = if source == DocumentationDependencySource::Registry {
+        None
+    } else {
+        std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from)
+    };
     let qubit_local_files_override = sibling_root.as_ref().map(|parent| parent.join("rs-local-files"));
     let target = if source == DocumentationDependencySource::Registry {
         workspace.path().join("target")
@@ -698,8 +740,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
-                let mut example_manifest =
-                    documentation_manifest(root, &input, source, asynchronous, local, inventory);
+                let mut example_manifest = documentation_manifest(root, &input, source, asynchronous, local, inventory);
                 let mut local_provider_alias = None;
                 if local && source != DocumentationDependencySource::Registry {
                     let sibling_local = if published {

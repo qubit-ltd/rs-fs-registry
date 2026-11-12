@@ -272,7 +272,14 @@ fn test_migration_spi_versions_follow_manifest() {
 fn test_documentation_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let output = documentation_manifest(root, &input, DocumentationDependencySource::Published, false, false, false);
+    let output = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        false,
+        false,
+    );
     assert_eq!(
         output["dependencies"]["qubit-fs"]["version"],
         input["dependencies"]["qubit-fs"]["version"]
@@ -287,7 +294,14 @@ fn test_documentation_versions_follow_manifest() {
             .len(),
         0
     );
-    let asynchronous = documentation_manifest(root, &input, DocumentationDependencySource::Published, true, false, false);
+    let asynchronous = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        true,
+        false,
+        false,
+    );
     assert_eq!(
         asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("async")
@@ -305,29 +319,52 @@ fn test_documentation_manifest_registry_has_only_self_patch_and_manifest_feature
         (false, false, true, vec!["inventory"]),
         (true, false, true, vec!["async", "inventory"]),
     ] {
-        let output = documentation_manifest(root, &input, DocumentationDependencySource::Registry,
-                                            asynchronous, local, inventory);
+        let output = documentation_manifest(
+            root,
+            &input,
+            DocumentationDependencySource::Registry,
+            asynchronous,
+            local,
+            inventory,
+        );
         for name in ["qubit-fs", "qubit-fs-local", "qubit-local-files"] {
             if let Some(dependency) = output["dependencies"].get(name) {
                 assert!(dependency.get("path").is_none(), "{name} must resolve from crates.io");
             }
         }
-        assert_eq!(output["dependencies"]["qubit-fs-registry"]["path"].as_str(),
-                   Some(root.to_str().expect("UTF-8 archive path")));
+        assert_eq!(
+            output["dependencies"]["qubit-fs-registry"]["path"].as_str(),
+            Some(root.to_str().expect("UTF-8 archive path"))
+        );
         assert_eq!(output["patch"]["crates-io"].as_table().unwrap().len(), 1);
-        assert!(output["patch"]["crates-io"]["qubit-fs-registry"]["path"].as_str().is_some());
+        assert!(
+            output["patch"]["crates-io"]["qubit-fs-registry"]["path"]
+                .as_str()
+                .is_some()
+        );
         let mut actual = output["dependencies"]["qubit-fs-registry"]["features"]
-            .as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect::<Vec<_>>();
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect::<Vec<_>>();
         actual.sort_unstable();
         assert_eq!(actual, expected);
     }
-    let local = documentation_manifest(root, &input, DocumentationDependencySource::Local,
-                                       false, false, false);
-    let published = documentation_manifest(root, &input, DocumentationDependencySource::Published,
-                                           false, false, false);
+    let local = documentation_manifest(root, &input, DocumentationDependencySource::Local, false, false, false);
+    let published = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        false,
+        false,
+    );
     assert!(local["dependencies"]["qubit-fs-registry"]["path"].as_str().is_some());
-    assert_eq!(published["dependencies"]["qubit-fs-registry"]["path"].as_str(),
-               Some(root.to_str().expect("UTF-8 archive path")));
+    assert_eq!(
+        published["dependencies"]["qubit-fs-registry"]["path"].as_str(),
+        Some(root.to_str().expect("UTF-8 archive path"))
+    );
 }
 
 /// A sibling provider that still points at another registry worktree is not
@@ -450,7 +487,14 @@ fn test_example_requirements_are_grouped_explicitly() {
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let default = documentation_manifest(root, &input, DocumentationDependencySource::Published, false, false, false);
+    let default = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        false,
+        false,
+    );
     assert!(default["dependencies"].get("qubit-fs-local").is_none());
     assert_eq!(
         default["dependencies"]["qubit-fs-registry"]["features"]
@@ -459,13 +503,27 @@ fn test_example_requirements_are_grouped_explicitly() {
             .len(),
         0
     );
-    let asynchronous = documentation_manifest(root, &input, DocumentationDependencySource::Published, true, false, false);
+    let asynchronous = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        true,
+        false,
+        false,
+    );
     assert_eq!(
         asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("async")
     );
     assert!(asynchronous["dependencies"].get("futures").is_some());
-    let local = documentation_manifest(root, &input, DocumentationDependencySource::Published, false, true, false);
+    let local = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        true,
+        false,
+    );
     assert_eq!(
         local["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("inventory")
@@ -475,7 +533,14 @@ fn test_example_requirements_are_grouped_explicitly() {
         local["dependencies"]["qubit-fs-local"]["features"][0].as_str(),
         Some("registry")
     );
-    let inventory = documentation_manifest(root, &input, DocumentationDependencySource::Published, false, false, true);
+    let inventory = documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        false,
+        true,
+    );
     assert_eq!(
         inventory["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("inventory")
@@ -502,12 +567,19 @@ fn test_graph_checks_registry_features() {
         ],
         "resolve": {"nodes": [{"id":registry_id, "features":[], "dependencies":[]}]}
     });
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &alternate_registry,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { published: true, registry: true, ..GraphOptions::default() }
-    )).is_err());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &alternate_registry,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                published: true,
+                registry: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     assert!(
         std::panic::catch_unwind(|| check_graph(
             &base(&["inventory"]),
@@ -765,7 +837,14 @@ fn test_path_only_filesystem_dependency_uses_sibling_release() {
         .expect("filesystem dependency table");
     dependency.remove("version");
     dependency.insert("path".into(), toml::Value::String("../fixture-fs".into()));
-    let output = documentation_manifest(&registry, &input, DocumentationDependencySource::Local, false, false, false);
+    let output = documentation_manifest(
+        &registry,
+        &input,
+        DocumentationDependencySource::Local,
+        false,
+        false,
+        false,
+    );
 
     assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.98.7"));
     assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
@@ -782,7 +861,14 @@ fn test_missing_documentation_metadata_is_rejected() {
         .as_table_mut()
         .expect("package metadata table")
         .remove("metadata");
-    documentation_manifest(root, &input, DocumentationDependencySource::Published, false, false, false);
+    documentation_manifest(
+        root,
+        &input,
+        DocumentationDependencySource::Published,
+        false,
+        false,
+        false,
+    );
 }
 
 /// Invalid documents must fail rather than silently skip malformed examples.

@@ -25,7 +25,7 @@ def make_sibling_sources(root):
     packages = {
         "rs-fs": ("qubit-fs", "0.3.0"),
         "rs-fs-local": ("qubit-fs-local", "0.11.0"),
-        "rs-local-files": ("qubit-local-files", "0.5.0"),
+        "rs-local-files": ("qubit-local-files", "0.5.1"),
     }
     paths = {}
     for directory, (name, version) in packages.items():
@@ -139,7 +139,7 @@ qubit-local-files = "0.6.4"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.94.0"\n')
-            valid = {"qubit-fs": "0.3.0", "qubit-fs-local": "0.11.0", "qubit-local-files": "0.5.0"}
+            valid = {"qubit-fs": "0.3.0", "qubit-fs-local": "0.11.0", "qubit-local-files": "0.5.1"}
             for invalid in [
                 {}, {**valid, "other": "1.0.0"}, {**valid, "qubit-fs": ""},
                 {**valid, "qubit-fs": 3}, {**valid, "qubit-fs": "0.3"},
@@ -168,7 +168,7 @@ version = "0.8.0"
 [package.metadata.documentation.published-check.sibling-versions]
 qubit-fs = "0.4.2"
 qubit-fs-local = "0.11.0"
-qubit-local-files = "0.5.0"
+qubit-local-files = "0.5.1"
 """)
             siblings = make_sibling_sources(Path(directory) / "siblings")
             workspace = Path(directory) / "workspace"
@@ -699,7 +699,7 @@ qubit-local-files = "0.5.0"
             local_files_path = temporary / "rs-local-files"
             local_files_path.mkdir()
             initialize_git(local_files_path)
-            (local_files_path / "Cargo.toml").write_text('[package]\nname="qubit-local-files"\nversion="0.5.0"\n')
+            (local_files_path / "Cargo.toml").write_text('[package]\nname="qubit-local-files"\nversion="0.5.1"\n')
             subprocess.run(["git", "-C", str(local_files_path), "add", "Cargo.toml"], check=True)
             subprocess.run(["git", "-C", str(local_files_path), "commit", "-qm", "inputs"], check=True)
             workspace = temporary / "isolated"
@@ -1058,7 +1058,7 @@ qubit-local-files = "0.5.0"
               "manifest_path": str(fs_path / "Cargo.toml")}
         fs_local = {"name": "qubit-fs-local", "version": "0.11.0", "source": None,
                     "manifest_path": str(fs_local_path / "Cargo.toml")}
-        local_files = {"name": "qubit-local-files", "version": "0.5.0", "source": None,
+        local_files = {"name": "qubit-local-files", "version": "0.5.1", "source": None,
                        "manifest_path": str(local_files_path / "Cargo.toml")}
         checker.validate_graph({"packages": [own, fs, fs_local, local_files]}, "qubit-fs-registry", root, allowed_paths)
         for bad in [
