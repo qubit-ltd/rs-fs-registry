@@ -69,6 +69,8 @@ class PublishedDocsTests(unittest.TestCase):
             ]}
             checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
             metadata["packages"][1]["source"] = "registry+https://example.invalid/index"
+            checker.validate_graph(metadata, "qubit-fs-registry", root, {})
+            metadata["packages"][1]["source"] = "registry+https://example.invalid/index"
             with self.assertRaisesRegex(ValueError, "non-crates.io"):
                 checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
             metadata["packages"][1]["source"] = "registry+https://github.com/rust-lang/crates.io-index"

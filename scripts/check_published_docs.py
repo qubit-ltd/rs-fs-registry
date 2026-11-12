@@ -135,11 +135,13 @@ def validate_graph(metadata: dict, package: str, root: Path,
                     raise ValueError(f"{name} path override resolved an unexpected version")
             else:
                 raise ValueError(f"unexpected local dependency: {name}")
-        elif entry["source"] not in {
+        elif dependency_source == "registry" and entry["source"] not in {
             "registry+https://github.com/rust-lang/crates.io-index",
             "registry+https://index.crates.io/",
         }:
             raise ValueError(f"non-crates.io registry dependency: {name}: {entry['source']}")
+        elif dependency_source != "registry" and not entry["source"].startswith("registry+"):
+            raise ValueError(f"non-registry dependency: {name}")
         if name in {"qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi", "qubit-local-files"}:
             if name in seen:
                 raise ValueError(f"duplicate filesystem package identity: {name}")
