@@ -63,20 +63,41 @@ class PublishedDocsTests(unittest.TestCase):
             root = Path(directory) / "archive"
             root.mkdir()
             (root / "Cargo.toml").write_text("[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n")
+            example = Path(directory) / "example"
+            example.mkdir()
+            (example / "Cargo.toml").write_text("[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\n")
             metadata = {"packages": [
                 {"name": "qubit-fs-registry", "source": None, "manifest_path": str(root / "Cargo.toml")},
+                {"name": "filesystem-documentation-check", "source": None, "manifest_path": str(example / "Cargo.toml")},
                 {"name": "qubit-fs", "source": "registry+https://github.com/rust-lang/crates.io-index", "manifest_path": "/registry/qubit-fs/Cargo.toml"},
             ]}
-            checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
-            metadata["packages"][1]["source"] = "registry+https://example.invalid/index"
-            checker.validate_graph(metadata, "qubit-fs-registry", root, {})
-            metadata["packages"][1]["source"] = "registry+https://example.invalid/index"
+            checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry", example_root=example)
+            metadata["packages"][2]["source"] = "registry+https://example.invalid/index"
+            snapshot_metadata = {"packages": [metadata["packages"][0], metadata["packages"][2]]}
+            checker.validate_graph(snapshot_metadata, "qubit-fs-registry", root, {})
             with self.assertRaisesRegex(ValueError, "non-crates.io"):
-                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
-            metadata["packages"][1]["source"] = "registry+https://github.com/rust-lang/crates.io-index"
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry", example_root=example)
+            metadata["packages"][2]["source"] = "git+https://example.invalid/qubit-fs"
+            with self.assertRaisesRegex(ValueError, "non-crates.io"):
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry", example_root=example)
+            metadata["packages"][2]["source"] = "registry+https://github.com/rust-lang/crates.io-index"
+            metadata["packages"].append({"name": "qubit-fs", "source": "registry+https://github.com/rust-lang/crates.io-index", "manifest_path": "/registry/qubit-fs-duplicate/Cargo.toml"})
+            with self.assertRaisesRegex(ValueError, "duplicate filesystem"):
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry", example_root=example)
+            metadata["packages"].pop()
             metadata["packages"].append({"name": "foreign", "source": None, "manifest_path": "/tmp/foreign/Cargo.toml"})
             with self.assertRaisesRegex(ValueError, "unexpected local"):
-                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry")
+                checker.validate_graph(metadata, "qubit-fs-registry", root, {}, dependency_source="registry", example_root=example)
+
+    def test_registry_resolution_summary_records_sorted_packages_and_archive(self):
+        metadata = {"packages": [
+            {"name": "zeta", "version": "2.0.0", "source": "registry+https://github.com/rust-lang/crates.io-index", "manifest_path": "/cargo/zeta/Cargo.toml"},
+            {"name": "qubit-fs-registry", "version": "0.8.0", "source": None, "manifest_path": "/archive/Cargo.toml"},
+        ]}
+        summary = checker.resolution_summary(metadata, Path("/archive"), "abc123")
+        self.assertIn("archive=/archive input_sha256=abc123", summary)
+        self.assertLess(summary.index("qubit-fs-registry@0.8.0"), summary.index("zeta@2.0.0"))
+        self.assertIn("source=path:/archive/Cargo.toml", summary)
 
     def test_registry_check_never_probes_siblings_or_falls_back(self):
         with tempfile.TemporaryDirectory() as directory:

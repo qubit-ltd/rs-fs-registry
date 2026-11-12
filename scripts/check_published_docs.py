@@ -148,6 +148,17 @@ def validate_graph(metadata: dict, package: str, root: Path,
             seen.add(name)
 
 
+def resolution_summary(metadata: dict, archive: Path, input_digest: str) -> str:
+    """Summarize Cargo's resolved package identities and their exact sources."""
+    packages = []
+    for entry in metadata["packages"]:
+        source = entry.get("source") or f"path:{entry['manifest_path']}"
+        packages.append((entry["name"], entry["version"], source))
+    packages.sort()
+    resolved = "; ".join(f"{name}@{version} source={source}" for name, version, source in packages)
+    return f"archive={archive.resolve()} input_sha256={input_digest}; resolved=[{resolved}]"
+
+
 def _windows_job_functions():
     """Create ctypes bindings for the Windows owned-process Job Object APIs."""
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -808,14 +819,16 @@ def check_registry(root: Path, workspace: Path) -> None:
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
     metadata = run(cargo, ["metadata", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata")
-    validate_graph(json.loads(metadata), package, extracted, {}, dependency_source="registry")
+    resolved_metadata = json.loads(metadata)
+    validate_graph(resolved_metadata, package, extracted, {}, dependency_source="registry")
     run(cargo, ["test", "--doc"], extracted, environment, workspace / "doctests-default.log",
         timeout_seconds=900, context="Cargo registry default doctests")
     run(cargo, ["test", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
         timeout_seconds=900, context="Cargo registry all-feature doctests")
     run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
         extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
-    print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; input_sha256={_input_digest(inputs)}")
+    print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; "
+          f"{resolution_summary(resolved_metadata, archive, _input_digest(inputs))}")
 
 
 def main() -> int:
