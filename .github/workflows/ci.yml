@@ -47,10 +47,8 @@ jobs:
           python-version: '3.12'
       - name: Install the documented Rust toolchain
         run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
-      - name: Prepare pinned sibling path dependencies
-        run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Verify isolated published documentation
-        run: python3 scripts/check_published_docs.py .
+        run: python3 scripts/check_published_docs.py . --dependency-source registry
 
   windows-process-cleanup:
     runs-on: windows-latest
@@ -64,12 +62,10 @@ jobs:
           python-version: '3.12'
       - name: Install the documented Rust toolchain
         run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
-      - name: Prepare pinned sibling path dependencies
-        run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Run published checker tests on Windows
         run: python -B -m unittest discover -s scripts/tests -v
       - name: Verify archive doctests and examples with Windows process cleanup
-        run: python scripts/check_published_docs.py .
+        run: python scripts/check_published_docs.py . --dependency-source registry
 
   prepare-feature-matrix:
     runs-on: ubuntu-latest

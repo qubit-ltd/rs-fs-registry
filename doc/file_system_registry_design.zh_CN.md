@@ -492,7 +492,7 @@ README、指南和异步解析附录中的 Rust 代码块是完整程序；六�
 附录中的完整异步程序以 `<!-- registry-example: async -->` 标记，并在最小异步依赖工程中运行。
 指南中的短示例使用 `rust,no_run`：会编译但不执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖。发布检查器会在打包或编译示例前，固定 registry 与三个 sibling 输入：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.1。快照包含 Git 已跟踪及未被忽略的未跟踪普通文件和 `Cargo.lock`，排除 `.git`、`target`、`.cargo`。`input-manifest.json` 记录包名/版本、源与快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、长度、内容和执行位计算的 SHA-256。复制前后会校验源输入集合与摘要，并验证目标摘要；复制期间发生变化会失败并保留诊断，之后源目录的变化不会影响本次检查。
+`QUBIT_FS_REGISTRY_DOC_DEPS=local` 允许已声明的本地依赖。发布检查器会在打包或编译示例前，固定 registry 与三个 sibling 输入：`qubit-fs` 0.3.2、`qubit-fs-local` 0.11.2 和 `qubit-local-files` 0.5.3。快照包含 Git 已跟踪及未被忽略的未跟踪普通文件和 `Cargo.lock`，排除 `.git`、`target`、`.cargo`。`input-manifest.json` 记录包名/版本、源与快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、长度、内容和执行位计算的 SHA-256。复制前后会校验源输入集合与摘要，并验证目标摘要；复制期间发生变化会失败并保留诊断，之后源目录的变化不会影响本次检查。
 Rustdoc 仍在被测归档上运行，provider shim 也指向该归档；完整 local-provider 示例和归档依赖解析使用 sibling 源码快照。本检查不代表验证了这些 sibling 对应 crates.io 发布包的内容。只允许具名 sibling 快照路径、被测归档和生成的 Markdown 示例 crate 根，其他依赖必须来自包注册源。两种模式都检查实际解析图中的 fs/registry/spi 身份，以及 local provider
 是否引用当前被测 registry。精确 sibling 版本的唯一来源是 Cargo.toml 中的
 `[package.metadata.documentation.published-check.sibling-versions]`；缺失、多余或非精确版本都会失败。

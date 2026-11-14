@@ -23,9 +23,9 @@ spec.loader.exec_module(checker)
 def make_sibling_sources(root):
     root = Path(root)
     packages = {
-        "rs-fs": ("qubit-fs", "0.3.0"),
-        "rs-fs-local": ("qubit-fs-local", "0.11.0"),
-        "rs-local-files": ("qubit-local-files", "0.5.1"),
+        "rs-fs": ("qubit-fs", "0.3.2"),
+        "rs-fs-local": ("qubit-fs-local", "0.11.2"),
+        "rs-local-files": ("qubit-local-files", "0.5.3"),
     }
     paths = {}
     for directory, (name, version) in packages.items():
@@ -95,7 +95,7 @@ class PublishedDocsTests(unittest.TestCase):
             {"name": "qubit-fs-registry", "version": "0.8.0", "source": None, "manifest_path": "/archive/Cargo.toml"},
         ]}
         summary = checker.resolution_summary(metadata, Path("/archive"), "abc123")
-        self.assertIn("archive=/archive input_sha256=abc123", summary)
+        self.assertIn(f"archive={Path('/archive')} input_sha256=abc123", summary)
         self.assertLess(summary.index("qubit-fs-registry@0.8.0"), summary.index("zeta@2.0.0"))
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
@@ -174,7 +174,7 @@ qubit-local-files = "0.5.1"
             workspace = Path(directory) / "workspace"
             workspace.mkdir()
             with patch.object(checker, "sibling_fs_path", return_value=siblings["qubit-fs"]):
-                with self.assertRaisesRegex(ValueError, r"qubit-fs expected 0\.4\.2, actual 0\.3\.0"):
+                with self.assertRaisesRegex(ValueError, r"qubit-fs expected 0\.4\.2, actual 0\.3\.2"):
                     checker.check(root, workspace)
 
     def test_windows_run_assigns_suspended_process_to_job_before_polling(self):
@@ -227,7 +227,7 @@ qubit-local-files = "0.5.1"
         metadata_template = {
             "packages": [
                 {"name": package, "source": None},
-                {"name": "qubit-fs", "version": "0.3.0", "source": None,
+                {"name": "qubit-fs", "version": "0.3.2", "source": None,
                  "manifest_path": str(fs_path / "Cargo.toml")},
             ],
         }
@@ -642,9 +642,9 @@ qubit-local-files = "0.5.1"
         run_commands = [line.strip()[len("run:"):].strip() for line in job if line.strip().startswith("run:")]
         self.assertEqual(
             [command for command in run_commands if "check_published_docs.py" in command],
-            ["python3 scripts/check_published_docs.py ."],
+            ["python3 scripts/check_published_docs.py . --dependency-source registry"],
         )
-        self.assertEqual(run_commands.count("python3 scripts/check_published_docs.py ."), 1)
+        self.assertEqual(run_commands.count("python3 scripts/check_published_docs.py . --dependency-source registry"), 1)
 
         checker_path = repository / "scripts/check_published_docs.py"
         self.assertTrue(checker_path.is_file())
@@ -904,11 +904,12 @@ qubit-local-files = "0.5.1"
             (siblings["qubit-fs"] / "Cargo.toml").write_text("source changed after snapshot\n")
             self.assertNotEqual((source / "Cargo.toml").read_text(), "source changed after snapshot\n")
             self.assertEqual((fs_path / "Cargo.toml").read_text(), original_fs_manifest)
-            archive = workspace / "target" / "package" / "qubit-fs-registry-0.8.0.crate"
+            version = checker.tomllib.loads((source / "Cargo.toml").read_text())["package"]["version"]
+            archive = workspace / "target" / "package" / f"qubit-fs-registry-{version}.crate"
             archive.parent.mkdir(parents=True)
-            content = b'[package]\nname="qubit-fs-registry"\nversion="0.8.0"\n'
+            content = f'[package]\nname="qubit-fs-registry"\nversion="{version}"\n'.encode()
             with tarfile.open(archive, "w:gz") as output_file:
-                member = tarfile.TarInfo("qubit-fs-registry-0.8.0/Cargo.toml")
+                member = tarfile.TarInfo(f"qubit-fs-registry-{version}/Cargo.toml")
                 member.size = len(content)
                 output_file.addfile(member, __import__("io").BytesIO(content))
 
@@ -917,7 +918,7 @@ qubit-local-files = "0.5.1"
                 return json.dumps({"packages": [
                     {"name": "qubit-fs-registry", "source": None,
                      "manifest_path": str(cwd / "Cargo.toml")},
-                    {"name": "qubit-fs", "version": "0.3.0", "source": None,
+                    {"name": "qubit-fs", "version": "0.3.2", "source": None,
                      "manifest_path": str(Path(cwd).parents[1] / "package-input" / "rs-fs" / "Cargo.toml")},
                 ]})
             return ""
@@ -940,7 +941,7 @@ qubit-local-files = "0.5.1"
             self.assertIn("dirty=", output.getvalue())
             self.assertIn("sha256=", output.getvalue())
             self.assertRegex(output.getvalue(), r"@[0-9a-f]{40} dirty=(true|false) sha256=[0-9a-f]{64}")
-            self.assertIn("0.3.0", output.getvalue())
+            self.assertIn("0.3.2", output.getvalue())
             snapshot_paths = output.getvalue().split("snapshot paths: ", 1)[1].split("; all checks", 1)[0]
             reported_paths = dict(item.split("=", 1) for item in snapshot_paths.split(", "))
             self.assertTrue(Path(reported_paths["qubit-fs-local"]).samefile(
@@ -1054,11 +1055,11 @@ qubit-local-files = "0.5.1"
             "qubit-local-files": local_files_path,
         }
         own = {"name": "qubit-fs-registry", "source": None, "manifest_path": str(root / "Cargo.toml")}
-        fs = {"name": "qubit-fs", "version": "0.3.0", "source": None,
+        fs = {"name": "qubit-fs", "version": "0.3.2", "source": None,
               "manifest_path": str(fs_path / "Cargo.toml")}
-        fs_local = {"name": "qubit-fs-local", "version": "0.11.0", "source": None,
+        fs_local = {"name": "qubit-fs-local", "version": "0.11.2", "source": None,
                     "manifest_path": str(fs_local_path / "Cargo.toml")}
-        local_files = {"name": "qubit-local-files", "version": "0.5.1", "source": None,
+        local_files = {"name": "qubit-local-files", "version": "0.5.3", "source": None,
                        "manifest_path": str(local_files_path / "Cargo.toml")}
         checker.validate_graph({"packages": [own, fs, fs_local, local_files]}, "qubit-fs-registry", root, allowed_paths)
         for bad in [

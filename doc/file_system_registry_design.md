@@ -284,8 +284,8 @@ directories and prepare their own input files.
 
 `QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. The published
 checker snapshots the registry and all three sibling inputs before packaging or
-compiling examples: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
-`qubit-local-files` 0.5.1. Snapshots contain Git-tracked and non-ignored
+compiling examples: `qubit-fs` 0.3.2, `qubit-fs-local` 0.11.2, and
+`qubit-local-files` 0.5.3. Snapshots contain Git-tracked and non-ignored
 untracked regular files plus `Cargo.lock`, excluding `.git`, `target`, and
 `.cargo`. Its `input-manifest.json` records package/version, source and snapshot
 paths, Git HEAD, dirty state, and SHA-256 over sorted relative paths, lengths,

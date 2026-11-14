@@ -134,7 +134,7 @@ cargo test --all-features
 ./.infra/bin/coverage.sh
 
 # Verify documentation against published dependencies before publishing
-python3 scripts/check_published_docs.py .
+python3 scripts/check_published_docs.py . --dependency-source registry
 ```
 
 The published dependency check requires Python 3.12+ and the Rust toolchain
@@ -142,30 +142,19 @@ channel configured in `rust-toolchain.toml`.
 It runs default and all-feature Rustdoc tests on the extracted package archive,
 then checks the Markdown examples, including both complete async-resolution
 appendices. It must succeed for the same source state you intend to publish.
-The check snapshots the registry and its three sibling inputs (`qubit-fs`,
-`qubit-fs-local`, and `qubit-local-files`) before packaging or compiling examples.
-Each snapshot includes Git-tracked and non-ignored untracked regular files,
-including `Cargo.lock`, while excluding `.git`, `target`, and `.cargo`. The
-`input-manifest.json` records each package version, source and snapshot paths,
-Git HEAD, dirty state, and a SHA-256 digest over sorted relative paths, contents,
-lengths, and executable bits. The checker compares source inputs before and after
-copying and verifies the snapshot digest; a copy-time change fails and retains
-diagnostics. Changes after copying do not change the inputs used by that run.
-The exact sibling versions still come from
+This registry mode resolves dependencies from crates.io and checks the package
+archive, default and all-feature Rustdoc tests, and Markdown examples without
+sibling overrides. The optional snapshot mode (`--dependency-source snapshot`)
+checks local sibling source snapshots for development; its exact sibling versions
+come from
 `[package.metadata.documentation.published-check.sibling-versions]` in
-`Cargo.toml`: `qubit-fs` 0.3.0, `qubit-fs-local` 0.11.0, and
-`qubit-local-files` 0.5.1. The provider shim references the tested archive. This
-checks the archive and examples against fixed sibling source snapshots; it does
-not verify the contents of corresponding crates.io releases. The graph check
-allows only these named sibling paths, the archive, and the generated
-Markdown-example crate root; every other dependency must come from a registry.
-Rerun it after changing source files, the manifest, or examples. CI runs it for
-pull requests, pushes to `main`, and manual workflow runs; failures must not fall
-back to other local overrides.
+`Cargo.toml`: `qubit-fs` 0.3.2, `qubit-fs-local` 0.11.2, and
+`qubit-local-files` 0.5.3. CI runs the registry check for pull requests, pushes
+to `main`, and manual workflow runs; failures never fall back to local overrides.
 
 Before publishing, verify that the required registry versions are already
-published and satisfy the normal dependency requirements: `qubit-fs` 0.3.0,
-`qubit-fs-local` 0.11, and `qubit-local-files` 0.5.1. Optional dependencies
+published and satisfy the normal dependency requirements: `qubit-fs` 0.3.2,
+`qubit-fs-local` 0.11, and `qubit-local-files` 0.5.3. Optional dependencies
 remain in published crate metadata even when their features are disabled. In
 particular, the first release of registry 0.8 has a dependency cycle:
 `qubit-fs-local` 0.11 requires registry 0.8, while the strict registry 0.8

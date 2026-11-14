@@ -123,16 +123,14 @@ cargo test --all-features
 ./.infra/bin/coverage.sh
 
 # 发布前验证文档使用已发布的依赖
-python3 scripts/check_published_docs.py .
+python3 scripts/check_published_docs.py . --dependency-source registry
 ```
 
 发布依赖检查需要 Python 3.12+，Rust 工具链版本从 `rust-toolchain.toml` 读取。
-检查会在打包或编译示例前，固定 registry 与三个 sibling（`qubit-fs`、`qubit-fs-local`、`qubit-local-files`）的源码输入。每份快照包含 Git 已跟踪及未被忽略的未跟踪普通文件，也包含 `Cargo.lock`；`.git`、`target` 和 `.cargo` 会排除。`input-manifest.json` 记录包版本、源路径和快照路径、Git HEAD、dirty 状态，以及基于排序相对路径、内容、长度和执行位计算的 SHA-256 摘要。检查会比较复制前后的源输入并校验快照摘要；复制期间有变化就失败并保留诊断。复制完成后的源目录变化不会影响本次检查。
-三个 sibling 精确版本仍以 Cargo.toml 中的 `[package.metadata.documentation.published-check.sibling-versions]` 为准：`qubit-fs` 0.3.0、`qubit-fs-local` 0.11.0 和 `qubit-local-files` 0.5.1。provider 通过 shim 指向被测归档。本检查使用固定的 sibling 源码快照验证归档和示例，不代表验证了对应 crates.io 发布包的内容。依赖图只允许这些具名 sibling 路径、被测归档和生成的 Markdown 示例 crate 根；其他依赖必须来自 registry。修改源码、manifest 或示例后必须重新运行。
-CI 会在 pull request、推送到 `main` 和手动运行时自动执行检查；失败时不得回退到其他本地依赖覆盖。
+此 registry 模式从 crates.io 解析依赖，并在没有 sibling 覆盖的情况下检查打包归档、默认及全部 feature 的 Rustdoc 测试和 Markdown 示例。开发时可选用 `--dependency-source snapshot` 检查本地 sibling 源码快照；其精确版本以 Cargo.toml 中的 `[package.metadata.documentation.published-check.sibling-versions]` 为准：`qubit-fs` 0.3.2、`qubit-fs-local` 0.11.2 和 `qubit-local-files` 0.5.3。CI 会在 pull request、推送到 `main` 和手动运行时执行 registry 检查；失败时绝不回退到本地依赖覆盖。
 
-发布前，先确认所需 registry 版本已发布且满足普通依赖版本要求：`qubit-fs` 0.3.0、
-`qubit-fs-local` 0.11 和 `qubit-local-files` 0.5.1。即使关闭 feature，可选依赖仍会出现在
+发布前，先确认所需 registry 版本已发布且满足普通依赖版本要求：`qubit-fs` 0.3.2、
+`qubit-fs-local` 0.11 和 `qubit-local-files` 0.5.3。即使关闭 feature，可选依赖仍会出现在
 已发布 crate 的依赖元数据中。特别是 registry 0.8 首次发布存在依赖闭环：`qubit-fs-local`
 0.11 需要 registry 0.8，而 registry 0.8 的严格检查又需要 `qubit-fs-local` 0.11。若这些前置版本
 尚未发布，应停止发布并记录缺失版本和依赖链，再另行评审发布政策或依赖设计；快照检查成功不代表可以绕过此门槛。
