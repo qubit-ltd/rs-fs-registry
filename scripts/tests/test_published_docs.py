@@ -95,7 +95,7 @@ class PublishedDocsTests(unittest.TestCase):
             {"name": "qubit-fs-registry", "version": "0.8.0", "source": None, "manifest_path": "/archive/Cargo.toml"},
         ]}
         summary = checker.resolution_summary(metadata, Path("/archive"), "abc123")
-        self.assertIn(f"archive={Path('/archive')} input_sha256=abc123", summary)
+        self.assertIn(f"archive={Path('/archive').resolve()} input_sha256=abc123", summary)
         self.assertLess(summary.index("qubit-fs-registry@0.8.0"), summary.index("zeta@2.0.0"))
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
