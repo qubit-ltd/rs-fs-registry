@@ -13,5 +13,5 @@
       "label": "中文"
     }
   },
-  "deploy": false
+  "deploy": true
 }
