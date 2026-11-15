@@ -117,16 +117,15 @@ pub fn manifest(root: &Path) -> Value {
     from_str(&source).expect("parse package manifest")
 }
 
-/// Builds a minimal example manifest with registry dependencies and the tested package path.
+/// Builds a minimal example manifest with crates.io dependencies, including the tested release.
 pub fn documentation_manifest(
-    root: &Path,
+    _root: &Path,
     input: &Value,
     asynchronous: bool,
     local: bool,
     inventory: bool,
 ) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
-    let package_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
@@ -161,10 +160,6 @@ pub fn documentation_manifest(
             "={}",
             input["package"]["version"].as_str().expect("package version")
         )),
-    );
-    current.insert(
-        "path".into(),
-        Value::String(package_root.to_str().expect("UTF-8 root").into()),
     );
     current.insert("default-features".into(), Value::Boolean(false));
     let mut features = Vec::new();
@@ -227,11 +222,21 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                 .then(|| options.example_manifest.and_then(|path| path.canonicalize().ok()))
                 .flatten();
             if name == package {
-                assert_eq!(source, None, "tested package must be the extracted archive");
-                assert_eq!(
-                    manifest_path,
-                    root.join("Cargo.toml").canonicalize().expect("tested manifest exists")
-                );
+                if options.registry {
+                    assert!(
+                        source.is_some_and(|source| {
+                            source == "registry+https://github.com/rust-lang/crates.io-index"
+                                || source == "registry+https://index.crates.io/"
+                        }),
+                        "tested package dependency must use crates.io in a registry example graph"
+                    );
+                } else {
+                    assert_eq!(source, None, "tested package must be the extracted archive");
+                    assert_eq!(
+                        manifest_path,
+                        root.join("Cargo.toml").canonicalize().expect("tested manifest exists")
+                    );
+                }
             } else if name == "filesystem-documentation-check" {
                 assert_eq!(source, None, "example consumer must be the generated manifest");
                 assert_eq!(

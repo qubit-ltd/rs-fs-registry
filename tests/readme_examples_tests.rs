@@ -307,6 +307,10 @@ fn test_documentation_versions_follow_manifest() {
 fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
+    let published_version = format!(
+        "={}",
+        input["package"]["version"].as_str().expect("package version")
+    );
     for (asynchronous, local, inventory, expected) in [
         (false, false, false, Vec::<&str>::new()),
         (true, false, false, vec!["async"]),
@@ -325,9 +329,10 @@ fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features(
                 assert!(dependency.get("path").is_none(), "{name} must resolve from crates.io");
             }
         }
+        assert!(output["dependencies"]["qubit-fs-registry"].get("path").is_none());
         assert_eq!(
-            output["dependencies"]["qubit-fs-registry"]["path"].as_str(),
-            Some(root.to_str().expect("UTF-8 archive path"))
+            output["dependencies"]["qubit-fs-registry"]["version"].as_str(),
+            Some(published_version.as_str())
         );
         assert!(output.get("patch").is_none(), "examples must not use Cargo patches");
         let mut actual = output["dependencies"]["qubit-fs-registry"]["features"]
@@ -449,6 +454,36 @@ fn test_graph_checks_registry_features() {
             }
         ))
         .is_err()
+    );
+    let registry_manifest = tempfile::tempdir().expect("registry package directory");
+    let registry_manifest_path = registry_manifest.path().join("Cargo.toml");
+    std::fs::write(
+        &registry_manifest_path,
+        "[package]\nname = 'qubit-fs-registry'\nversion = '0.8.2'\n",
+    )
+    .unwrap();
+    let registry_example = serde_json::json!({
+        "packages": [{
+            "name":"qubit-fs-registry",
+            "id":"qubit-fs-registry 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+            "manifest_path":registry_manifest_path.to_str().unwrap(),
+            "source":"registry+https://github.com/rust-lang/crates.io-index"
+        }],
+        "resolve": {"nodes": [{
+            "id":"qubit-fs-registry 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+            "features":[],
+            "dependencies":[]
+        }]}
+    });
+    check_graph(
+        &registry_example,
+        "qubit-fs-registry",
+        root,
+        GraphOptions {
+            published: true,
+            registry: true,
+            ..GraphOptions::default()
+        },
     );
     assert!(
         std::panic::catch_unwind(|| check_graph(
