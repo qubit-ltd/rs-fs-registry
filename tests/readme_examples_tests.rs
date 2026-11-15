@@ -506,8 +506,6 @@ fn test_graph_checks_registry_features() {
     );
 }
 
-/// Published example graphs allow only the exact qubit-fs path from Cargo's
-
 /// Missing metadata must fail explicitly instead of silently omitting
 /// dependencies.
 #[test]
