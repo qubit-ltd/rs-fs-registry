@@ -117,22 +117,14 @@ pub fn manifest(root: &Path) -> Value {
     from_str(&source).expect("parse package manifest")
 }
 
-/// Builds a minimal example manifest with crates.io dependencies, including the tested release.
-pub fn documentation_manifest(
-    _root: &Path,
-    input: &Value,
-    asynchronous: bool,
-    local: bool,
-    inventory: bool,
-) -> Value {
+/// Builds a minimal example manifest with crates.io dependencies, including the
+/// tested release.
+pub fn documentation_manifest(_root: &Path, input: &Value, asynchronous: bool, local: bool, inventory: bool) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
-            dependencies.insert(
-                name.into(),
-                dependency(value),
-            );
+            dependencies.insert(name.into(), dependency(value));
         }
     }
     let extra = input["package"]
@@ -147,10 +139,7 @@ pub fn documentation_manifest(
             {
                 continue;
             }
-            dependencies.insert(
-                name.clone(),
-                dependency(value),
-            );
+            dependencies.insert(name.clone(), dependency(value));
         }
     }
     let mut current = Table::new();
@@ -179,15 +168,18 @@ pub fn documentation_manifest(
     output
 }
 
-/// Keeps declared version and feature requirements while removing Cargo path hints.
+/// Keeps declared version and feature requirements while removing Cargo path
+/// hints.
 pub(crate) fn dependency(value: &Value) -> Value {
     let mut table = match value {
         Value::String(version) => Table::from_iter([("version".into(), Value::String(version.clone()))]),
         Value::Table(table) => table.clone(),
         _ => panic!("dependency must declare a version"),
     };
-    assert!(table.get("version").and_then(Value::as_str).is_some(),
-        "registry dependencies need an explicit version");
+    assert!(
+        table.get("version").and_then(Value::as_str).is_some(),
+        "registry dependencies need an explicit version"
+    );
     table.remove("optional");
     table.remove("async-only");
     table.remove("path");

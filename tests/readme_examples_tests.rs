@@ -268,13 +268,7 @@ fn test_migration_spi_versions_follow_manifest() {
 fn test_documentation_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let output = documentation_manifest(
-        root,
-        &input,
-        false,
-        false,
-        false,
-    );
+    let output = documentation_manifest(root, &input, false, false, false);
     assert_eq!(
         output["dependencies"]["qubit-fs"]["version"],
         input["dependencies"]["qubit-fs"]["version"]
@@ -289,13 +283,7 @@ fn test_documentation_versions_follow_manifest() {
             .len(),
         0
     );
-    let asynchronous = documentation_manifest(
-        root,
-        &input,
-        true,
-        false,
-        false,
-    );
+    let asynchronous = documentation_manifest(root, &input, true, false, false);
     assert_eq!(
         asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("async")
@@ -307,23 +295,14 @@ fn test_documentation_versions_follow_manifest() {
 fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let published_version = format!(
-        "={}",
-        input["package"]["version"].as_str().expect("package version")
-    );
+    let published_version = format!("={}", input["package"]["version"].as_str().expect("package version"));
     for (asynchronous, local, inventory, expected) in [
         (false, false, false, Vec::<&str>::new()),
         (true, false, false, vec!["async"]),
         (false, false, true, vec!["inventory"]),
         (true, false, true, vec!["async", "inventory"]),
     ] {
-        let output = documentation_manifest(
-            root,
-            &input,
-            asynchronous,
-            local,
-            inventory,
-        );
+        let output = documentation_manifest(root, &input, asynchronous, local, inventory);
         for name in ["qubit-fs", "qubit-fs-local", "qubit-local-files"] {
             if let Some(dependency) = output["dependencies"].get(name) {
                 assert!(dependency.get("path").is_none(), "{name} must resolve from crates.io");
@@ -344,7 +323,6 @@ fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features(
         actual.sort_unstable();
         assert_eq!(actual, expected);
     }
-
 }
 
 /// Example directives compose and each dependency group declares only its
@@ -366,13 +344,7 @@ fn test_example_requirements_are_grouped_explicitly() {
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let default = documentation_manifest(
-        root,
-        &input,
-        false,
-        false,
-        false,
-    );
+    let default = documentation_manifest(root, &input, false, false, false);
     assert!(default["dependencies"].get("qubit-fs-local").is_none());
     assert_eq!(
         default["dependencies"]["qubit-fs-registry"]["features"]
@@ -381,25 +353,13 @@ fn test_example_requirements_are_grouped_explicitly() {
             .len(),
         0
     );
-    let asynchronous = documentation_manifest(
-        root,
-        &input,
-        true,
-        false,
-        false,
-    );
+    let asynchronous = documentation_manifest(root, &input, true, false, false);
     assert_eq!(
         asynchronous["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("async")
     );
     assert!(asynchronous["dependencies"].get("futures").is_some());
-    let local = documentation_manifest(
-        root,
-        &input,
-        false,
-        true,
-        false,
-    );
+    let local = documentation_manifest(root, &input, false, true, false);
     assert_eq!(
         local["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("inventory")
@@ -409,13 +369,7 @@ fn test_example_requirements_are_grouped_explicitly() {
         local["dependencies"]["qubit-fs-local"]["features"][0].as_str(),
         Some("registry")
     );
-    let inventory = documentation_manifest(
-        root,
-        &input,
-        false,
-        false,
-        true,
-    );
+    let inventory = documentation_manifest(root, &input, false, false, true);
     assert_eq!(
         inventory["dependencies"]["qubit-fs-registry"]["features"][0].as_str(),
         Some("inventory")
@@ -552,9 +506,7 @@ fn test_graph_checks_registry_features() {
     );
 }
 
-
 /// Published example graphs allow only the exact qubit-fs path from Cargo's
-
 
 /// Missing metadata must fail explicitly instead of silently omitting
 /// dependencies.
@@ -567,13 +519,7 @@ fn test_missing_documentation_metadata_is_rejected() {
         .as_table_mut()
         .expect("package metadata table")
         .remove("metadata");
-    documentation_manifest(
-        root,
-        &input,
-        false,
-        false,
-        false,
-    );
+    documentation_manifest(root, &input, false, false, false);
 }
 
 /// Invalid documents must fail rather than silently skip malformed examples.
