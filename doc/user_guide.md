@@ -578,15 +578,11 @@ The CI feature matrix checks the default, `async`-only, `inventory`-only, and
 combined `async` plus `inventory` configurations.
 
 Before publishing, run `python3 scripts/check_published_docs.py .` with Python
-3.12+ and the Rust toolchain from `rust-toolchain.toml`. The checker snapshots
-the registry and the `qubit-fs`, `qubit-fs-local`, and `qubit-local-files`
-sibling inputs before packaging and compiling examples. It records versions,
-source paths, Git HEAD and dirty state, plus a SHA-256 digest over sorted input
-paths, lengths, contents, and executable bits. A change during copying fails
-the check and preserves diagnostics; later source changes do not alter the
-prepared inputs. This validates the package archive and examples against those
-fixed sibling source snapshots, not the contents of their crates.io releases.
-Rerun the check after changing source, the manifest, or examples.
+3.12+ and the Rust toolchain from `rust-toolchain.toml`. The checker copies the
+current repository inputs into an isolated package tree, creates and extracts
+the actual Cargo archive, verifies that dependencies resolve from crates.io,
+runs default and all-feature doctests, and executes every shipped Markdown
+example. Rerun it after changing source, the manifest, or examples.
 
 Before following the release sequence, verify that every registry version
 required by the documentation providers is already published and satisfies
@@ -604,21 +600,21 @@ bootstrap exception. Resolve the release policy or dependency design through
 separate review before proceeding.
 
 If a compatible registry prerequisite is already published, publish any missing
-sibling releases, then run strict registry consumption for the exact registry
+required dependency releases, then run strict registry consumption for the exact registry
 source ref:
 
 ```bash
-python3 scripts/check_published_docs.py . --dependency-source registry
+python3 scripts/check_published_docs.py .
 ```
 
 Strict mode resolves dependencies from crates.io and checks the packaged
 archive, default and all-feature doctests, and all shipped Markdown examples.
-It uses no sibling path overrides or provider shim and fails without fallback
+It uses no local path overrides and fails without fallback
 if a required release is unavailable or a dependency resolves outside crates.io.
 Run the manual **Published Registry Consumption** workflow on the exact release
 ref, and publish the registry only after success. If a required release is
 missing or the check fails for another reason, preserve its diagnostics and do
-not treat the snapshot check as a substitute. The result records resolved
+not treat another check as a substitute. The result records resolved
 versions and the source digest; failed runs preserve individual Cargo logs.
 
 ## Further Reading

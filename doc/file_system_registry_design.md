@@ -282,52 +282,16 @@ set. Short guide examples use `rust,no_run`: they compile but are not executed.
 Unknown directives and unclosed fences fail. Programs run in separate working
 directories and prepare their own input files.
 
-`QUBIT_FS_REGISTRY_DOC_DEPS=local` allows declared local sources. The published
-checker snapshots the registry and all three sibling inputs before packaging or
-compiling examples: `qubit-fs` 0.3.2, `qubit-fs-local` 0.11.2, and
-`qubit-local-files` 0.5.3. Snapshots contain Git-tracked and non-ignored
-untracked regular files plus `Cargo.lock`, excluding `.git`, `target`, and
-`.cargo`. Its `input-manifest.json` records package/version, source and snapshot
-paths, Git HEAD, dirty state, and SHA-256 over sorted relative paths, lengths,
-contents, and executable bits. Source inputs are checked before and after
-copying and the destination digest is verified; any copy-time change fails and
-preserves diagnostics. Later changes to source checkouts do not alter that run.
-The tested archive remains the registry package consumed by doctests and the
-provider shim. The checker uses sibling source snapshots to complete local
-provider examples; it does not validate the contents of those packages' crates.io
-releases. Only the named sibling paths, tested archive, and generated
-Markdown-example crate root are allowed; all other dependencies must come from registries.
-Both validate unique fs/registry/spi identities and the local provider's registry edge.
-The sole source of exact sibling versions is
-`[package.metadata.documentation.published-check.sibling-versions]` in `Cargo.toml`;
-the checker rejects missing, extra, or non-exact entries. The Rust toolchain channel
-comes from `rust-toolchain.toml`, also used by CI. From the project root, run
-`python3 scripts/check_published_docs.py .` with Python 3.12 or newer and that toolchain installed. It checks in an isolated
-Cargo environment with the override written only to its isolated Cargo home. The
-Cargo override, sibling root, graph allowlist, and provider shim all resolve to
-the prepared snapshot tree. On the extracted archive it runs
-`cargo test --locked --doc` and `cargo test --locked --doc --all-features` before the
-Markdown example harness; each command keeps its own diagnostic log. Success output
-reports each sibling version and input digest. A missing sibling checkout or other unavailable
-requirements fail explicitly. Mechanical style and coverage checks do not replace semantic test assertions
-or an item-by-item Rustdoc review.
-
-The no-argument command selects snapshot mode for coordinated development; it
-does not prove that the same dependency versions are available from crates.io.
-The 0.8 documentation line has a first-release cycle while registry 0.8 is
-unpublished: local provider 0.11 requires registry `^0.8`, while the registry
-0.8 strict check requires local provider 0.11. Stop and record all missing
-versions; snapshot success does not resolve the cycle, and these commands do
-not authorize a bootstrap exception. Resolve the release policy or dependency
-design through separate review. See the [user guide](user_guide.md) for the
-release prerequisites and procedure. When they are satisfied, run
-`python3 scripts/check_published_docs.py . --dependency-source registry` on the
-exact release ref and manually run the **Published Registry Consumption**
-workflow there. Publish only after it succeeds.
-Strict mode resolves dependencies from crates.io, checks the archive and each
-Markdown example graph, and uses no sibling override or local provider shim.
-Missing releases and non-crates.io sources fail without fallback. Preserve
-failure diagnostics; a successful snapshot cannot replace strict consumption. The result includes the source digest and actual resolved versions;
-failed checks retain separate command logs.
+The checker validates the actual packaged archive and its shipped Markdown examples
+using crates.io dependencies. It first copies the current repository inputs into an
+isolated temporary package tree, normalizes Cargo path hints in that copy, then
+packages and extracts it. It verifies that resolved dependencies come from
+crates.io, runs default and all-feature doctests on the extracted archive, and
+executes the Markdown example harness. Each Cargo operation keeps a separate log;
+the success summary reports the source digest and resolved package versions.
+Run `python3 scripts/check_published_docs.py .` with Python 3.12+ and the pinned
+Rust toolchain. Missing releases and non-crates.io sources fail without fallback.
+The manual **Published Registry Consumption** workflow runs the same gate on the
+intended release ref; publish only after it succeeds.
 
 [Migration](registry_contract_migration.md) · [User guide](user_guide.md)

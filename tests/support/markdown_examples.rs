@@ -595,16 +595,6 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
     }
 }
 
-/// Reads the exact `qubit-fs` patch from this check's isolated Cargo home.
-fn cargo_qubit_fs_override() -> Option<PathBuf> {
-    let cargo_home = std::env::var_os("CARGO_HOME")?;
-    let source = fs::read_to_string(PathBuf::from(cargo_home).join("config.toml")).ok()?;
-    let config: Value = from_str(&source).ok()?;
-    config["patch"]["crates-io"]["qubit-fs"]["path"]
-        .as_str()
-        .map(PathBuf::from)
-}
-
 /// Runs one Cargo operation and includes the command in a failed assertion.
 fn cargo(root: &Path, target: &Path, arguments: &[&str], context: &str) -> std::process::Output {
     let mut command = Command::new(env!("CARGO"));
@@ -674,32 +664,12 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
 /// Checks the shipped programs in isolated directories with an explicit feature
 /// matrix.
 pub fn check_documents(root: &Path, include_async: bool) {
-    let source = match std::env::var("QUBIT_FS_REGISTRY_DOC_DEPS").as_deref() {
-        Ok("published") => DocumentationDependencySource::Published,
-        Ok("registry") => DocumentationDependencySource::Registry,
-        Ok("local") | Err(_) => DocumentationDependencySource::Local,
-        Ok(value) => panic!("unknown documentation dependency mode: {value}"),
-    };
-    let published = source != DocumentationDependencySource::Local;
+    let source = DocumentationDependencySource::Registry;
+    let published = true;
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
-    let qubit_fs_override = if source == DocumentationDependencySource::Published {
-        cargo_qubit_fs_override()
-    } else {
-        None
-    };
-    let sibling_root = if source == DocumentationDependencySource::Registry {
-        None
-    } else {
-        std::env::var_os("QUBIT_FS_SIBLING_ROOT").map(PathBuf::from)
-    };
-    let qubit_local_files_override = sibling_root.as_ref().map(|parent| parent.join("rs-local-files"));
-    let target = if source == DocumentationDependencySource::Registry {
-        workspace.path().join("target")
-    } else {
-        root.join("target/documentation-examples")
-    };
+    let target = workspace.path().join("target");
     for asynchronous in [false, true] {
         for local in [false, true] {
             for inventory in [false, true] {
@@ -740,51 +710,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
-                let mut example_manifest = documentation_manifest(root, &input, source, asynchronous, local, inventory);
-                let mut local_provider_alias = None;
-                if local && source != DocumentationDependencySource::Registry {
-                    let sibling_local = if published {
-                        sibling_root.as_ref().map(|parent| parent.join("rs-fs-local"))
-                    } else {
-                        root.parent().map(|parent| parent.join("rs-fs-local"))
-                    };
-                    if let Some(sibling_local) = sibling_local.filter(|path| path.join("Cargo.toml").is_file())
-                        && (published || !local_provider_uses_registry(&sibling_local, root))
-                    {
-                        let shim = local_provider_manifest(
-                            &sibling_local,
-                            root,
-                            sibling_root
-                                .as_deref()
-                                .or_else(|| root.parent())
-                                .expect("sibling root is required for local provider shim"),
-                            published,
-                            &workspace.path().join("local-provider-shim"),
-                        );
-                        let shim_dir = shim.parent().expect("shim manifest has a parent");
-                        if published {
-                            example_manifest["dependencies"]["qubit-fs-local"]
-                                .as_table_mut()
-                                .expect("local provider dependency table")
-                                .insert(
-                                    "path".into(),
-                                    Value::String(shim_dir.to_str().expect("UTF-8 shim directory").into()),
-                                );
-                        } else {
-                            example_manifest["patch"]["crates-io"]
-                                .as_table_mut()
-                                .expect("patch table")
-                                .insert(
-                                    "qubit-fs-local".into(),
-                                    Value::Table(Table::from_iter([(
-                                        "path".into(),
-                                        Value::String(shim_dir.to_str().expect("UTF-8 shim directory").into()),
-                                    )])),
-                                );
-                        }
-                        local_provider_alias = Some(shim_dir.to_path_buf());
-                    }
-                }
+                let example_manifest = documentation_manifest(root, &input, source, asynchronous, local, inventory);
                 fs::write(
                     project.join("Cargo.toml"),
                     to_string(&example_manifest).expect("serialize manifest"),
@@ -812,9 +738,9 @@ pub fn check_documents(root: &Path, include_async: bool) {
                         asynchronous,
                         local,
                         inventory,
-                        qubit_fs_override: qubit_fs_override.as_deref(),
-                        qubit_fs_local_override: local_provider_alias.as_deref(),
-                        qubit_local_files_override: qubit_local_files_override.as_deref(),
+                        qubit_fs_override: None,
+                        qubit_fs_local_override: None,
+                        qubit_local_files_override: None,
                         example_manifest: Some(&project.join("Cargo.toml")),
                     },
                 );

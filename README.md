@@ -134,7 +134,7 @@ cargo test --all-features
 ./.infra/bin/coverage.sh
 
 # Verify documentation against published dependencies before publishing
-python3 scripts/check_published_docs.py . --dependency-source registry
+python3 scripts/check_published_docs.py .
 ```
 
 The published dependency check requires Python 3.12+ and the Rust toolchain
@@ -142,15 +142,10 @@ channel configured in `rust-toolchain.toml`.
 It runs default and all-feature Rustdoc tests on the extracted package archive,
 then checks the Markdown examples, including both complete async-resolution
 appendices. It must succeed for the same source state you intend to publish.
-This registry mode resolves dependencies from crates.io and checks the package
-archive, default and all-feature Rustdoc tests, and Markdown examples without
-sibling overrides. The optional snapshot mode (`--dependency-source snapshot`)
-checks local sibling source snapshots for development; its exact sibling versions
-come from
-`[package.metadata.documentation.published-check.sibling-versions]` in
-`Cargo.toml`: `qubit-fs` 0.3.2, `qubit-fs-local` 0.11.2, and
-`qubit-local-files` 0.5.3. CI runs the registry check for pull requests, pushes
-to `main`, and manual workflow runs; failures never fall back to local overrides.
+The check resolves all dependencies from crates.io, validates the packaged archive,
+runs default and all-feature Rustdoc tests, and executes the shipped Markdown
+examples. CI runs it for pull requests, pushes to `main`, and manual workflow runs;
+failure never falls back to local dependency overrides.
 
 Before publishing, verify that the required registry versions are already
 published and satisfy the normal dependency requirements: `qubit-fs` 0.3.2,
@@ -160,8 +155,7 @@ particular, the first release of registry 0.8 has a dependency cycle:
 `qubit-fs-local` 0.11 requires registry 0.8, while the strict registry 0.8
 check requires `qubit-fs-local` 0.11. If these prerequisites are not already
 published, stop and record the missing versions and dependency chain; resolve
-the release policy or dependency design through separate review. Snapshot-check
-success does not permit bypassing this gate.
+the release policy or dependency design through separate review. A successful check does not permit bypassing this gate.
 See the [Published Documentation Check](doc/user_guide.md#published-documentation-check)
 section of the English user guide for the full release prerequisites.
 
@@ -170,7 +164,7 @@ Once a compatible registry prerequisite is published, publish any missing
 strict registry consumer check:
 
 ```bash
-python3 scripts/check_published_docs.py . --dependency-source registry
+python3 scripts/check_published_docs.py .
 ```
 
 This mode resolves the declared dependencies from crates.io and checks the

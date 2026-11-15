@@ -92,23 +92,15 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 6. Use the documented selector grammar; do not route by userinfo, authority or query.
 7. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
 8. Use fs 0.3, registry 0.8, local provider 0.11 and `qubit-spi` 0.14 in related examples.
-   During coordinated development, run `python3 scripts/check_published_docs.py .` from the project root
-   with Python 3.12+ and Rust 1.94.0 installed. This snapshot check uses the registry and three sibling
-   source snapshots; it does not prove crates.io release consumption. The 0.8 line has a first-release
-   cycle while registry 0.8 is unpublished: local provider 0.11 requires registry `^0.8`, while the
-   registry 0.8 strict check requires local provider 0.11. Stop and record missing versions; snapshot
-   success does not resolve the cycle, and these commands authorize no bootstrap exception. See the
-   [user guide](user_guide.md) for the release prerequisites and procedure. When they are satisfied,
-   run `python3 scripts/check_published_docs.py . --dependency-source registry` on the exact source ref
-   and publish only after it succeeds. Rerun the applicable check after changing source, the
-   manifest, or examples. Snapshot mode records the registry and sibling inputs before
-   packaging, records Git HEAD, dirty state, versions, and content SHA-256 digests, and
-   fails if inputs change during copying. The archive and examples use those snapshots;
-   this does not establish that corresponding crates.io release contents match them.
-   CI runs snapshot mode for pull requests, pushes to `main`, and manual workflow runs. The
-   separate **Published Registry Consumption** workflow is manually dispatched on the intended
-   release ref; it checks registry-only resolution and cannot fall back to snapshots or local
-   overrides. If either check fails, preserve its diagnostics, fix the issue and rerun it; a snapshot
-   success cannot replace strict consumption. Neither workflow has an input to skip validation.
+   Run `python3 scripts/check_published_docs.py .` with Python 3.12+ and Rust
+   1.94.0 installed. This check validates the packaged archive and Markdown
+   examples with crates.io dependencies only. The 0.8 line has a first-release
+   cycle while registry 0.8 is unpublished: local provider 0.11 requires registry
+   `^0.8`, while the registry check requires local provider 0.11. Stop and record
+   missing versions, then resolve the release policy or dependency design through
+   separate review. Once prerequisites are available, run the check on the exact
+   source ref and publish only after it succeeds. CI runs the same check for pull
+   requests, pushes to `main`, and manual workflow runs. If validation fails,
+   preserve diagnostics, fix the issue, and rerun the check.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

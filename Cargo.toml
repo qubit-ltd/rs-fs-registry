@@ -30,11 +30,6 @@ categories = ["filesystem"]
 [package.metadata.docs.rs]
 all-features = true
 
-[package.metadata.documentation.published-check.sibling-versions]
-qubit-fs = "0.3.2"
-qubit-fs-local = "0.11.2"
-qubit-local-files = "0.5.3"
-
 [lib]
 name = "qubit_fs_registry"
 doctest = true
