@@ -35,7 +35,6 @@ class PublishedDocsTests(unittest.TestCase):
     def test_registry_environment_has_no_sibling_or_override_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             env = checker.isolated_environment(Path(directory), "1.95.2")
-            self.assertNotIn("QUBIT_FS_SIBLING_ROOT", env)
             self.assertEqual(env["CARGO_HOME"], str(Path(directory) / "cargo-home"))
 
     def test_registry_graph_allows_only_archive_and_optional_example_root(self):

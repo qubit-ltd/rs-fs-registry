@@ -80,8 +80,8 @@ def _normalize_registry_package_manifest(path: Path) -> None:
                 if isinstance(dependency, dict) and "path" in dependency:
                     if "version" not in dependency:
                         raise ValueError(f"registry package dependency {name} needs an explicit version")
-                    # Cargo's published manifest removes path hints. The source checkout
-                    # may use them to develop sibling crates; never resolve them here.
+                    # Cargo removes path hints from published manifests; keep the
+                    # isolated consumer check registry-only.
                     pattern = re.compile(r"(\{[^{}]*?)\bpath\s*=\s*\"[^\"]*\"\s*,?")
                     source = pattern.sub(lambda match: match.group(1), source)
     rewritten = path.with_name("Cargo.toml.registry")

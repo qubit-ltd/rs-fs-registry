@@ -11,15 +11,12 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::support::markdown_examples::CHECKED_DOCUMENTS;
-use crate::support::markdown_examples::DocumentationDependencySource;
 use crate::support::markdown_examples::GraphOptions;
 use crate::support::markdown_examples::check_documents;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
 use crate::support::markdown_examples::executable_artifacts;
-use crate::support::markdown_examples::local_provider_manifest;
-use crate::support::markdown_examples::local_provider_uses_registry;
 use crate::support::markdown_examples::manifest;
 use crate::support::markdown_examples::snippets;
 
@@ -40,13 +37,13 @@ fn release_line(version: &str) -> String {
 }
 
 /// Builds user-facing installation commands from the selected manifest only.
-fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, String) {
+fn installation_commands(_root: &Path, input: &toml::Value) -> (String, String, String) {
     let registry_version = release_line(
         input["package"]["version"]
             .as_str()
             .expect("package version must be a string"),
     );
-    let filesystem = dependency(root, &input["dependencies"]["qubit-fs"], true);
+    let filesystem = dependency(&input["dependencies"]["qubit-fs"]);
     let fs_version = filesystem["version"]
         .as_str()
         .expect("qubit-fs version must be a string")
@@ -63,9 +60,9 @@ fn installation_commands(root: &Path, input: &toml::Value) -> (String, String, S
     (sync_command, local_command, async_command)
 }
 
-fn async_installation_commands(root: &Path, input: &toml::Value) -> Vec<String> {
+fn async_installation_commands(_root: &Path, input: &toml::Value) -> Vec<String> {
     let version = |name: &str| {
-        dependency(root, &input["dependencies"][name], true)["version"]
+        dependency(&input["dependencies"][name])["version"]
             .as_str()
             .expect("dependency version must be a string")
             .trim_start_matches('^')
@@ -243,7 +240,7 @@ fn test_documentation_commands_follow_manifest() {
 fn test_migration_spi_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let spi_dependency = dependency(root, &input["dependencies"]["qubit-spi"], true);
+    let spi_dependency = dependency(&input["dependencies"]["qubit-spi"]);
     let expected = spi_dependency["version"]
         .as_str()
         .expect("SPI dependency version must be a string")
@@ -266,8 +263,7 @@ fn test_migration_spi_versions_follow_manifest() {
     }
 }
 
-/// Dependency requirements must follow Cargo metadata, including without
-/// siblings.
+/// Dependency requirements must follow Cargo metadata.
 #[test]
 fn test_documentation_versions_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -275,7 +271,6 @@ fn test_documentation_versions_follow_manifest() {
     let output = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         false,
         false,
         false,
@@ -297,7 +292,6 @@ fn test_documentation_versions_follow_manifest() {
     let asynchronous = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         true,
         false,
         false,
@@ -310,7 +304,7 @@ fn test_documentation_versions_follow_manifest() {
 }
 
 #[test]
-fn test_documentation_manifest_registry_has_only_self_patch_and_manifest_features() {
+fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
     for (asynchronous, local, inventory, expected) in [
@@ -322,7 +316,6 @@ fn test_documentation_manifest_registry_has_only_self_patch_and_manifest_feature
         let output = documentation_manifest(
             root,
             &input,
-            DocumentationDependencySource::Registry,
             asynchronous,
             local,
             inventory,
@@ -336,12 +329,7 @@ fn test_documentation_manifest_registry_has_only_self_patch_and_manifest_feature
             output["dependencies"]["qubit-fs-registry"]["path"].as_str(),
             Some(root.to_str().expect("UTF-8 archive path"))
         );
-        assert_eq!(output["patch"]["crates-io"].as_table().unwrap().len(), 1);
-        assert!(
-            output["patch"]["crates-io"]["qubit-fs-registry"]["path"]
-                .as_str()
-                .is_some()
-        );
+        assert!(output.get("patch").is_none(), "examples must not use Cargo patches");
         let mut actual = output["dependencies"]["qubit-fs-registry"]["features"]
             .as_array()
             .unwrap()
@@ -351,121 +339,7 @@ fn test_documentation_manifest_registry_has_only_self_patch_and_manifest_feature
         actual.sort_unstable();
         assert_eq!(actual, expected);
     }
-    let local = documentation_manifest(root, &input, DocumentationDependencySource::Local, false, false, false);
-    let published = documentation_manifest(
-        root,
-        &input,
-        DocumentationDependencySource::Published,
-        false,
-        false,
-        false,
-    );
-    assert!(local["dependencies"]["qubit-fs-registry"]["path"].as_str().is_some());
-    assert_eq!(
-        published["dependencies"]["qubit-fs-registry"]["path"].as_str(),
-        Some(root.to_str().expect("UTF-8 archive path"))
-    );
-}
 
-/// A sibling provider that still points at another registry worktree is not
-/// patched into the isolated example package.
-#[test]
-fn test_local_provider_patch_requires_the_tested_registry_path() {
-    let workspace = tempfile::tempdir().expect("temporary sibling fixture");
-    let current = workspace.path().join("current-registry");
-    let previous = workspace.path().join("rs-fs-registry");
-    let local = workspace.path().join("rs-fs-local");
-    std::fs::create_dir_all(&current).expect("current registry directory");
-    std::fs::create_dir_all(&previous).expect("previous registry directory");
-    std::fs::create_dir_all(&local).expect("local provider directory");
-    std::fs::write(
-        current.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
-    )
-    .expect("current registry manifest");
-    std::fs::write(
-        previous.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
-    )
-    .expect("previous registry manifest");
-    std::fs::write(
-        local.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[dependencies]\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\n",
-    )
-    .expect("local provider manifest");
-
-    assert!(!local_provider_uses_registry(&local, &current));
-    assert!(local_provider_uses_registry(&local, &previous));
-}
-
-/// A local-provider shim aligns its registry and sibling package paths with
-/// the isolated example manifest while compiling the real provider source.
-#[test]
-fn test_local_provider_shim_uses_current_registry_and_sibling_aliases() {
-    let workspace = tempfile::tempdir().expect("temporary shim fixture");
-    let siblings = workspace.path().join("siblings");
-    let current = siblings.join("codex-registry");
-    let local = workspace.path().join("original/rs-fs-local");
-    let original_registry = workspace.path().join("original/rs-fs-registry");
-    let original_fs = workspace.path().join("original/rs-fs");
-    let sibling_fs = siblings.join("rs-fs");
-    let sibling_local_files = siblings.join("rs-local-files");
-    let sibling_mystery = siblings.join("rs-mystery");
-    for directory in [
-        &current,
-        &local,
-        &original_registry,
-        &original_fs,
-        &sibling_fs,
-        &sibling_local_files,
-        &sibling_mystery,
-    ] {
-        std::fs::create_dir_all(directory).expect("fixture directory");
-    }
-    for directory in [&current, &original_registry] {
-        std::fs::write(
-            directory.join("Cargo.toml"),
-            "[package]\nname='qubit-fs-registry'\nversion='0.8.0'\n",
-        )
-        .expect("registry fixture manifest");
-    }
-    for directory in [&original_fs, &sibling_fs] {
-        std::fs::write(
-            directory.join("Cargo.toml"),
-            "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
-        )
-        .expect("filesystem fixture manifest");
-    }
-    std::fs::create_dir_all(local.join("src")).expect("provider source directory");
-    std::fs::write(local.join("src/lib.rs"), "pub fn example() {}\n").expect("provider source");
-    std::fs::write(
-        local.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[lib]\n[dependencies]\nqubit-fs={path='../rs-fs',version='0.3'}\nqubit-fs-registry={path='../rs-fs-registry',version='0.8'}\nqubit-local-files={path='../rs-local-files',version='0.5'}\nqubit-mystery={path='../rs-mystery',version='1'}\n",
-    )
-    .expect("provider manifest");
-
-    let shim = local_provider_manifest(&local, &current, &siblings, false, &workspace.path().join("shim"));
-    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
-    assert_eq!(
-        manifest["dependencies"]["qubit-fs-registry"]["path"].as_str(),
-        Some(current.canonicalize().unwrap().to_str().unwrap())
-    );
-    assert_eq!(
-        manifest["dependencies"]["qubit-fs"]["path"].as_str(),
-        Some(sibling_fs.to_str().unwrap())
-    );
-    assert_eq!(
-        manifest["dependencies"]["qubit-local-files"]["path"].as_str(),
-        Some(sibling_local_files.to_str().unwrap())
-    );
-    assert_eq!(
-        manifest["dependencies"]["qubit-mystery"]["path"].as_str(),
-        Some(local.join("../rs-mystery").to_str().unwrap())
-    );
-    assert_eq!(
-        manifest["lib"]["path"].as_str(),
-        Some(local.join("src/lib.rs").canonicalize().unwrap().to_str().unwrap())
-    );
 }
 
 /// Example directives compose and each dependency group declares only its
@@ -490,7 +364,6 @@ fn test_example_requirements_are_grouped_explicitly() {
     let default = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         false,
         false,
         false,
@@ -506,7 +379,6 @@ fn test_example_requirements_are_grouped_explicitly() {
     let asynchronous = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         true,
         false,
         false,
@@ -519,7 +391,6 @@ fn test_example_requirements_are_grouped_explicitly() {
     let local = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         false,
         true,
         false,
@@ -536,7 +407,6 @@ fn test_example_requirements_are_grouped_explicitly() {
     let inventory = documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         false,
         false,
         true,
@@ -647,208 +517,9 @@ fn test_graph_checks_registry_features() {
     );
 }
 
-/// Published local-provider shims follow Cargo's path-dependency normalization.
-#[test]
-fn test_published_local_provider_shim_uses_registry_for_versioned_paths() {
-    let workspace = tempfile::tempdir().expect("temporary published shim fixture");
-    let local = workspace.path().join("rs-fs-local");
-    let registry = workspace.path().join("rs-fs-registry");
-    let siblings = workspace.path().join("siblings");
-    std::fs::create_dir_all(local.join("src")).expect("provider source directory");
-    std::fs::create_dir_all(&registry).expect("registry directory");
-    std::fs::create_dir_all(&siblings).expect("sibling directory");
-    std::fs::write(local.join("src/lib.rs"), "pub fn example() {}\n").expect("provider source");
-    std::fs::write(
-        local.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n[dependencies]\nqubit-redact={path='../rs-redact',version='0.10'}\n",
-    )
-    .expect("provider manifest");
-
-    let shim = local_provider_manifest(
-        &local,
-        &registry,
-        &siblings,
-        true,
-        &workspace.path().join("published-shim"),
-    );
-    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(shim).unwrap()).unwrap();
-    assert_eq!(
-        manifest["dependencies"]["qubit-redact"]["version"].as_str(),
-        Some("0.10")
-    );
-    assert!(
-        manifest["dependencies"]["qubit-redact"].get("path").is_none(),
-        "published versioned dependencies should resolve from crates.io"
-    );
-}
 
 /// Published example graphs allow only the exact qubit-fs path from Cargo's
-/// override.
-#[test]
-fn test_graph_allows_only_the_configured_published_qubit_fs_path() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let temp = tempfile::tempdir().expect("temporary sibling fs");
-    let fs_path = temp.path().join("rs-fs");
-    std::fs::create_dir_all(&fs_path).expect("create sibling fs");
-    std::fs::write(
-        fs_path.join("Cargo.toml"),
-        "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
-    )
-    .unwrap();
-    let registry_id = "qubit-fs-registry 0.8.0 (path+file:///registry)";
-    let fs_id = "qubit-fs 0.3.0 (path+file:///rs-fs)";
-    let local_path = temp.path().join("rs-fs-local-shim");
-    std::fs::create_dir_all(&local_path).expect("create local provider shim");
-    std::fs::write(
-        local_path.join("Cargo.toml"),
-        "[package]\nname='qubit-fs-local'\nversion='0.11.0'\n",
-    )
-    .unwrap();
-    let local_id = "qubit-fs-local 0.11.0 (path+file:///rs-fs-local-shim)";
-    let local_files_path = temp.path().join("rs-local-files");
-    std::fs::create_dir_all(&local_files_path).expect("create local files sibling");
-    std::fs::write(
-        local_files_path.join("Cargo.toml"),
-        "[package]\nname='qubit-local-files'\nversion='0.5.0'\n",
-    )
-    .unwrap();
-    let local_files_id = "qubit-local-files 0.5.0 (path+file:///rs-local-files)";
-    let graph = serde_json::json!({
-        "packages": [
-            {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
-            {"name":"qubit-fs", "id":fs_id, "version":"0.3.0", "manifest_path":fs_path.join("Cargo.toml").to_str().unwrap(), "source":null},
-            {"name":"qubit-fs-local", "id":local_id, "version":"0.11.0", "manifest_path":local_path.join("Cargo.toml").to_str().unwrap(), "source":null},
-            {"name":"qubit-local-files", "id":local_files_id, "version":"0.5.0", "manifest_path":local_files_path.join("Cargo.toml").to_str().unwrap(), "source":null}
-        ],
-        "resolve": {"nodes": [
-            {"id":registry_id, "features":["inventory"], "dependencies":[]},
-            {"id":fs_id, "features":[], "dependencies":[]},
-            {"id":local_id, "features":[], "dependencies":[registry_id]},
-            {"id":local_files_id, "features":[], "dependencies":[]}
-        ]}
-    });
-    check_graph(
-        &graph,
-        "qubit-fs-registry",
-        root,
-        GraphOptions {
-            published: true,
-            local: true,
-            qubit_fs_override: Some(&fs_path),
-            qubit_fs_local_override: Some(&local_path),
-            qubit_local_files_override: Some(&local_files_path),
-            ..GraphOptions::default()
-        },
-    );
 
-    let mut unexpected_local_graph = graph.clone();
-    unexpected_local_graph["packages"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!({
-            "name":"qubit-unlisted", "id":"qubit-unlisted 1.0.0 (path+file:///unlisted)",
-            "version":"1.0.0", "manifest_path":local_path.join("Cargo.toml").to_str().unwrap(), "source":null
-        }));
-    assert!(
-        std::panic::catch_unwind(|| {
-            check_graph(
-                &unexpected_local_graph,
-                "qubit-fs-registry",
-                root,
-                GraphOptions {
-                    published: true,
-                    local: true,
-                    qubit_fs_override: Some(&fs_path),
-                    qubit_fs_local_override: Some(&local_path),
-                    qubit_local_files_override: Some(&local_files_path),
-                    ..GraphOptions::default()
-                },
-            )
-        })
-        .is_err()
-    );
-
-    let wrong = temp.path().join("other-fs");
-    std::fs::create_dir_all(&wrong).expect("create unexpected path");
-    std::fs::write(
-        wrong.join("Cargo.toml"),
-        "[package]\nname='qubit-fs'\nversion='0.3.0'\n",
-    )
-    .unwrap();
-    let mut wrong_graph = graph.clone();
-    wrong_graph["packages"][1]["manifest_path"] = wrong.join("Cargo.toml").to_str().unwrap().into();
-    assert!(
-        std::panic::catch_unwind(|| {
-            check_graph(
-                &wrong_graph,
-                "qubit-fs-registry",
-                root,
-                GraphOptions {
-                    published: true,
-                    local: true,
-                    qubit_fs_override: Some(&fs_path),
-                    qubit_fs_local_override: Some(&local_path),
-                    qubit_local_files_override: Some(&local_files_path),
-                    ..GraphOptions::default()
-                },
-            )
-        })
-        .is_err()
-    );
-    let mut wrong_local_graph = graph.clone();
-    wrong_local_graph["packages"][2]["manifest_path"] = wrong.join("Cargo.toml").to_str().unwrap().into();
-    assert!(
-        std::panic::catch_unwind(|| {
-            check_graph(
-                &wrong_local_graph,
-                "qubit-fs-registry",
-                root,
-                GraphOptions {
-                    published: true,
-                    local: true,
-                    qubit_fs_override: Some(&fs_path),
-                    qubit_fs_local_override: Some(&local_path),
-                    qubit_local_files_override: Some(&local_files_path),
-                    ..GraphOptions::default()
-                },
-            )
-        })
-        .is_err()
-    );
-}
-
-/// A path-only workspace edge still renders the sibling's release requirement.
-#[test]
-fn test_path_only_filesystem_dependency_uses_sibling_release() {
-    let original_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut input = manifest(original_root);
-    let workspace = tempfile::tempdir().expect("temporary fixture");
-    let registry = workspace.path().join("registry");
-    let sibling = workspace.path().join("fixture-fs");
-    std::fs::create_dir_all(&registry).expect("registry fixture");
-    std::fs::create_dir_all(&sibling).expect("filesystem fixture");
-    std::fs::write(
-        sibling.join("Cargo.toml"),
-        "[package]\nname = 'qubit-fs'\nversion = '0.98.7'\n",
-    )
-    .expect("sibling manifest");
-    let dependency = input["dependencies"]["qubit-fs"]
-        .as_table_mut()
-        .expect("filesystem dependency table");
-    dependency.remove("version");
-    dependency.insert("path".into(), toml::Value::String("../fixture-fs".into()));
-    let output = documentation_manifest(
-        &registry,
-        &input,
-        DocumentationDependencySource::Local,
-        false,
-        false,
-        false,
-    );
-
-    assert_eq!(output["dependencies"]["qubit-fs"]["version"].as_str(), Some("0.98.7"));
-    assert!(output["dependencies"]["qubit-fs"]["path"].as_str().is_some());
-}
 
 /// Missing metadata must fail explicitly instead of silently omitting
 /// dependencies.
@@ -864,7 +535,6 @@ fn test_missing_documentation_metadata_is_rejected() {
     documentation_manifest(
         root,
         &input,
-        DocumentationDependencySource::Published,
         false,
         false,
         false,
@@ -970,41 +640,4 @@ fn test_async_resolution_appendices_are_checked_as_async_examples() {
             "{relative} must compile its short async example without running it"
         );
     }
-}
-
-/// Direct dependency paths retain the identity used by sibling transitive
-/// edges.
-#[cfg(unix)]
-#[test]
-fn test_documentation_manifest_preserves_sibling_symlinks() {
-    use std::fs;
-    use std::os::unix::fs::symlink;
-
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut input = manifest(root);
-    let workspace = tempfile::tempdir().expect("temporary fixture");
-    let target = workspace.path().join("source");
-    let alias = workspace.path().join("linked-spi");
-    fs::create_dir_all(&target).expect("SPI target directory");
-    fs::write(
-        target.join("Cargo.toml"),
-        "[package]\nname = 'qubit-spi'\nversion = '0.12.0'\n",
-    )
-    .expect("SPI fixture manifest");
-    symlink(&target, &alias).expect("SPI symlink");
-    let spi_declaration = dependency(root, &input["dependencies"]["qubit-spi"], true);
-    let spi_version = spi_declaration["version"].as_str().expect("SPI dependency version");
-    let mut spi_dependency = toml::Table::new();
-    spi_dependency.insert("version".into(), toml::Value::String(spi_version.into()));
-    input["dependencies"]["qubit-spi"] = toml::Value::Table(spi_dependency);
-    input["dependencies"]["qubit-spi"]
-        .as_table_mut()
-        .expect("SPI dependency table")
-        .insert(
-            "path".into(),
-            toml::Value::String(alias.to_str().expect("UTF-8 fixture path").into()),
-        );
-    let output = documentation_manifest(root, &input, DocumentationDependencySource::Local, false, false, false);
-    assert_eq!(output["dependencies"]["qubit-spi"]["path"].as_str(), alias.to_str());
-    assert_ne!(alias, alias.canonicalize().expect("canonical SPI fixture path"));
 }

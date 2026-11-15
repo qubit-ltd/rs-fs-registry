@@ -11,7 +11,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::path::absolute;
 use std::process::Command;
 use std::time::Duration;
 
@@ -33,13 +32,6 @@ pub const CHECKED_DOCUMENTS: &[&str] = &[
     "doc/async_resolution_example.md",
     "doc/async_resolution_example.zh_CN.md",
 ];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DocumentationDependencySource {
-    Local,
-    Published,
-    Registry,
-}
 
 /// One complete Markdown program and its minimum feature requirement.
 #[derive(Debug, PartialEq)]
@@ -125,29 +117,22 @@ pub fn manifest(root: &Path) -> Value {
     from_str(&source).expect("parse package manifest")
 }
 
-/// Builds a minimal example manifest; only the tested package may be patched in
-/// published mode.
+/// Builds a minimal example manifest with registry dependencies and the tested package path.
 pub fn documentation_manifest(
     root: &Path,
     input: &Value,
-    source: DocumentationDependencySource,
     asynchronous: bool,
     local: bool,
     inventory: bool,
 ) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
-    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let sibling_alias = root
-        .parent()
-        .map(|parent| parent.join(format!("rs-{}", package.trim_start_matches("qubit-"))))
-        .filter(|path| path.is_dir() && path.canonicalize().ok().as_ref() == Some(&canonical_root));
-    let package_root = sibling_alias.unwrap_or(canonical_root);
+    let package_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
             dependencies.insert(
                 name.into(),
-                dependency(root, value, source != DocumentationDependencySource::Local),
+                dependency(value),
             );
         }
     }
@@ -165,7 +150,7 @@ pub fn documentation_manifest(
             }
             dependencies.insert(
                 name.clone(),
-                dependency(root, value, source != DocumentationDependencySource::Local),
+                dependency(value),
             );
         }
     }
@@ -196,270 +181,22 @@ pub fn documentation_manifest(
         .as_table_mut()
         .expect("manifest table")
         .insert("dependencies".into(), Value::Table(dependencies));
-    let patch_source = format!(
-        "[crates-io.{package}]\npath={}\n",
-        Value::String(package_root.to_str().expect("UTF-8 root").into())
-    );
-    let mut patch: Value = from_str(&patch_source).expect("self patch");
-    if source == DocumentationDependencySource::Local {
-        let sibling_fs = root.parent().expect("registry has a parent directory").join("rs-fs");
-        if sibling_fs.join("Cargo.toml").is_file() {
-            patch["crates-io"].as_table_mut().expect("patch table").insert(
-                "qubit-fs".into(),
-                Value::Table(Table::from_iter([(
-                    "path".into(),
-                    Value::String(sibling_fs.to_str().expect("UTF-8 filesystem path").into()),
-                )])),
-            );
-        }
-        let sibling_redact = root
-            .parent()
-            .expect("registry has a parent directory")
-            .join("rs-redact");
-        if sibling_redact.join("Cargo.toml").is_file() {
-            patch["crates-io"].as_table_mut().expect("patch table").insert(
-                "qubit-redact".into(),
-                Value::Table(Table::from_iter([(
-                    "path".into(),
-                    Value::String(sibling_redact.to_str().expect("UTF-8 redaction path").into()),
-                )])),
-            );
-        }
-        let sibling_fs_local = root
-            .parent()
-            .expect("registry has a parent directory")
-            .join("rs-fs-local");
-        if sibling_fs_local.join("Cargo.toml").is_file() && local_provider_uses_registry(&sibling_fs_local, root) {
-            patch["crates-io"].as_table_mut().expect("patch table").insert(
-                "qubit-fs-local".into(),
-                Value::Table(Table::from_iter([(
-                    "path".into(),
-                    Value::String(sibling_fs_local.to_str().expect("UTF-8 local filesystem path").into()),
-                )])),
-            );
-        }
-        let sibling_io = root.parent().expect("registry has a parent directory").join("rs-io");
-        if sibling_io.join("Cargo.toml").is_file() {
-            patch["crates-io"].as_table_mut().expect("patch table").insert(
-                "qubit-io".into(),
-                Value::Table(Table::from_iter([(
-                    "path".into(),
-                    Value::String(sibling_io.to_str().expect("UTF-8 I/O path").into()),
-                )])),
-            );
-        }
-        let sibling_spi = root.parent().expect("registry has a parent directory").join("rs-spi");
-        if sibling_spi.join("Cargo.toml").is_file() {
-            patch["crates-io"].as_table_mut().expect("patch table").insert(
-                "qubit-spi".into(),
-                Value::Table(Table::from_iter([(
-                    "path".into(),
-                    Value::String(sibling_spi.to_str().expect("UTF-8 SPI path").into()),
-                )])),
-            );
-        }
-    }
-    output
-        .as_table_mut()
-        .expect("manifest table")
-        .insert("patch".into(), patch);
     output
 }
 
-pub(crate) fn local_provider_uses_registry(local_provider: &Path, registry: &Path) -> bool {
-    let source = match fs::read_to_string(local_provider.join("Cargo.toml")) {
-        Ok(source) => source,
-        Err(_) => return false,
-    };
-    let manifest: Value = match from_str(&source) {
-        Ok(manifest) => manifest,
-        Err(_) => return false,
-    };
-    let Some(path) = manifest
-        .get("dependencies")
-        .and_then(|dependencies| dependencies.get("qubit-fs-registry"))
-        .and_then(Value::as_table)
-        .and_then(|dependency| dependency.get("path"))
-        .and_then(Value::as_str)
-    else {
-        return false;
-    };
-    let provider_root = local_provider
-        .canonicalize()
-        .unwrap_or_else(|_| local_provider.to_path_buf());
-    let provider_registry = provider_root.join(path).canonicalize();
-    let current_registry = registry.canonicalize();
-    matches!((provider_registry, current_registry), (Ok(provider), Ok(current)) if provider == current)
-}
-
-pub(crate) fn local_provider_manifest(
-    local_provider: &Path,
-    registry: &Path,
-    sibling_root: &Path,
-    published: bool,
-    destination: &Path,
-) -> PathBuf {
-    let local_root = local_provider.canonicalize().expect("local provider must exist");
-    let source = fs::read_to_string(local_root.join("Cargo.toml")).expect("read local provider manifest");
-    let mut manifest: Value = from_str(&source).expect("parse local provider manifest");
-    let registry = registry.canonicalize().expect("tested registry must exist");
-    let scopes = manifest.as_table_mut().expect("local provider manifest table");
-    for name in ["dependencies", "build-dependencies"] {
-        if let Some(dependencies) = scopes.get_mut(name).and_then(Value::as_table_mut) {
-            rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root, published);
-        }
-    }
-    if let Some(targets) = scopes.get_mut("target").and_then(Value::as_table_mut) {
-        for (_, target_value) in targets.iter_mut() {
-            let Some(target) = target_value.as_table_mut() else {
-                continue;
-            };
-            for name in ["dependencies", "build-dependencies"] {
-                if let Some(dependencies) = target.get_mut(name).and_then(Value::as_table_mut) {
-                    rewrite_local_provider_paths(dependencies, &local_root, &registry, sibling_root, published);
-                }
-            }
-        }
-    }
-    scopes.remove("dev-dependencies");
-    scopes.remove("patch");
-    scopes.remove("bench");
-    let library_path = scopes
-        .get("lib")
-        .and_then(Value::as_table)
-        .and_then(|library| library.get("path"))
-        .and_then(Value::as_str)
-        .unwrap_or("src/lib.rs");
-    let library_path = local_root
-        .join(library_path)
-        .canonicalize()
-        .expect("local provider library");
-    scopes
-        .entry("lib")
-        .or_insert_with(|| Value::Table(Table::new()))
-        .as_table_mut()
-        .expect("library table")
-        .insert(
-            "path".into(),
-            Value::String(library_path.to_str().expect("UTF-8 library path").into()),
-        );
-    fs::create_dir_all(destination).expect("create local provider manifest shim");
-    let manifest_path = destination.join("Cargo.toml");
-    fs::write(
-        &manifest_path,
-        to_string(&manifest).expect("serialize local provider manifest"),
-    )
-    .expect("write local provider manifest shim");
-    manifest_path
-}
-
-fn rewrite_local_provider_paths(
-    dependencies: &mut Table,
-    local_root: &Path,
-    registry: &Path,
-    sibling_root: &Path,
-    published: bool,
-) {
-    for (name, dependency) in dependencies {
-        let Some(declaration) = dependency.as_table_mut() else {
-            continue;
-        };
-        let Some(path) = declaration.get("path").and_then(Value::as_str) else {
-            continue;
-        };
-        if published
-            && !matches!(
-                name.as_str(),
-                "qubit-fs-registry" | "qubit-fs" | "qubit-fs-local" | "qubit-local-files"
-            )
-        {
-            assert!(
-                declaration.contains_key("version"),
-                "published local-provider path dependency `{name}` needs a registry version"
-            );
-            declaration.remove("path");
-            continue;
-        }
-        let resolved = match name.as_str() {
-            "qubit-fs-registry" => registry.to_path_buf(),
-            "qubit-fs" => sibling_root.join("rs-fs"),
-            "qubit-fs-local" => sibling_root.join("rs-fs-local"),
-            "qubit-local-files" => sibling_root.join("rs-local-files"),
-            _ => local_root.join(path),
-        };
-        declaration.insert(
-            "path".into(),
-            Value::String(resolved.to_str().expect("UTF-8 dependency path").into()),
-        );
-    }
-}
-
-/// Keeps version/feature requirements while choosing local or published
-/// sources.
-pub(crate) fn dependency(root: &Path, value: &Value, published: bool) -> Value {
+/// Keeps declared version and feature requirements while removing Cargo path hints.
+pub(crate) fn dependency(value: &Value) -> Value {
     let mut table = match value {
         Value::String(version) => Table::from_iter([("version".into(), Value::String(version.clone()))]),
         Value::Table(table) => table.clone(),
         _ => panic!("dependency must declare a version"),
     };
-    if table.get("version").and_then(Value::as_str).is_none() {
-        let declared_path = table
-            .get("path")
-            .and_then(Value::as_str)
-            .expect("dependency requires a path or version");
-        let sibling = resolve_dependency_path(root, Path::new(declared_path));
-        let source = fs::read_to_string(sibling.join("Cargo.toml"))
-            .expect("path-only dependency requires an available sibling manifest");
-        let manifest: Value = from_str(&source).expect("parse sibling manifest");
-        let version = manifest["package"]["version"]
-            .as_str()
-            .expect("sibling package version");
-        table.insert("version".into(), Value::String(version.to_owned()));
-    }
+    assert!(table.get("version").and_then(Value::as_str).is_some(),
+        "registry dependencies need an explicit version");
     table.remove("optional");
     table.remove("async-only");
-    if let Some(path) = table.remove("path") {
-        let declared_path = Path::new(path.as_str().expect("dependency path"));
-        let path = resolve_dependency_path(root, declared_path);
-        if !published && path.join("Cargo.toml").is_file() {
-            let path = absolute(path).expect("dependency path must be absolute");
-            table.insert(
-                "path".into(),
-                Value::String(path.to_str().expect("UTF-8 dependency path").into()),
-            );
-        }
-    }
+    table.remove("path");
     Value::Table(table)
-}
-
-/// Resolves a dependency against the isolated sibling view when Cargo has
-/// rewritten its manifest path to an absolute checkout path.
-fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
-    let Some(sibling_root) = std::env::var_os("QUBIT_FS_SIBLING_ROOT") else {
-        return root.join(declared_path);
-    };
-    let sibling_root = PathBuf::from(sibling_root);
-    let direct = sibling_root.join(
-        declared_path
-            .file_name()
-            .expect("dependency path must name a sibling crate"),
-    );
-    if direct.join("Cargo.toml").is_file() {
-        return direct;
-    }
-    let package = fs::read_to_string(declared_path.join("Cargo.toml"))
-        .ok()
-        .and_then(|source| from_str::<Value>(&source).ok())
-        .and_then(|value| value["package"]["name"].as_str().map(str::to_owned));
-    if let Some(package) = package
-        && let Some(suffix) = package.strip_prefix("qubit-")
-    {
-        let mapped = sibling_root.join(format!("rs-{suffix}"));
-        if mapped.join("Cargo.toml").is_file() {
-            return mapped;
-        }
-    }
-    root.join(declared_path)
 }
 
 /// Rejects duplicate filesystem/SPI package identities and a downstream using
@@ -664,7 +401,6 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
 /// Checks the shipped programs in isolated directories with an explicit feature
 /// matrix.
 pub fn check_documents(root: &Path, include_async: bool) {
-    let source = DocumentationDependencySource::Registry;
     let published = true;
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
@@ -710,7 +446,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
-                let example_manifest = documentation_manifest(root, &input, source, asynchronous, local, inventory);
+                let example_manifest = documentation_manifest(root, &input, asynchronous, local, inventory);
                 fs::write(
                     project.join("Cargo.toml"),
                     to_string(&example_manifest).expect("serialize manifest"),
@@ -734,7 +470,7 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     root,
                     GraphOptions {
                         published,
-                        registry: source == DocumentationDependencySource::Registry,
+                        registry: true,
                         asynchronous,
                         local,
                         inventory,
