@@ -148,10 +148,7 @@ pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, lo
                 continue;
             }
             if name == "qubit-fs-local" {
-                dependencies.insert(
-                    name.clone(),
-                    source_dependency(value, &root.join("../rs-fs-local")),
-                );
+                dependencies.insert(name.clone(), source_dependency(value, &root.join("../rs-fs-local")));
             } else {
                 dependencies.insert(name.clone(), dependency(value));
             }
@@ -167,7 +164,12 @@ pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, lo
     );
     current.insert(
         "path".into(),
-        Value::String(root.canonicalize().expect("tested source exists").to_string_lossy().into_owned()),
+        Value::String(
+            root.canonicalize()
+                .expect("tested source exists")
+                .to_string_lossy()
+                .into_owned(),
+        ),
     );
     current.insert("default-features".into(), Value::Boolean(false));
     let mut features = Vec::new();
@@ -330,7 +332,9 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                 );
             } else {
                 assert!(
-                    entry["source"].as_str().is_some_and(|source| source.starts_with("registry+")),
+                    entry["source"]
+                        .as_str()
+                        .is_some_and(|source| source.starts_with("registry+")),
                     "source integration dependency must resolve from a registry or declared sibling: {name}"
                 );
             }

@@ -305,20 +305,14 @@ fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
         (true, false, true, vec!["async", "inventory"]),
     ] {
         let output = documentation_manifest(root, &input, asynchronous, local, inventory);
-        for (name, relative) in [
-            ("qubit-fs", "../rs-fs"),
-            ("qubit-fs-registry", "."),
-        ] {
+        for (name, relative) in [("qubit-fs", "../rs-fs"), ("qubit-fs-registry", ".")] {
             assert_eq!(
                 PathBuf::from(output["dependencies"][name]["path"].as_str().unwrap()),
                 root.join(relative).canonicalize().unwrap(),
                 "{name} must resolve to the intended sibling source"
             );
         }
-        let tested_package_version = format!(
-            "={}",
-            input["package"]["version"].as_str().expect("package version")
-        );
+        let tested_package_version = format!("={}", input["package"]["version"].as_str().expect("package version"));
         assert_eq!(
             output["dependencies"]["qubit-fs-registry"]["version"].as_str(),
             Some(tested_package_version.as_str()),
