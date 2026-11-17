@@ -3,7 +3,7 @@
 [Back to the user guide](user_guide.md) · [简体中文](async_resolution_example.zh_CN.md)
 
 ```bash
-cargo add qubit-fs@0.3 qubit-spi@0.14
+cargo add qubit-fs@0.4 qubit-spi@0.14
 cargo add qubit-fs-registry@0.8 --features async
 cargo add futures@0.3
 ```

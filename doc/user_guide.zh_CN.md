@@ -39,7 +39,7 @@ resolution = filesystem + decoded path + canonical URI
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
+cargo add qubit-fs@0.4 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 

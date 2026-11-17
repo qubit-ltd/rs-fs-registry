@@ -117,14 +117,22 @@ pub fn manifest(root: &Path) -> Value {
     from_str(&source).expect("parse package manifest")
 }
 
-/// Builds a minimal example manifest with crates.io dependencies, including the
-/// tested release.
-pub fn documentation_manifest(_root: &Path, input: &Value, asynchronous: bool, local: bool, inventory: bool) -> Value {
+/// Builds a minimal example manifest with sibling source dependencies for the
+/// current filesystem, registry, and optional local provider.
+pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, local: bool, inventory: bool) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
-            dependencies.insert(name.into(), dependency(value));
+            let path = match name {
+                "qubit-fs" => Some(root.join("../rs-fs")),
+                "qubit-fs-registry" => Some(root.to_path_buf()),
+                _ => None,
+            };
+            dependencies.insert(
+                name.into(),
+                path.map_or_else(|| dependency(value), |path| source_dependency(value, &path)),
+            );
         }
     }
     let extra = input["package"]
@@ -139,7 +147,14 @@ pub fn documentation_manifest(_root: &Path, input: &Value, asynchronous: bool, l
             {
                 continue;
             }
-            dependencies.insert(name.clone(), dependency(value));
+            if name == "qubit-fs-local" {
+                dependencies.insert(
+                    name.clone(),
+                    source_dependency(value, &root.join("../rs-fs-local")),
+                );
+            } else {
+                dependencies.insert(name.clone(), dependency(value));
+            }
         }
     }
     let mut current = Table::new();
@@ -149,6 +164,10 @@ pub fn documentation_manifest(_root: &Path, input: &Value, asynchronous: bool, l
             "={}",
             input["package"]["version"].as_str().expect("package version")
         )),
+    );
+    current.insert(
+        "path".into(),
+        Value::String(root.canonicalize().expect("tested source exists").to_string_lossy().into_owned()),
     );
     current.insert("default-features".into(), Value::Boolean(false));
     let mut features = Vec::new();
@@ -166,6 +185,15 @@ pub fn documentation_manifest(_root: &Path, input: &Value, asynchronous: bool, l
         .expect("manifest table")
         .insert("dependencies".into(), Value::Table(dependencies));
     output
+}
+
+/// Retains the semver requirement and features while pointing an isolated
+/// source example at a sibling package.
+fn source_dependency(value: &Value, path: &Path) -> Value {
+    let mut table = dependency(value).as_table().expect("dependency table").clone();
+    let path = path.canonicalize().expect("sibling source dependency exists");
+    table.insert("path".into(), Value::String(path.to_string_lossy().into_owned()));
+    Value::Table(table)
 }
 
 /// Keeps declared version and feature requirements while removing Cargo path
@@ -198,6 +226,7 @@ pub struct GraphOptions<'a> {
     pub qubit_fs_override: Option<&'a Path>,
     pub qubit_fs_local_override: Option<&'a Path>,
     pub qubit_local_files_override: Option<&'a Path>,
+    pub qubit_operation_override: Option<&'a Path>,
     pub example_manifest: Option<&'a Path>,
 }
 
@@ -267,6 +296,42 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                 assert!(
                     source_is_registry,
                     "published dependency uses an unexpected registry source: {name}"
+                );
+            }
+        }
+        if !options.published
+            && let Some(example_manifest) = options.example_manifest
+        {
+            let expected_path = if name == "filesystem-documentation-check" {
+                example_manifest.canonicalize().ok()
+            } else {
+                match name {
+                    name if name == package => Some(root),
+                    "qubit-fs" => options.qubit_fs_override,
+                    "qubit-fs-local" => options.qubit_fs_local_override,
+                    "qubit-local-files" => options.qubit_local_files_override,
+                    "qubit-operation" => options.qubit_operation_override,
+                    _ => None,
+                }
+                .and_then(|path| path.join("Cargo.toml").canonicalize().ok())
+            };
+            if let Some(expected_path) = expected_path {
+                assert_eq!(
+                    entry["source"],
+                    Json::Null,
+                    "source integration dependency must use its sibling path: {name}"
+                );
+                assert_eq!(
+                    Path::new(entry["manifest_path"].as_str().expect("manifest path"))
+                        .canonicalize()
+                        .ok(),
+                    Some(expected_path),
+                    "unexpected source integration path: {name}"
+                );
+            } else {
+                assert!(
+                    entry["source"].as_str().is_some_and(|source| source.starts_with("registry+")),
+                    "source integration dependency must resolve from a registry or declared sibling: {name}"
                 );
             }
         }
@@ -395,10 +460,9 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
     Ok(artifacts)
 }
 
-/// Checks the shipped programs in isolated directories with an explicit feature
-/// matrix.
-pub fn check_documents(root: &Path, include_async: bool) {
-    let published = true;
+/// Checks source-integrated programs in isolated directories with an explicit
+/// feature matrix.
+pub fn check_documents(root: &Path) {
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
@@ -406,9 +470,6 @@ pub fn check_documents(root: &Path, include_async: bool) {
     for asynchronous in [false, true] {
         for local in [false, true] {
             for inventory in [false, true] {
-                if asynchronous && !include_async {
-                    continue;
-                }
                 let group = format!("{}-{}-{}", asynchronous as u8, local as u8, inventory as u8);
                 let project = workspace.path().join(&group);
                 fs::create_dir_all(project.join("src/bin")).expect("create example sources");
@@ -466,14 +527,15 @@ pub fn check_documents(root: &Path, include_async: bool) {
                     package,
                     root,
                     GraphOptions {
-                        published,
-                        registry: true,
+                        published: false,
+                        registry: false,
                         asynchronous,
                         local,
                         inventory,
-                        qubit_fs_override: None,
-                        qubit_fs_local_override: None,
+                        qubit_fs_override: Some(&root.join("../rs-fs")),
+                        qubit_fs_local_override: Some(&root.join("../rs-fs-local")),
                         qubit_local_files_override: None,
+                        qubit_operation_override: Some(&root.join("../rs-operation")),
                         example_manifest: Some(&project.join("Cargo.toml")),
                     },
                 );

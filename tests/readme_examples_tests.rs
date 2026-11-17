@@ -162,7 +162,7 @@ fn test_async_example_installation_dependencies() {
             expected[2].clone(),
         ],
         vec![
-            expected[0].replace("qubit-fs@0.3", "qubit-fs@0.2"),
+            expected[0].replace("qubit-fs@0.4", "qubit-fs@0.2"),
             expected[1].clone(),
             expected[2].clone(),
         ],
@@ -274,7 +274,10 @@ fn test_documentation_versions_follow_manifest() {
         input["dependencies"]["qubit-fs"]["version"]
     );
     assert!(output["dependencies"].get("qubit-fs-local").is_none());
-    assert!(output["dependencies"]["qubit-fs"].get("path").is_none());
+    assert_eq!(
+        PathBuf::from(output["dependencies"]["qubit-fs"]["path"].as_str().unwrap()),
+        root.join("../rs-fs").canonicalize().unwrap()
+    );
     assert!(output["dependencies"].get("futures").is_none());
     assert_eq!(
         output["dependencies"]["qubit-fs-registry"]["features"]
@@ -292,10 +295,9 @@ fn test_documentation_versions_follow_manifest() {
 }
 
 #[test]
-fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features() {
+fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let published_version = format!("={}", input["package"]["version"].as_str().expect("package version"));
     for (asynchronous, local, inventory, expected) in [
         (false, false, false, Vec::<&str>::new()),
         (true, false, false, vec!["async"]),
@@ -303,16 +305,32 @@ fn test_documentation_manifest_uses_registry_dependencies_and_manifest_features(
         (true, false, true, vec!["async", "inventory"]),
     ] {
         let output = documentation_manifest(root, &input, asynchronous, local, inventory);
-        for name in ["qubit-fs", "qubit-fs-local", "qubit-local-files"] {
-            if let Some(dependency) = output["dependencies"].get(name) {
-                assert!(dependency.get("path").is_none(), "{name} must resolve from crates.io");
-            }
+        for (name, relative) in [
+            ("qubit-fs", "../rs-fs"),
+            ("qubit-fs-registry", "."),
+        ] {
+            assert_eq!(
+                PathBuf::from(output["dependencies"][name]["path"].as_str().unwrap()),
+                root.join(relative).canonicalize().unwrap(),
+                "{name} must resolve to the intended sibling source"
+            );
         }
-        assert!(output["dependencies"]["qubit-fs-registry"].get("path").is_none());
+        let tested_package_version = format!(
+            "={}",
+            input["package"]["version"].as_str().expect("package version")
+        );
         assert_eq!(
             output["dependencies"]["qubit-fs-registry"]["version"].as_str(),
-            Some(published_version.as_str())
+            Some(tested_package_version.as_str()),
+            "the local registry path must pin the tested package revision"
         );
+        if local {
+            assert_eq!(
+                PathBuf::from(output["dependencies"]["qubit-fs-local"]["path"].as_str().unwrap()),
+                root.join("../rs-fs-local").canonicalize().unwrap(),
+            );
+        }
+        assert!(output["dependencies"]["qubit-spi"].get("path").is_none());
         assert!(output.get("patch").is_none(), "examples must not use Cargo patches");
         let mut actual = output["dependencies"]["qubit-fs-registry"]["features"]
             .as_array()
@@ -592,7 +610,7 @@ fn test_cargo_executable_artifacts_validate_messages() {
 /// Each example is compiled and run with its documented minimum features.
 #[test]
 fn test_shipped_markdown_rust_examples_run() {
-    check_documents(Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(feature = "async"));
+    check_documents(Path::new(env!("CARGO_MANIFEST_DIR")));
 }
 
 /// Both language appendices stay in the verifier and retain async execution.
