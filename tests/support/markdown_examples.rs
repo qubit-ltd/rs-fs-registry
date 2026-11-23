@@ -449,6 +449,11 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
         options.local,
         "local provider dependency does not match example requirements"
     );
+    assert_eq!(
+        ids.contains_key(&"qubit-local-files"),
+        options.local,
+        "local-files dependency does not match example requirements"
+    );
     if let (Some(local), Some(registry)) = (ids.get("qubit-fs-local"), ids.get("qubit-fs-registry")) {
         let node = metadata["resolve"]["nodes"]
             .as_array()
@@ -464,6 +469,57 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                 .any(|id| id.as_str() == Some(registry)),
             "local provider must use the tested registry identity"
         );
+        let local_node = metadata["resolve"]["nodes"]
+            .as_array()
+            .expect("resolved nodes")
+            .iter()
+            .find(|node| node["id"].as_str() == Some(local))
+            .expect("local provider node");
+        let local_files = ids.get("qubit-local-files").expect("local-files package identity");
+        assert!(
+            local_node["dependencies"]
+                .as_array()
+                .expect("dependency IDs")
+                .iter()
+                .any(|id| id.as_str() == Some(local_files)),
+            "local provider must use the expected qubit-local-files identity"
+        );
+        let local_features = local_node["features"].as_array().expect("local provider features");
+        assert!(
+            local_features.iter().any(|feature| feature.as_str() == Some("registry")),
+            "local provider registry feature must be enabled"
+        );
+    }
+    if options.local {
+        let local_files = metadata["packages"]
+            .as_array()
+            .expect("metadata packages")
+            .iter()
+            .find(|entry| entry["id"].as_str() == ids.get("qubit-local-files").copied())
+            .expect("local-files package metadata");
+        if let Some(expected_path) = options.qubit_local_files_override {
+            let local_files_path = Path::new(local_files["manifest_path"].as_str().expect("manifest path"))
+                .canonicalize()
+                .expect("local-files manifest exists");
+            assert_eq!(
+                local_files["source"],
+                Json::Null,
+                "source local-files dependency must use its declared sibling"
+            );
+            assert_eq!(
+                local_files_path,
+                expected_path.join("Cargo.toml").canonicalize().expect("local-files sibling manifest"),
+                "local-files must resolve to the declared sibling package"
+            );
+        } else {
+            assert!(
+                local_files["source"].as_str().is_some_and(|source| {
+                    source == "registry+https://github.com/rust-lang/crates.io-index"
+                        || source == "registry+https://index.crates.io/"
+                }),
+                "candidate and published local-files dependencies must use crates.io"
+            );
+        }
     }
 }
 
@@ -531,6 +587,123 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
         }
     }
     Ok(artifacts)
+}
+
+/// Generates the same feature-group manifests and snippets as the Rust runner,
+/// without invoking Cargo. The Python publication checker supervises Cargo.
+pub fn prepare_documents_for_external(
+    root: &Path,
+    source: DependencySource,
+    published_version: Option<&str>,
+    workspace: &Path,
+) -> Json {
+    let input = manifest(root);
+    let mut groups = Vec::new();
+    for asynchronous in [false, true] {
+        for local in [false, true] {
+            for inventory in [false, true] {
+                let group = format!("{}-{}-{}", asynchronous as u8, local as u8, inventory as u8);
+                let project = workspace.join(&group);
+                fs::create_dir_all(project.join("src/bin")).expect("create example sources");
+                let mut programs = Vec::new();
+                for (document_index, document) in CHECKED_DOCUMENTS.iter().enumerate() {
+                    let document_source = fs::read_to_string(root.join(document)).expect("read document");
+                    let examples = snippets(&document_source).unwrap_or_else(|error| panic!("{document}: {error}"));
+                    assert!(!examples.is_empty(), "{document} needs examples");
+                    for (index, snippet) in examples
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(_, snippet)| {
+                            (snippet.asynchronous, snippet.local, snippet.inventory)
+                                == (asynchronous, local, inventory)
+                        })
+                    {
+                        let name = format!("document_{document_index}_{index}");
+                        fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source)
+                            .expect("write program");
+                        programs.push(json!({
+                            "target": name,
+                            "run": snippet.run,
+                            "context": format!("{document} example {index} in group {group}"),
+                        }));
+                    }
+                }
+                if programs.is_empty() {
+                    continue;
+                }
+                let example_manifest = documentation_manifest_for_source(
+                    root, &input, asynchronous, local, inventory, source, published_version,
+                );
+                fs::write(project.join("Cargo.toml"), to_string(&example_manifest).expect("serialize manifest"))
+                    .expect("write example manifest");
+                groups.push(json!({
+                    "group": group,
+                    "project": project,
+                    "features": {"async": asynchronous, "local": local, "inventory": inventory},
+                    "programs": programs,
+                }));
+            }
+        }
+    }
+    json!({"groups": groups})
+}
+
+/// Validates Cargo metadata and returns the graph evidence for one active group.
+pub fn validate_external_metadata(
+    metadata: &Json,
+    package: &str,
+    root: &Path,
+    source: DependencySource,
+    asynchronous: bool,
+    local: bool,
+    inventory: bool,
+    example_manifest: &Path,
+) -> Json {
+    let sibling_source = source == DependencySource::SiblingSource;
+    let qubit_fs_override = sibling_source.then(|| root.join("../rs-fs"));
+    let qubit_fs_local_override = sibling_source.then(|| root.join("../rs-fs-local"));
+    let qubit_local_files_override = sibling_source.then(|| root.join("../rs-local-files"));
+    check_graph(
+        metadata,
+        package,
+        root,
+        GraphOptions {
+            published: source == DependencySource::PublishedConsumer,
+            registry: source != DependencySource::SiblingSource,
+            asynchronous,
+            local,
+            inventory,
+            qubit_fs_override: qubit_fs_override.as_deref(),
+            qubit_fs_local_override: qubit_fs_local_override.as_deref(),
+            qubit_local_files_override: qubit_local_files_override.as_deref(),
+            qubit_operation_override: None,
+            example_manifest: Some(example_manifest),
+        },
+    );
+    let nodes = metadata["resolve"]["nodes"].as_array().expect("resolved nodes");
+    let mut packages = metadata["packages"]
+        .as_array()
+        .expect("metadata packages")
+        .iter()
+        .map(|entry| {
+            let id = entry["id"].as_str().expect("package ID");
+            let node = nodes.iter().find(|node| node["id"].as_str() == Some(id)).expect("resolved package node");
+            json!({
+                "id": id,
+                "name": entry["name"],
+                "version": entry["version"],
+                "source": entry["source"].as_str().map(str::to_owned)
+                    .unwrap_or_else(|| format!("path:{}", entry["manifest_path"].as_str().unwrap_or_default())),
+                "features": node["features"],
+            })
+        })
+        .collect::<Vec<_>>();
+    packages.sort_by(|left, right| {
+        left["name"].as_str().cmp(&right["name"].as_str())
+            .then_with(|| left["version"].as_str().cmp(&right["version"].as_str()))
+            .then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
+    });
+    json!(packages)
 }
 
 /// Checks source-integrated programs in isolated directories with an explicit
