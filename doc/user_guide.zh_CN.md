@@ -44,7 +44,7 @@ cargo add qubit-fs-local@0.11 --features registry
 
 这些命令描述 0.8.3 源码候选；由于 `qubit-fs ^0.4` 尚未发布，目前无法从 crates.io 解析。
 下文示例需要 sibling 源码工作区。在当前仓库检查示例时，请运行
-`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_documentation -- --nocapture`。
+`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture`。
 目前已发布且可工作的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
 若要安装该旧版本线，请改用：
 
