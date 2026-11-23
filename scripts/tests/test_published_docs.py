@@ -1,5 +1,6 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -77,6 +78,10 @@ class PublishedDocsTests(unittest.TestCase):
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
     def test_documentation_evidence_requires_complete_digests_and_local_dependencies(self):
+        document_inputs = [
+            {"path": path, "sha256": "0" * 64}
+            for path in checker._CHECKED_DOCUMENTS
+        ]
         package = lambda name: {
             "id": f"{name} 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
             "name": name,
@@ -90,6 +95,12 @@ class PublishedDocsTests(unittest.TestCase):
             "verified": True,
             "archive_sha256": "archive-digest",
             "input_sha256": "input-digest",
+            "input_kind": "candidate_source_checkout",
+            "source_checkout_sha256": "source-digest",
+            "documentation_inputs": document_inputs,
+            "documentation_inputs_sha256": hashlib.sha256(
+                json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
             "groups": [{
                 "features": {"local": True},
                 "packages": [package("qubit-fs-local"), package("qubit-local-files")],
@@ -135,6 +146,7 @@ class PublishedDocsTests(unittest.TestCase):
     def test_registry_package_copy_structurally_drops_paths_in_all_dependency_scopes(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "Cargo.toml"
+            source_manifest = Path(directory) / "source-Cargo.toml"
             original = '''[package]
 name = "fixture"
 version = "1.0.0"
@@ -143,6 +155,10 @@ version = "1.0.0"
 first = { path = "../first", version = "^1", default-features = false }
 middle = { version = "^2", path = "../middle", features = ["a"] }
 last = { version = "^3", features = ["b"], path = "../last" }
+
+[dependencies.subtable]
+version = "^3"
+path = "../subtable"
 
 [dev-dependencies]
 dev = { version = "^4", path = "../dev" }
@@ -157,6 +173,7 @@ target = { version = "^6", path = "../target" }
 path = "inert metadata, not a Cargo source"
 '''
             manifest.write_text(original)
+            source_manifest.write_text(original)
             checker._normalize_registry_package_manifest(manifest)
             parsed = __import__("tomllib").loads(manifest.read_text())
             for dependencies in (
@@ -171,6 +188,7 @@ path = "inert metadata, not a Cargo source"
                 parsed["package"]["metadata"]["documentation"]["path"],
                 "inert metadata, not a Cargo source",
             )
+            self.assertEqual(source_manifest.read_text(), original)
 
 
 

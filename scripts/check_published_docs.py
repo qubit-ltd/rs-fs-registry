@@ -28,6 +28,14 @@ _WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
 
 
 _EXACT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_CHECKED_DOCUMENTS = (
+    "README.md",
+    "README.zh_CN.md",
+    "doc/user_guide.md",
+    "doc/user_guide.zh_CN.md",
+    "doc/async_resolution_example.md",
+    "doc/async_resolution_example.zh_CN.md",
+)
 
 
 def load_toolchain(root: Path) -> str:
@@ -141,6 +149,26 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
         raise ValueError(f"documentation evidence mode mismatch: expected {mode}")
     if evidence.get("archive_sha256") != archive_digest or evidence.get("input_sha256") != input_digest:
         raise ValueError("documentation evidence digest mismatch")
+    expected_input_kind = "published_archive" if mode == "published" else "candidate_source_checkout"
+    if evidence.get("input_kind") != expected_input_kind or not isinstance(evidence.get("source_checkout_sha256"), str):
+        raise ValueError("documentation evidence does not identify its source checkout and tested input")
+    document_inputs = evidence.get("documentation_inputs")
+    if not isinstance(document_inputs, list) or not all(isinstance(entry, dict) for entry in document_inputs):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if [entry.get("path") for entry in document_inputs] != list(_CHECKED_DOCUMENTS):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if not all(
+        isinstance(entry, dict)
+        and isinstance(entry.get("sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+        for entry in document_inputs
+    ):
+        raise ValueError("documentation evidence contains an invalid Markdown input digest")
+    document_digest = hashlib.sha256(
+        json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if evidence.get("documentation_inputs_sha256") != document_digest:
+        raise ValueError("documentation input digest mismatch")
     groups = evidence.get("groups")
     if not isinstance(groups, list) or not groups:
         raise ValueError("documentation evidence has no verified feature groups")
@@ -163,6 +191,31 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
             for example in examples
         ):
             raise ValueError("documentation evidence contains a failed or missing example status")
+
+
+def _prepare_published_test_harness(source_root: Path, extracted: Path, workspace: Path) -> Path:
+    """Run the current source-mode-aware harness against an untouched published package copy."""
+    harness = workspace / "published-test-harness"
+    shutil.copytree(extracted, harness)
+    tests = harness / "tests"
+    support = tests / "support"
+    support.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_root / "tests/readme_examples_tests.rs", tests / "readme_examples_tests.rs")
+    for module in ("markdown_examples.rs", "process_runner.rs"):
+        shutil.copy2(source_root / "tests/support" / module, support / module)
+    (support / "mod.rs").write_text("pub mod markdown_examples;\npub mod process_runner;\n")
+    (tests / "mod.rs").write_text("mod readme_examples_tests;\nmod support;\n")
+    return harness
+
+
+def _documentation_inputs(root: Path) -> tuple[list[dict[str, str]], str]:
+    """Hash the exact Markdown files consumed by the Rust documentation harness."""
+    inputs = [
+        {"path": relative, "sha256": hashlib.sha256((root / relative).read_bytes()).hexdigest()}
+        for relative in _CHECKED_DOCUMENTS
+    ]
+    digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return inputs, digest
 
 
 def _windows_job_functions():
@@ -705,19 +758,29 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         source.extractall(unpacked.resolve(), filter="data")
     extracted = (unpacked / f"{package}-{version}").resolve()
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
-    metadata = run(cargo, ["metadata", "--format-version", "1"], extracted, environment,
+    run(cargo, ["generate-lockfile"], extracted, environment, workspace / "archive-lock.log",
+        timeout_seconds=180, context="Cargo generate-lockfile (archive)")
+    test_root = extracted
+    if mode == "published":
+        test_root = _prepare_published_test_harness(root, extracted, workspace)
+    metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata")
     resolved_metadata = json.loads(metadata)
     validate_graph(resolved_metadata, package, extracted)
-    run(cargo, ["test", "--doc"], extracted, environment, workspace / "doctests-default.log",
+    run(cargo, ["test", "--locked", "--doc"], extracted, environment, workspace / "doctests-default.log",
         timeout_seconds=900, context="Cargo registry default doctests")
-    run(cargo, ["test", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
+    run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
         timeout_seconds=900, context="Cargo registry all-feature doctests")
-    run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
-        extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
+    run(cargo, ["test", "--locked", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
+        test_root, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
     if not evidence_path.is_file():
         raise ValueError("documentation tests succeeded without writing their success evidence")
     evidence = json.loads(evidence_path.read_text())
+    document_inputs, document_digest = _documentation_inputs(extracted)
+    evidence["input_kind"] = "published_archive" if mode == "published" else "candidate_source_checkout"
+    evidence["source_checkout_sha256"] = source_digest
+    evidence["documentation_inputs"] = document_inputs
+    evidence["documentation_inputs_sha256"] = document_digest
     validate_documentation_evidence(evidence, mode, archive_digest, input_digest)
     print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; "
           f"{resolution_summary(resolved_metadata, archive, input_digest)}; "
