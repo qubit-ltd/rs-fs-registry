@@ -104,7 +104,9 @@ fn validate_async_appendix_contract(source: &str, expected: &[String], document:
         "source-workspace-only"
     };
     if !source.contains(source_only) {
-        return Err(format!("{document}: must state that this candidate is source-workspace-only"));
+        return Err(format!(
+            "{document}: must state that this candidate is source-workspace-only"
+        ));
     }
     Ok(())
 }

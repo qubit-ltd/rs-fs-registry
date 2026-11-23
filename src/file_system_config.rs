@@ -88,10 +88,10 @@ impl FileSystemConfig {
     ///
     /// `Some` with the configured selection, or `None` when this configuration
     /// carries no embedded selection. Resolution through
-    /// [`FileSystemRegistry::resolve_config`] or its async counterpart,
+    /// [`crate::FileSystemRegistry::resolve_config`] or its async counterpart,
     /// `AsyncFileSystemRegistry::resolve_config`, derives selection from the
-    /// URI. [`FileSystemRegistry::resolve_selected_config`] and
-    /// [`FileSystemRegistry::resolve_default_config`] (and their async
+    /// URI. [`crate::FileSystemRegistry::resolve_selected_config`] and
+    /// [`crate::FileSystemRegistry::resolve_default_config`] (and their async
     /// counterparts) use the requested or current default selection and reject
     /// a conflicting embedded selection.
     #[inline]
