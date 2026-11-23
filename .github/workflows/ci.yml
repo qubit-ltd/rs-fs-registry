@@ -68,8 +68,16 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Install the documented Rust toolchain
         run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
+      - name: Checkout rs-fs for the integration test target
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-fs
+          ref: main
+          path: ../rs-fs
       - name: Run published checker tests on Windows
         run: python -B -m unittest discover -s scripts/tests -v
+      - name: Run Rust process descendant cleanup tests on Windows
+        run: cargo test --locked --test integration_tests process_runner_tests:: -- --nocapture
       - name: Verify archive doctests and examples with Windows process cleanup
         run: python scripts/check_published_docs.py .
 

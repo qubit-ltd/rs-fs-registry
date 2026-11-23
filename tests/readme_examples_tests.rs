@@ -14,6 +14,8 @@ use crate::support::markdown_examples::CHECKED_DOCUMENTS;
 use crate::support::markdown_examples::DependencySource;
 use crate::support::markdown_examples::GraphOptions;
 use crate::support::markdown_examples::check_documents_for_source;
+use crate::support::markdown_examples::prepare_documents_for_external;
+use crate::support::markdown_examples::validate_external_metadata;
 use crate::support::markdown_examples::documentation_manifest_for_source;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
@@ -522,11 +524,13 @@ fn test_graph_checks_registry_features() {
     let local = serde_json::json!({
         "packages": [
             {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
-            {"name":"qubit-fs-local", "id":"local 0.11.0 (registry+https://example)", "manifest_path":"/local/Cargo.toml", "source":"registry+https://example"}
+            {"name":"qubit-fs-local", "id":"qubit-fs-local 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)", "manifest_path":"/local/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"},
+            {"name":"qubit-local-files", "id":"qubit-local-files 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)", "manifest_path":"/local-files/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"}
         ],
         "resolve": {"nodes": [
             {"id":registry_id, "features":["inventory"], "dependencies":[]},
-            {"id":"local 0.11.0 (registry+https://example)", "features":[], "dependencies":[registry_id]}
+            {"id":"qubit-fs-local 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)", "features":["registry"], "dependencies":[registry_id, "qubit-local-files 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)"]},
+            {"id":"qubit-local-files 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)", "features":[], "dependencies":[]}
         ]}
     });
     check_graph(
@@ -538,6 +542,79 @@ fn test_graph_checks_registry_features() {
             ..GraphOptions::default()
         },
     );
+    let mut missing_registry_edge = local.clone();
+    missing_registry_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!("wrong-registry-id");
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &missing_registry_edge,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, ..GraphOptions::default() }
+    )).is_err());
+    let mut missing_local_registry_feature = local.clone();
+    missing_local_registry_feature["resolve"]["nodes"][1]["features"] = serde_json::json!([]);
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &missing_local_registry_feature,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, ..GraphOptions::default() }
+    )).is_err());
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &local,
+        "qubit-fs-registry",
+        root,
+        GraphOptions::default()
+    )).is_err());
+    let mut duplicate_local_files = local.clone();
+    duplicate_local_files["packages"].as_array_mut().unwrap().push(local["packages"][2].clone());
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &duplicate_local_files,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, ..GraphOptions::default() }
+    )).is_err());
+    let missing_local_files = serde_json::json!({
+        "packages": local["packages"].as_array().unwrap()[..2].to_vec(),
+        "resolve": {"nodes": local["resolve"]["nodes"].as_array().unwrap()[..2].to_vec()}
+    });
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &missing_local_files,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, ..GraphOptions::default() }
+    )).is_err());
+    let mut alternate_local_files = local.clone();
+    alternate_local_files["packages"][2]["source"] = serde_json::json!("registry+https://example.invalid/index");
+    alternate_local_files["packages"][2]["id"] = serde_json::json!("qubit-local-files 0.6.0 (registry+https://example.invalid/index)");
+    alternate_local_files["resolve"]["nodes"][2]["id"] = alternate_local_files["packages"][2]["id"].clone();
+    alternate_local_files["resolve"]["nodes"][1]["dependencies"][1] = alternate_local_files["packages"][2]["id"].clone();
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &alternate_local_files,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, ..GraphOptions::default() }
+    )).is_err());
+    let sibling = tempfile::tempdir().expect("local-files sibling");
+    std::fs::write(sibling.path().join("Cargo.toml"), "[package]\nname='qubit-local-files'\nversion='0.6.0'\n").unwrap();
+    let mut source_local_files = local.clone();
+    let sibling_id = "qubit-local-files 0.6.0 (path+file:///local-files)";
+    source_local_files["packages"][2]["source"] = serde_json::Value::Null;
+    source_local_files["packages"][2]["id"] = serde_json::json!(sibling_id);
+    source_local_files["packages"][2]["manifest_path"] = serde_json::json!(sibling.path().join("Cargo.toml").to_str().unwrap());
+    source_local_files["resolve"]["nodes"][2]["id"] = serde_json::json!(sibling_id);
+    source_local_files["resolve"]["nodes"][1]["dependencies"][1] = serde_json::json!(sibling_id);
+    check_graph(
+        &source_local_files,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, qubit_local_files_override: Some(sibling.path()), ..GraphOptions::default() },
+    );
+    source_local_files["packages"][2]["manifest_path"] = serde_json::json!("/wrong/Cargo.toml");
+    assert!(std::panic::catch_unwind(|| check_graph(
+        &source_local_files,
+        "qubit-fs-registry",
+        root,
+        GraphOptions { local: true, qubit_local_files_override: Some(sibling.path()), ..GraphOptions::default() }
+    )).is_err());
     let duplicate = serde_json::json!({
         "packages": [
             {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
@@ -644,6 +721,58 @@ fn test_shipped_markdown_rust_examples_run() {
         .unwrap_or(DependencySource::SiblingSource);
     let version = std::env::var("REGISTRY_PUBLISHED_VERSION").ok();
     check_documents_for_source(root, source, version.as_deref());
+}
+
+/// Python-supervised publication steps use this entry only for Rust manifest,
+/// graph, and artifact validation. It never starts Cargo itself.
+#[test]
+fn test_registry_docs_helper_step() {
+    let Ok(action) = std::env::var("REGISTRY_DOCS_HELPER_ACTION") else {
+        return;
+    };
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let output_path = PathBuf::from(std::env::var_os("REGISTRY_DOCS_HELPER_OUTPUT").expect("helper output path"));
+    let result = match action.as_str() {
+        "prepare" => {
+            let source = std::env::var("REGISTRY_DOCS_SOURCE")
+                .ok()
+                .map(|value| DependencySource::parse(&value).unwrap_or_else(|error| panic!("{error}")))
+                .unwrap_or(DependencySource::SiblingSource);
+            let workspace = PathBuf::from(std::env::var_os("REGISTRY_DOCS_WORKSPACE").expect("workspace path"));
+            let version = std::env::var("REGISTRY_PUBLISHED_VERSION").ok();
+            prepare_documents_for_external(root, source, version.as_deref(), &workspace)
+        }
+        "validate" => {
+            let project = PathBuf::from(std::env::var_os("REGISTRY_DOCS_PROJECT").expect("project path"));
+            let metadata_path = PathBuf::from(std::env::var_os("REGISTRY_DOCS_HELPER_INPUT").expect("metadata path"));
+            let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(metadata_path).expect("metadata file"))
+                .expect("Cargo metadata JSON");
+            let source = DependencySource::parse(&std::env::var("REGISTRY_DOCS_SOURCE").expect("source mode"))
+                .unwrap_or_else(|error| panic!("{error}"));
+            let package = manifest(root)["package"]["name"].as_str().expect("package name").to_owned();
+            let parse_feature = |name: &str| std::env::var(name).expect("feature value") == "1";
+            validate_external_metadata(
+                &metadata,
+                &package,
+                root,
+                source,
+                parse_feature("REGISTRY_DOCS_ASYNC"),
+                parse_feature("REGISTRY_DOCS_LOCAL"),
+                parse_feature("REGISTRY_DOCS_INVENTORY"),
+                &project.join("Cargo.toml"),
+            )
+        }
+        "artifacts" => {
+            let input_path = PathBuf::from(std::env::var_os("REGISTRY_DOCS_HELPER_INPUT").expect("build output path"));
+            let build_output = std::fs::read(input_path).expect("Cargo build message output");
+            let artifacts = executable_artifacts(&build_output).unwrap_or_else(|error| panic!("{error}"));
+            serde_json::to_value(artifacts.into_iter().map(|(name, path)| (name, path)).collect::<std::collections::BTreeMap<_, _>>())
+                .expect("artifact JSON")
+        }
+        _ => panic!("unknown publication helper action: {action}"),
+    };
+    std::fs::write(output_path, serde_json::to_vec_pretty(&result).expect("serialize helper output"))
+        .expect("write helper output");
 }
 
 #[test]

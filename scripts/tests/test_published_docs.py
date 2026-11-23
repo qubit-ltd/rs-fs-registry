@@ -1,5 +1,6 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -77,6 +78,10 @@ class PublishedDocsTests(unittest.TestCase):
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
     def test_documentation_evidence_requires_complete_digests_and_local_dependencies(self):
+        document_inputs = [
+            {"path": path, "sha256": "0" * 64}
+            for path in checker._CHECKED_DOCUMENTS
+        ]
         package = lambda name: {
             "id": f"{name} 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
             "name": name,
@@ -90,6 +95,12 @@ class PublishedDocsTests(unittest.TestCase):
             "verified": True,
             "archive_sha256": "archive-digest",
             "input_sha256": "input-digest",
+            "input_kind": "candidate_source_checkout",
+            "source_checkout_sha256": "source-digest",
+            "documentation_inputs": document_inputs,
+            "documentation_inputs_sha256": hashlib.sha256(
+                json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
             "groups": [{
                 "features": {"local": True},
                 "packages": [package("qubit-fs-local"), package("qubit-local-files")],
@@ -135,6 +146,7 @@ class PublishedDocsTests(unittest.TestCase):
     def test_registry_package_copy_structurally_drops_paths_in_all_dependency_scopes(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "Cargo.toml"
+            source_manifest = Path(directory) / "source-Cargo.toml"
             original = '''[package]
 name = "fixture"
 version = "1.0.0"
@@ -143,6 +155,10 @@ version = "1.0.0"
 first = { path = "../first", version = "^1", default-features = false }
 middle = { version = "^2", path = "../middle", features = ["a"] }
 last = { version = "^3", features = ["b"], path = "../last" }
+
+[dependencies.subtable]
+version = "^3"
+path = "../subtable"
 
 [dev-dependencies]
 dev = { version = "^4", path = "../dev" }
@@ -157,6 +173,7 @@ target = { version = "^6", path = "../target" }
 path = "inert metadata, not a Cargo source"
 '''
             manifest.write_text(original)
+            source_manifest.write_text(original)
             checker._normalize_registry_package_manifest(manifest)
             parsed = __import__("tomllib").loads(manifest.read_text())
             for dependencies in (
@@ -171,6 +188,7 @@ path = "inert metadata, not a Cargo source"
                 parsed["package"]["metadata"]["documentation"]["path"],
                 "inert metadata, not a Cargo source",
             )
+            self.assertEqual(source_manifest.read_text(), original)
 
 
 
@@ -401,6 +419,51 @@ path = "inert metadata, not a Cargo source"
                 )
             self.assertLess(time.monotonic() - started, 5)
             self.assertIn("partial marker", log.read_text())
+
+    def test_outer_timeout_cancels_nested_supervisor_and_reports_command_group_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "must-not-complete"
+            log = root / "nested.log"
+            leaf = "import pathlib,sys,time; time.sleep(1); pathlib.Path(sys.argv[1]).write_text('done')"
+            nested = (
+                "import subprocess,sys,time; print('nested supervisor started',flush=True); "
+                f"subprocess.Popen([sys.executable,'-c',{leaf!r},sys.argv[1]]); time.sleep(30)"
+            )
+            started = time.monotonic()
+            with self.assertRaisesRegex(RuntimeError, "overall publication deadline.*nested supervisor"):
+                checker.run(sys.executable, ["-c", nested, str(marker)], root, {}, log,
+                            timeout_seconds=30, overall_deadline=started + 0.3,
+                            context="nested supervisor group=archive-examples")
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertIn("nested supervisor started", log.read_text())
+            self.assertFalse(marker.exists())
+
+    def test_python_supervises_each_cargo_step_and_example_with_one_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            test_root = root / "package"
+            project = root / "examples" / "0-1-0"
+            project.mkdir(parents=True)
+            (test_root / "Cargo.toml").parent.mkdir(parents=True)
+            group = {
+                "group": "0-1-0",
+                "project": str(project),
+                "features": {"async": False, "local": True, "inventory": False},
+                "programs": [{"target": "example_bin", "run": True, "context": "doc example group=0-1-0"}],
+            }
+            deadline = time.monotonic() + 60
+            with patch.object(checker, "_run_rust_docs_helper", side_effect=[{"groups": [group]}, [] ,
+                                                                             {"example_bin": "/tmp/example_bin"}]) as helper, \
+                    patch.object(checker, "run", return_value='{"packages":[],"resolve":{"nodes":[]}}') as run_command:
+                evidence = checker._check_documentation_examples(
+                    "cargo", test_root, {}, root, overall_deadline=deadline,
+                )
+            self.assertEqual(evidence[0]["group"], "0-1-0")
+            self.assertEqual(evidence[0]["examples"], [{"target": "example_bin", "status": "passed"}])
+            self.assertEqual([call.args[4] for call in helper.call_args_list], ["prepare", "validate", "artifacts"])
+            self.assertGreaterEqual(run_command.call_count, 4)
+            self.assertTrue(all(call.kwargs["overall_deadline"] == deadline for call in run_command.call_args_list))
 
     def test_run_timeout_stops_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:

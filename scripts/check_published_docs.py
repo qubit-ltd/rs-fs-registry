@@ -28,6 +28,14 @@ _WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
 
 
 _EXACT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_CHECKED_DOCUMENTS = (
+    "README.md",
+    "README.zh_CN.md",
+    "doc/user_guide.md",
+    "doc/user_guide.zh_CN.md",
+    "doc/async_resolution_example.md",
+    "doc/async_resolution_example.zh_CN.md",
+)
 
 
 def load_toolchain(root: Path) -> str:
@@ -141,6 +149,26 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
         raise ValueError(f"documentation evidence mode mismatch: expected {mode}")
     if evidence.get("archive_sha256") != archive_digest or evidence.get("input_sha256") != input_digest:
         raise ValueError("documentation evidence digest mismatch")
+    expected_input_kind = "published_archive" if mode == "published" else "candidate_source_checkout"
+    if evidence.get("input_kind") != expected_input_kind or not isinstance(evidence.get("source_checkout_sha256"), str):
+        raise ValueError("documentation evidence does not identify its source checkout and tested input")
+    document_inputs = evidence.get("documentation_inputs")
+    if not isinstance(document_inputs, list) or not all(isinstance(entry, dict) for entry in document_inputs):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if [entry.get("path") for entry in document_inputs] != list(_CHECKED_DOCUMENTS):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if not all(
+        isinstance(entry, dict)
+        and isinstance(entry.get("sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+        for entry in document_inputs
+    ):
+        raise ValueError("documentation evidence contains an invalid Markdown input digest")
+    document_digest = hashlib.sha256(
+        json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if evidence.get("documentation_inputs_sha256") != document_digest:
+        raise ValueError("documentation input digest mismatch")
     groups = evidence.get("groups")
     if not isinstance(groups, list) or not groups:
         raise ValueError("documentation evidence has no verified feature groups")
@@ -163,6 +191,104 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
             for example in examples
         ):
             raise ValueError("documentation evidence contains a failed or missing example status")
+
+
+def _prepare_published_test_harness(source_root: Path, extracted: Path, workspace: Path) -> Path:
+    """Run the current source-mode-aware harness against an untouched published package copy."""
+    harness = workspace / "published-test-harness"
+    shutil.copytree(extracted, harness)
+    tests = harness / "tests"
+    support = tests / "support"
+    support.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_root / "tests/readme_examples_tests.rs", tests / "readme_examples_tests.rs")
+    for module in ("markdown_examples.rs", "process_runner.rs"):
+        shutil.copy2(source_root / "tests/support" / module, support / module)
+    (support / "mod.rs").write_text("pub mod markdown_examples;\npub mod process_runner;\n")
+    (tests / "mod.rs").write_text("mod readme_examples_tests;\nmod support;\n")
+    return harness
+
+
+def _run_rust_docs_helper(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
+                         action: str, *, overall_deadline: float, group: dict | None = None,
+                         input_path: Path | None = None) -> dict | list:
+    """Run the Rust manifest/graph/artifact helper; the helper never starts Cargo."""
+    output_path = workspace / f"helper-{action}-{group['group'] if group else 'all'}.json"
+    helper_environment = environment.copy()
+    helper_environment["REGISTRY_DOCS_HELPER_ACTION"] = action
+    helper_environment["REGISTRY_DOCS_HELPER_OUTPUT"] = str(output_path)
+    if action == "prepare":
+        helper_environment["REGISTRY_DOCS_WORKSPACE"] = str(workspace / "example-projects")
+    if group is not None:
+        helper_environment["REGISTRY_DOCS_PROJECT"] = str(Path(group["project"]))
+        for name, key in (("async", "REGISTRY_DOCS_ASYNC"),
+                          ("local", "REGISTRY_DOCS_LOCAL"),
+                          ("inventory", "REGISTRY_DOCS_INVENTORY")):
+            helper_environment[key] = "1" if group["features"][name] else "0"
+    if input_path is not None:
+        helper_environment["REGISTRY_DOCS_HELPER_INPUT"] = str(input_path)
+    manifest_root = test_root / "Cargo.toml"
+    command = ["test", "--locked", "--manifest-path", str(manifest_root), "--test", "integration_tests",
+               "test_registry_docs_helper_step", "--", "--nocapture"]
+    context = f"Cargo Rust documentation helper action={action}" + (f" group={group['group']}" if group else "")
+    run(cargo, command, test_root, helper_environment, workspace / f"{action}-{group['group'] if group else 'all'}.log",
+        timeout_seconds=900, context=context, overall_deadline=overall_deadline)
+    if not output_path.is_file():
+        raise ValueError(f"Rust documentation helper did not write {output_path}")
+    return json.loads(output_path.read_text())
+
+
+def _check_documentation_examples(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
+                                  *, overall_deadline: float) -> list[dict]:
+    """Let Python supervise every Cargo step and executable in each docs group."""
+    plan = _run_rust_docs_helper(cargo, test_root, environment, workspace, "prepare",
+                                 overall_deadline=overall_deadline)
+    evidence_groups = []
+    for group in plan["groups"]:
+        project = Path(group["project"])
+        label = group["group"]
+        run(cargo, ["generate-lockfile"], project, environment, workspace / f"lock-{label}.log",
+            timeout_seconds=180, context=f"Cargo generate-lockfile group={label}", overall_deadline=overall_deadline)
+        metadata_path = workspace / f"metadata-{label}.json"
+        metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], project, environment,
+                       workspace / f"metadata-{label}.log", timeout_seconds=180,
+                       context=f"Cargo metadata group={label}", overall_deadline=overall_deadline)
+        metadata_path.write_text(metadata)
+        packages = _run_rust_docs_helper(cargo, test_root, environment, workspace, "validate",
+                                        overall_deadline=overall_deadline, group=group, input_path=metadata_path)
+        build = run(cargo, ["build", "--locked", "--bins", "--message-format=json"], project, environment,
+                    workspace / f"build-{label}.log", timeout_seconds=900,
+                    context=f"Cargo build group={label}", overall_deadline=overall_deadline)
+        build_path = workspace / f"build-{label}.jsonl"
+        build_path.write_text(build)
+        artifacts = _run_rust_docs_helper(cargo, test_root, environment, workspace, "artifacts",
+                                         overall_deadline=overall_deadline, group=group, input_path=build_path)
+        examples = []
+        for program in group["programs"]:
+            name = program["target"]
+            if not program["run"]:
+                examples.append({"target": name, "status": "no_run"})
+                continue
+            executable = artifacts.get(name)
+            if executable is None:
+                raise ValueError(f"Cargo did not report an executable for {name} in group {label}")
+            execution = workspace / f"execution-{label}-{name}"
+            execution.mkdir()
+            run(executable, [], execution, environment, workspace / f"example-{label}-{name}.log",
+                timeout_seconds=30, context=program["context"], overall_deadline=overall_deadline)
+            examples.append({"target": name, "status": "passed"})
+        evidence_groups.append({"group": label, "features": group["features"],
+                                "packages": packages, "examples": examples})
+    return evidence_groups
+
+
+def _documentation_inputs(root: Path) -> tuple[list[dict[str, str]], str]:
+    """Hash the exact Markdown files consumed by the Rust documentation harness."""
+    inputs = [
+        {"path": relative, "sha256": hashlib.sha256((root / relative).read_bytes()).hexdigest()}
+        for relative in _CHECKED_DOCUMENTS
+    ]
+    digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return inputs, digest
 
 
 def _windows_job_functions():
@@ -400,7 +526,8 @@ def terminate_process_tree(process: subprocess.Popen, job_handle=None, *,
 
 
 def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str], log: Path,
-        *, timeout_seconds: float, context: str = "published documentation check") -> str:
+        *, timeout_seconds: float, context: str = "published documentation check",
+        overall_deadline: float | None = None) -> str:
     """Run one checked operation and retain diagnostics on failure."""
     command = [cargo, *arguments]
     with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as stdout, \
@@ -423,11 +550,14 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
             raise RuntimeError(
                 f"{context} could not start {command!r}; log: {log}: {error}; rollback: {rollback}"
             ) from error
-        deadline = time.monotonic() + timeout_seconds
+        command_deadline = time.monotonic() + timeout_seconds
+        deadline = min(command_deadline, overall_deadline) if overall_deadline is not None else command_deadline
+        overall_expired = False
         timed_out = False
         while process.poll() is None:
             if time.monotonic() >= deadline:
                 timed_out = True
+                overall_expired = overall_deadline is not None and deadline == overall_deadline
                 break
             time.sleep(0.05)
         cleanup = "not required"
@@ -487,6 +617,11 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
         err = stderr.read()
         log.write_text(out + err)
     if timed_out:
+        if overall_expired:
+            raise RuntimeError(
+                f"overall publication deadline expired while running {context}: {command!r}; "
+                f"log: {log}; cleanup: {cleanup}"
+            )
         raise RuntimeError(
             f"{context} timed out after {timeout_seconds}s: {command!r}; log: {log}; cleanup: {cleanup}"
         )
@@ -648,6 +783,7 @@ def _published_registry_contract() -> tuple[str, str]:
 def _check(root: Path, workspace: Path, mode: str, published_version: str | None = None,
            filesystem_requirement: str | None = None) -> None:
     """Validate the selected consumer mode using an isolated Cargo workspace."""
+    overall_deadline = time.monotonic() + 7200
     try:
         toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
@@ -689,14 +825,12 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         command_cwd.mkdir()
         run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
             command_cwd, environment, workspace / "package.log", timeout_seconds=900,
-            context="Cargo package (candidate)")
+            context="Cargo package (candidate)", overall_deadline=overall_deadline)
         archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
         input_digest = source_digest
     archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     environment["REGISTRY_ARCHIVE_SHA256"] = archive_digest
     environment["REGISTRY_INPUT_SHA256"] = input_digest
-    evidence_path = workspace / "documentation-evidence.json"
-    environment["REGISTRY_DOCS_EVIDENCE"] = str(evidence_path)
     with tarfile.open(archive) as source:
         for member in source.getmembers():
             destination = (unpacked.resolve() / member.name).resolve()
@@ -705,19 +839,35 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         source.extractall(unpacked.resolve(), filter="data")
     extracted = (unpacked / f"{package}-{version}").resolve()
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
-    metadata = run(cargo, ["metadata", "--format-version", "1"], extracted, environment,
-                   workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata")
+    run(cargo, ["generate-lockfile"], extracted, environment, workspace / "archive-lock.log",
+        timeout_seconds=180, context="Cargo generate-lockfile (archive)", overall_deadline=overall_deadline)
+    test_root = extracted
+    if mode == "published":
+        test_root = _prepare_published_test_harness(root, extracted, workspace)
+    metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
+                   workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata",
+                   overall_deadline=overall_deadline)
     resolved_metadata = json.loads(metadata)
     validate_graph(resolved_metadata, package, extracted)
-    run(cargo, ["test", "--doc"], extracted, environment, workspace / "doctests-default.log",
-        timeout_seconds=900, context="Cargo registry default doctests")
-    run(cargo, ["test", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
-        timeout_seconds=900, context="Cargo registry all-feature doctests")
-    run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
-        extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
-    if not evidence_path.is_file():
-        raise ValueError("documentation tests succeeded without writing their success evidence")
-    evidence = json.loads(evidence_path.read_text())
+    run(cargo, ["test", "--locked", "--doc"], extracted, environment, workspace / "doctests-default.log",
+        timeout_seconds=900, context="Cargo registry default doctests", overall_deadline=overall_deadline)
+    run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
+        timeout_seconds=900, context="Cargo registry all-feature doctests", overall_deadline=overall_deadline)
+    groups = _check_documentation_examples(cargo, test_root, environment, workspace,
+                                           overall_deadline=overall_deadline)
+    evidence = {
+        "schema_version": 1,
+        "source_mode": mode,
+        "verified": True,
+        "archive_sha256": archive_digest,
+        "input_sha256": input_digest,
+        "groups": groups,
+    }
+    document_inputs, document_digest = _documentation_inputs(extracted)
+    evidence["input_kind"] = "published_archive" if mode == "published" else "candidate_source_checkout"
+    evidence["source_checkout_sha256"] = source_digest
+    evidence["documentation_inputs"] = document_inputs
+    evidence["documentation_inputs_sha256"] = document_digest
     validate_documentation_evidence(evidence, mode, archive_digest, input_digest)
     print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; "
           f"{resolution_summary(resolved_metadata, archive, input_digest)}; "
