@@ -554,12 +554,16 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
         deadline = min(command_deadline, overall_deadline) if overall_deadline is not None else command_deadline
         overall_expired = False
         timed_out = False
-        while process.poll() is None:
-            if time.monotonic() >= deadline:
+        while True:
+            returncode = process.poll()
+            observed_at = time.monotonic()
+            if observed_at >= deadline:
                 timed_out = True
-                overall_expired = overall_deadline is not None and deadline == overall_deadline
+                overall_expired = overall_deadline is not None and overall_deadline <= command_deadline
                 break
-            time.sleep(0.05)
+            if returncode is not None:
+                break
+            time.sleep(min(0.05, deadline - observed_at))
         cleanup = "not required"
         cleanup_error = None
         if timed_out:
