@@ -37,6 +37,20 @@ fn test_resolution_rejects_path_outside_constraints() {
     assert_eq!(error.kind(), FsErrorKind::InvalidPath);
 }
 
+/// Path errors take precedence when a canonical URI also has no supported scheme.
+#[test]
+fn test_resolution_validates_path_before_canonical_uri_scheme() {
+    let error = sync_resolution_with_path_properties(
+        "resolution-provider",
+        "relative",
+        FileSystemLimits::unknown(),
+        PathConstraints::absolute(),
+    )
+    .expect_err("path validation must run before URI scheme validation");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+    assert_eq!(error.operation(), FsOperation::ParsePath);
+}
+
 /// Resolution construction enforces finite provider path-size limits.
 #[test]
 fn test_resolution_rejects_path_exceeding_limits() {
