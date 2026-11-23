@@ -53,7 +53,7 @@ cargo add qubit-fs-local@0.11 --features registry
 These commands describe the 0.8.3 source candidate but cannot yet resolve from
 crates.io because `qubit-fs ^0.4` is not published. The examples below require
 the sibling source workspace; check them from this repository with
-`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_documentation -- --nocapture`.
+`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture`.
 The currently published compatible line is registry 0.8.2, `qubit-fs` 0.3.3,
 and local provider 0.11.2. To install that older line instead, use:
 
