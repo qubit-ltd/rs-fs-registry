@@ -40,7 +40,7 @@ resolution = filesystem + decoded path + canonical URI
 
 ```bash
 cargo add qubit-fs@0.4 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
 
 不使用本地 provider 或链接期发现的同步示例只需默认 feature：

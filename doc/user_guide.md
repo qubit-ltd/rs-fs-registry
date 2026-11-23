@@ -48,7 +48,7 @@ application needs resource state.
 
 ```bash
 cargo add qubit-fs@0.4 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
 
 A synchronous example without a local provider or linked discovery uses only the default feature set:
