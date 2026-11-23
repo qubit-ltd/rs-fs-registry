@@ -37,7 +37,8 @@ fn test_resolution_rejects_path_outside_constraints() {
     assert_eq!(error.kind(), FsErrorKind::InvalidPath);
 }
 
-/// Path errors take precedence when a canonical URI also has no supported scheme.
+/// Path errors take precedence when a canonical URI also has no supported
+/// scheme.
 #[test]
 fn test_resolution_validates_path_before_canonical_uri_scheme() {
     let error = sync_resolution_with_path_properties(

@@ -12,17 +12,18 @@ use std::path::PathBuf;
 
 use crate::support::markdown_examples::CHECKED_DOCUMENTS;
 use crate::support::markdown_examples::DependencySource;
+use crate::support::markdown_examples::ExternalMetadataOptions;
 use crate::support::markdown_examples::GraphOptions;
 use crate::support::markdown_examples::check_documents_for_source;
-use crate::support::markdown_examples::prepare_documents_for_external;
-use crate::support::markdown_examples::validate_external_metadata;
-use crate::support::markdown_examples::documentation_manifest_for_source;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
+use crate::support::markdown_examples::documentation_manifest_for_source;
 use crate::support::markdown_examples::executable_artifacts;
 use crate::support::markdown_examples::manifest;
+use crate::support::markdown_examples::prepare_documents_for_external;
 use crate::support::markdown_examples::snippets;
+use crate::support::markdown_examples::validate_external_metadata;
 
 /// Returns Cargo's major/minor release line for a package version.
 fn release_line(version: &str) -> String {
@@ -64,59 +65,46 @@ fn installation_commands(_root: &Path, input: &toml::Value) -> (String, String, 
     (sync_command, local_command, async_command)
 }
 
-fn async_installation_commands(_root: &Path, input: &toml::Value) -> Vec<String> {
+fn async_appendix_requirements(input: &toml::Value) -> Vec<String> {
     let version = |name: &str| {
         dependency(&input["dependencies"][name])["version"]
             .as_str()
             .expect("dependency version must be a string")
-            .trim_start_matches('^')
             .to_owned()
     };
     let futures_version = input["package"]["metadata"]["documentation"]["dependencies"]["futures"]["version"]
         .as_str()
         .expect("futures documentation version must be a string")
-        .trim_start_matches('^');
+        .to_owned();
     vec![
+        format!("`qubit-fs {}`", version("qubit-fs")),
+        format!("`qubit-spi {}`", version("qubit-spi")),
         format!(
-            "cargo add qubit-fs@{} qubit-spi@{}",
-            version("qubit-fs"),
-            version("qubit-spi")
+            "`qubit-fs-registry {}`",
+            input["package"]["version"].as_str().expect("package version")
         ),
-        format!(
-            "cargo add qubit-fs-registry@{} --features async",
-            release_line(input["package"]["version"].as_str().expect("package version"))
-        ),
-        format!("cargo add futures@{futures_version}"),
+        "`async`".to_owned(),
+        format!("`futures {futures_version}`"),
     ]
 }
 
-fn first_bash_installation_commands(source: &str) -> Result<Vec<String>, String> {
-    let mut lines = source.lines();
-    if !lines.any(|line| line.trim() == "```bash") {
-        return Err("missing bash installation fence".into());
-    }
-    let mut commands = Vec::new();
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.starts_with("```") {
-            if trimmed != "```" {
-                return Err("malformed bash installation fence".into());
-            }
-            return Ok(commands);
-        }
-        if trimmed.starts_with("cargo add ") {
-            commands.push(trimmed.to_owned());
+fn validate_async_appendix_contract(source: &str, expected: &[String], document: &str) -> Result<(), String> {
+    for requirement in expected {
+        if !source.contains(requirement) {
+            return Err(format!("{document}: missing candidate requirement {requirement}"));
         }
     }
-    Err("unterminated bash installation fence".into())
-}
-
-fn validate_async_installation(source: &str, expected: &[String], document: &str) -> Result<(), String> {
-    let actual = first_bash_installation_commands(source).map_err(|error| format!("{document}: {error}"))?;
-    if actual != expected {
-        return Err(format!(
-            "{document}: installation commands do not match manifest; expected {expected:?}, found {actual:?}"
-        ));
+    let command = "cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture";
+    if !source.contains(command) {
+        return Err(format!("{document}: missing source-workspace validation command"));
+    }
+    let source_only = if document.ends_with(".zh_CN.md") {
+        "源码工作区运行"
+    } else {
+        "source-workspace-only"
+    };
+    if !source.contains(source_only) {
+        return Err(format!("{document}: must state that this candidate is source-workspace-only"));
     }
     Ok(())
 }
@@ -125,64 +113,29 @@ fn validate_async_installation(source: &str, expected: &[String], document: &str
 fn test_async_example_installation_dependencies() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = manifest(root);
-    let expected = async_installation_commands(root, &input);
+    let expected = async_appendix_requirements(&input);
     for relative in [
         "doc/async_resolution_example.md",
         "doc/async_resolution_example.zh_CN.md",
     ] {
         let source = std::fs::read_to_string(root.join(relative)).expect("appendix must be readable");
-        validate_async_installation(&source, &expected, relative).unwrap();
+        validate_async_appendix_contract(&source, &expected, relative).unwrap();
     }
 
-    for source in ["no bash fence", "```bash\ncargo add x\n", "```bash extra\n```"] {
-        assert!(
-            first_bash_installation_commands(source).is_err(),
-            "must reject {source:?}"
-        );
-    }
-    let mut changed = input.clone();
-    changed["package"]["version"] = toml::Value::String("0.99.1".into());
-    changed["dependencies"]["qubit-fs"]["version"] = toml::Value::String("^0.98".into());
-    changed["dependencies"]["qubit-spi"] = toml::Value::String("^0.99".into());
-    changed["package"]["metadata"]["documentation"]["dependencies"]["futures"]["version"] =
-        toml::Value::String("^0.45".into());
-    assert_eq!(
-        async_installation_commands(root, &changed),
-        [
-            "cargo add qubit-fs@0.98 qubit-spi@0.99",
-            "cargo add qubit-fs-registry@0.99 --features async",
-            "cargo add futures@0.45",
-        ]
-    );
-    for commands in [
-        vec![
-            "cargo add qubit-spi@0.14".to_owned(),
-            expected[1].clone(),
-            expected[2].clone(),
-        ],
-        vec![
-            expected[0].clone(),
-            "cargo add qubit-fs-registry@0.8".into(),
-            expected[2].clone(),
-        ],
-        vec![
-            expected[0].replace("qubit-fs@0.4", "qubit-fs@0.2"),
-            expected[1].clone(),
-            expected[2].clone(),
-        ],
+    let source = std::fs::read_to_string(root.join("doc/async_resolution_example.md")).expect("appendix");
+    for stale in [
+        "`qubit-fs ^0.4`",
+        "`qubit-fs-registry 0.8.3`",
+        "`async`",
+        "test_shipped_markdown_rust_examples_run",
+        "source-workspace-only",
     ] {
-        let source = format!("```bash\n{}\n```", commands.join("\n"));
+        let changed = source.replace(stale, "removed contract");
         assert!(
-            validate_async_installation(&source, &expected, "synthetic.md").is_err(),
-            "incomplete or stale installation block must not satisfy the manifest contract"
+            validate_async_appendix_contract(&changed, &expected, "synthetic.md").is_err(),
+            "appendix must reject a missing version, feature, source note, or command: {stale}"
         );
     }
-    let error = validate_async_installation("```bash\ncargo add x\n```", &expected, "fixture.md")
-        .expect_err("dependency omissions must be rejected");
-    assert!(
-        error.contains("fixture.md"),
-        "diagnostic should identify the document: {error}"
-    );
 }
 
 /// Future release lines change documented installation commands automatically.
@@ -368,7 +321,10 @@ fn test_candidate_and_published_manifests_do_not_probe_sibling_sources() {
     );
     assert!(published["dependencies"]["qubit-fs"].get("path").is_none());
     assert!(published["dependencies"]["qubit-fs-registry"].get("path").is_none());
-    assert_eq!(published["dependencies"]["qubit-fs-registry"]["version"].as_str(), Some("=0.8.2"));
+    assert_eq!(
+        published["dependencies"]["qubit-fs-registry"]["version"].as_str(),
+        Some("=0.8.2")
+    );
     assert!(published["dependencies"]["qubit-fs-local"].get("path").is_none());
 }
 
@@ -544,77 +500,125 @@ fn test_graph_checks_registry_features() {
     );
     let mut missing_registry_edge = local.clone();
     missing_registry_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!("wrong-registry-id");
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &missing_registry_edge,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, ..GraphOptions::default() }
-    )).is_err());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &missing_registry_edge,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     let mut missing_local_registry_feature = local.clone();
     missing_local_registry_feature["resolve"]["nodes"][1]["features"] = serde_json::json!([]);
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &missing_local_registry_feature,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, ..GraphOptions::default() }
-    )).is_err());
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &local,
-        "qubit-fs-registry",
-        root,
-        GraphOptions::default()
-    )).is_err());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &missing_local_registry_feature,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| check_graph(&local, "qubit-fs-registry", root, GraphOptions::default())).is_err()
+    );
     let mut duplicate_local_files = local.clone();
-    duplicate_local_files["packages"].as_array_mut().unwrap().push(local["packages"][2].clone());
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &duplicate_local_files,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, ..GraphOptions::default() }
-    )).is_err());
+    duplicate_local_files["packages"]
+        .as_array_mut()
+        .unwrap()
+        .push(local["packages"][2].clone());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &duplicate_local_files,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     let missing_local_files = serde_json::json!({
         "packages": local["packages"].as_array().unwrap()[..2].to_vec(),
         "resolve": {"nodes": local["resolve"]["nodes"].as_array().unwrap()[..2].to_vec()}
     });
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &missing_local_files,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, ..GraphOptions::default() }
-    )).is_err());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &missing_local_files,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     let mut alternate_local_files = local.clone();
     alternate_local_files["packages"][2]["source"] = serde_json::json!("registry+https://example.invalid/index");
-    alternate_local_files["packages"][2]["id"] = serde_json::json!("qubit-local-files 0.6.0 (registry+https://example.invalid/index)");
+    alternate_local_files["packages"][2]["id"] =
+        serde_json::json!("qubit-local-files 0.6.0 (registry+https://example.invalid/index)");
     alternate_local_files["resolve"]["nodes"][2]["id"] = alternate_local_files["packages"][2]["id"].clone();
-    alternate_local_files["resolve"]["nodes"][1]["dependencies"][1] = alternate_local_files["packages"][2]["id"].clone();
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &alternate_local_files,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, ..GraphOptions::default() }
-    )).is_err());
+    alternate_local_files["resolve"]["nodes"][1]["dependencies"][1] =
+        alternate_local_files["packages"][2]["id"].clone();
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &alternate_local_files,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     let sibling = tempfile::tempdir().expect("local-files sibling");
-    std::fs::write(sibling.path().join("Cargo.toml"), "[package]\nname='qubit-local-files'\nversion='0.6.0'\n").unwrap();
+    std::fs::write(
+        sibling.path().join("Cargo.toml"),
+        "[package]\nname='qubit-local-files'\nversion='0.6.0'\n",
+    )
+    .unwrap();
     let mut source_local_files = local.clone();
     let sibling_id = "qubit-local-files 0.6.0 (path+file:///local-files)";
     source_local_files["packages"][2]["source"] = serde_json::Value::Null;
     source_local_files["packages"][2]["id"] = serde_json::json!(sibling_id);
-    source_local_files["packages"][2]["manifest_path"] = serde_json::json!(sibling.path().join("Cargo.toml").to_str().unwrap());
+    source_local_files["packages"][2]["manifest_path"] =
+        serde_json::json!(sibling.path().join("Cargo.toml").to_str().unwrap());
     source_local_files["resolve"]["nodes"][2]["id"] = serde_json::json!(sibling_id);
     source_local_files["resolve"]["nodes"][1]["dependencies"][1] = serde_json::json!(sibling_id);
     check_graph(
         &source_local_files,
         "qubit-fs-registry",
         root,
-        GraphOptions { local: true, qubit_local_files_override: Some(sibling.path()), ..GraphOptions::default() },
+        GraphOptions {
+            local: true,
+            qubit_local_files_override: Some(sibling.path()),
+            ..GraphOptions::default()
+        },
     );
     source_local_files["packages"][2]["manifest_path"] = serde_json::json!("/wrong/Cargo.toml");
-    assert!(std::panic::catch_unwind(|| check_graph(
-        &source_local_files,
-        "qubit-fs-registry",
-        root,
-        GraphOptions { local: true, qubit_local_files_override: Some(sibling.path()), ..GraphOptions::default() }
-    )).is_err());
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &source_local_files,
+            "qubit-fs-registry",
+            root,
+            GraphOptions {
+                local: true,
+                qubit_local_files_override: Some(sibling.path()),
+                ..GraphOptions::default()
+            }
+        ))
+        .is_err()
+    );
     let duplicate = serde_json::json!({
         "packages": [
             {"name":"qubit-fs-registry", "id":registry_id, "manifest_path":root.join("Cargo.toml").to_str().unwrap(), "source":null},
@@ -745,42 +749,61 @@ fn test_registry_docs_helper_step() {
         "validate" => {
             let project = PathBuf::from(std::env::var_os("REGISTRY_DOCS_PROJECT").expect("project path"));
             let metadata_path = PathBuf::from(std::env::var_os("REGISTRY_DOCS_HELPER_INPUT").expect("metadata path"));
-            let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(metadata_path).expect("metadata file"))
-                .expect("Cargo metadata JSON");
+            let metadata: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(metadata_path).expect("metadata file"))
+                    .expect("Cargo metadata JSON");
             let source = DependencySource::parse(&std::env::var("REGISTRY_DOCS_SOURCE").expect("source mode"))
                 .unwrap_or_else(|error| panic!("{error}"));
-            let package = manifest(root)["package"]["name"].as_str().expect("package name").to_owned();
+            let package = manifest(root)["package"]["name"]
+                .as_str()
+                .expect("package name")
+                .to_owned();
             let parse_feature = |name: &str| std::env::var(name).expect("feature value") == "1";
             validate_external_metadata(
                 &metadata,
                 &package,
                 root,
-                source,
-                parse_feature("REGISTRY_DOCS_ASYNC"),
-                parse_feature("REGISTRY_DOCS_LOCAL"),
-                parse_feature("REGISTRY_DOCS_INVENTORY"),
-                &project.join("Cargo.toml"),
+                ExternalMetadataOptions {
+                    source,
+                    asynchronous: parse_feature("REGISTRY_DOCS_ASYNC"),
+                    local: parse_feature("REGISTRY_DOCS_LOCAL"),
+                    inventory: parse_feature("REGISTRY_DOCS_INVENTORY"),
+                    example_manifest: &project.join("Cargo.toml"),
+                },
             )
         }
         "artifacts" => {
             let input_path = PathBuf::from(std::env::var_os("REGISTRY_DOCS_HELPER_INPUT").expect("build output path"));
             let build_output = std::fs::read(input_path).expect("Cargo build message output");
             let artifacts = executable_artifacts(&build_output).unwrap_or_else(|error| panic!("{error}"));
-            serde_json::to_value(artifacts.into_iter().map(|(name, path)| (name, path)).collect::<std::collections::BTreeMap<_, _>>())
+            serde_json::to_value(artifacts.into_iter().collect::<std::collections::BTreeMap<_, _>>())
                 .expect("artifact JSON")
         }
         _ => panic!("unknown publication helper action: {action}"),
     };
-    std::fs::write(output_path, serde_json::to_vec_pretty(&result).expect("serialize helper output"))
-        .expect("write helper output");
+    std::fs::write(
+        output_path,
+        serde_json::to_vec_pretty(&result).expect("serialize helper output"),
+    )
+    .expect("write helper output");
 }
 
 #[test]
 fn test_documentation_dependency_source_parser_rejects_unknown_input() {
     assert_eq!(DependencySource::parse("source"), Ok(DependencySource::SiblingSource));
-    assert_eq!(DependencySource::parse("candidate"), Ok(DependencySource::CandidateArchive));
-    assert_eq!(DependencySource::parse("published"), Ok(DependencySource::PublishedConsumer));
-    assert!(DependencySource::parse("siblings").unwrap_err().contains("unknown documentation dependency source"));
+    assert_eq!(
+        DependencySource::parse("candidate"),
+        Ok(DependencySource::CandidateArchive)
+    );
+    assert_eq!(
+        DependencySource::parse("published"),
+        Ok(DependencySource::PublishedConsumer)
+    );
+    assert!(
+        DependencySource::parse("siblings")
+            .unwrap_err()
+            .contains("unknown documentation dependency source")
+    );
 }
 
 /// Both language appendices stay in the verifier and retain async execution.

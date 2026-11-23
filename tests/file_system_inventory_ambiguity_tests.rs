@@ -32,10 +32,7 @@ impl ProviderMetadata for AmbiguousSyncProvider {
 }
 
 impl ServiceProvider<FileSystemSpec> for AmbiguousSyncProvider {
-    fn create_configured(
-        &self,
-        _config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(&self, _config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         unreachable!("inventory source ambiguity fails before provider creation")
     }
 }
@@ -62,7 +59,8 @@ macro_rules! submit_same_source_sync_providers {
 
 submit_same_source_sync_providers!();
 
-/// The sync registry API reports ambiguous inventory sources before factories run.
+/// The sync registry API reports ambiguous inventory sources before factories
+/// run.
 #[test]
 fn test_sync_inventory_ambiguity_precedes_provider_factories() {
     SYNC_FACTORY_CALLS.store(0, Ordering::SeqCst);
@@ -72,10 +70,7 @@ fn test_sync_inventory_ambiguity_precedes_provider_factories() {
         panic!("expected inventory build error")
     };
     assert!(build_error.registration_error().is_none());
-    assert_eq!(
-        build_error.source_location().crate_name(),
-        "qubit-fs-registry"
-    );
+    assert_eq!(build_error.source_location().crate_name(), "qubit-fs-registry");
     assert!(build_error.source_location().line() > 0);
     assert_eq!(SYNC_FACTORY_CALLS.load(Ordering::SeqCst), 0);
 }
@@ -112,8 +107,7 @@ mod asynchronous {
         fn create_configured<'a>(
             &'a self,
             _config: &'a FileSystemConfig,
-        ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>>
-        {
+        ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
             unreachable!("inventory source ambiguity fails before provider creation")
         }
     }
@@ -144,17 +138,13 @@ mod asynchronous {
     #[test]
     fn test_async_inventory_ambiguity_precedes_provider_factories() {
         ASYNC_FACTORY_CALLS.store(0, Ordering::SeqCst);
-        let error =
-            AsyncFileSystemRegistry::from_inventory().expect_err("duplicate source must fail");
+        let error = AsyncFileSystemRegistry::from_inventory().expect_err("duplicate source must fail");
         assert_eq!(error.reason_code(), "inventory_source_ambiguity");
         let FileSystemRegistryError::InventoryBuild(build_error) = error else {
             panic!("expected inventory build error")
         };
         assert!(build_error.registration_error().is_none());
-        assert_eq!(
-            build_error.source_location().crate_name(),
-            "qubit-fs-registry"
-        );
+        assert_eq!(build_error.source_location().crate_name(), "qubit-fs-registry");
         assert!(build_error.source_location().line() > 0);
         assert_eq!(ASYNC_FACTORY_CALLS.load(Ordering::SeqCst), 0);
     }

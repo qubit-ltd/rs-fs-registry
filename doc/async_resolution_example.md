@@ -7,7 +7,7 @@ The candidate manifest needs `qubit-fs ^0.4`, `qubit-spi ^0.14`,
 SPI APIs are direct dependencies; transitive dependencies do not replace the
 caller's direct dependencies. No matching `qubit-fs ^0.4` release is currently
 published, so this example is source-workspace-only. Check it from the repository
-root with `cargo test --locked --all-features --test integration_tests readme_examples_tests::test_documentation -- --nocapture`.
+root with `cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture`.
 The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3
 and does not validate this candidate example. `futures` supplies the executor
 and is not a registry runtime dependency. This complete in-memory provider

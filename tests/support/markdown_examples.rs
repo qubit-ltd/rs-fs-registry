@@ -155,7 +155,8 @@ pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, lo
     )
 }
 
-/// Builds an example consumer manifest for an explicitly selected package source.
+/// Builds an example consumer manifest for an explicitly selected package
+/// source.
 pub fn documentation_manifest_for_source(
     root: &Path,
     input: &Value,
@@ -175,22 +176,22 @@ pub fn documentation_manifest_for_source(
                 _ => None,
             };
             let mut selected = path.map_or_else(|| dependency(value), |path| source_dependency(value, &path));
-            if name == "qubit-fs" && source == DependencySource::PublishedConsumer {
-                if let Ok(requirement) = std::env::var("REGISTRY_PUBLISHED_FS_REQUIREMENT") {
-                    selected.as_table_mut().expect("filesystem dependency table").insert(
-                        "version".into(),
-                        Value::String(requirement),
-                    );
-                }
+            if name == "qubit-fs"
+                && source == DependencySource::PublishedConsumer
+                && let Ok(requirement) = std::env::var("REGISTRY_PUBLISHED_FS_REQUIREMENT")
+            {
+                selected
+                    .as_table_mut()
+                    .expect("filesystem dependency table")
+                    .insert("version".into(), Value::String(requirement));
             }
             if name == "qubit-fs-registry" && source == DependencySource::PublishedConsumer {
-                let version = published_version.unwrap_or_else(|| {
-                    input["package"]["version"].as_str().expect("published package version")
-                });
-                selected.as_table_mut().expect("registry dependency table").insert(
-                    "version".into(),
-                    Value::String(format!("={version}")),
-                );
+                let version = published_version
+                    .unwrap_or_else(|| input["package"]["version"].as_str().expect("published package version"));
+                selected
+                    .as_table_mut()
+                    .expect("registry dependency table")
+                    .insert("version".into(), Value::String(format!("={version}")));
             }
             dependencies.insert(name.into(), selected);
         }
@@ -225,10 +226,7 @@ pub fn documentation_manifest_for_source(
     } else {
         input["package"]["version"].as_str().expect("package version")
     };
-    current.insert(
-        "version".into(),
-        Value::String(format!("={package_version}")),
-    );
+    current.insert("version".into(), Value::String(format!("={package_version}")));
     if source != DependencySource::PublishedConsumer {
         current.insert(
             "path".into(),
@@ -486,7 +484,9 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
         );
         let local_features = local_node["features"].as_array().expect("local provider features");
         assert!(
-            local_features.iter().any(|feature| feature.as_str() == Some("registry")),
+            local_features
+                .iter()
+                .any(|feature| feature.as_str() == Some("registry")),
             "local provider registry feature must be enabled"
         );
     }
@@ -508,7 +508,10 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
             );
             assert_eq!(
                 local_files_path,
-                expected_path.join("Cargo.toml").canonicalize().expect("local-files sibling manifest"),
+                expected_path
+                    .join("Cargo.toml")
+                    .canonicalize()
+                    .expect("local-files sibling manifest"),
                 "local-files must resolve to the declared sibling package"
             );
         } else {
@@ -610,14 +613,9 @@ pub fn prepare_documents_for_external(
                     let document_source = fs::read_to_string(root.join(document)).expect("read document");
                     let examples = snippets(&document_source).unwrap_or_else(|error| panic!("{document}: {error}"));
                     assert!(!examples.is_empty(), "{document} needs examples");
-                    for (index, snippet) in examples
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(_, snippet)| {
-                            (snippet.asynchronous, snippet.local, snippet.inventory)
-                                == (asynchronous, local, inventory)
-                        })
-                    {
+                    for (index, snippet) in examples.into_iter().enumerate().filter(|(_, snippet)| {
+                        (snippet.asynchronous, snippet.local, snippet.inventory) == (asynchronous, local, inventory)
+                    }) {
                         let name = format!("document_{document_index}_{index}");
                         fs::write(project.join("src/bin").join(format!("{name}.rs")), snippet.source)
                             .expect("write program");
@@ -632,10 +630,19 @@ pub fn prepare_documents_for_external(
                     continue;
                 }
                 let example_manifest = documentation_manifest_for_source(
-                    root, &input, asynchronous, local, inventory, source, published_version,
+                    root,
+                    &input,
+                    asynchronous,
+                    local,
+                    inventory,
+                    source,
+                    published_version,
                 );
-                fs::write(project.join("Cargo.toml"), to_string(&example_manifest).expect("serialize manifest"))
-                    .expect("write example manifest");
+                fs::write(
+                    project.join("Cargo.toml"),
+                    to_string(&example_manifest).expect("serialize manifest"),
+                )
+                .expect("write example manifest");
                 groups.push(json!({
                     "group": group,
                     "project": project,
@@ -648,17 +655,35 @@ pub fn prepare_documents_for_external(
     json!({"groups": groups})
 }
 
-/// Validates Cargo metadata and returns the graph evidence for one active group.
+/// Options used to validate Cargo metadata for an active documentation group.
+pub struct ExternalMetadataOptions<'a> {
+    /// Dependency source used to prepare the example.
+    pub source: DependencySource,
+    /// Whether the async feature is enabled.
+    pub asynchronous: bool,
+    /// Whether the local feature is enabled.
+    pub local: bool,
+    /// Whether the inventory feature is enabled.
+    pub inventory: bool,
+    /// Manifest used to build this example group.
+    pub example_manifest: &'a Path,
+}
+
+/// Validates Cargo metadata and returns the graph evidence for one active
+/// group.
 pub fn validate_external_metadata(
     metadata: &Json,
     package: &str,
     root: &Path,
-    source: DependencySource,
-    asynchronous: bool,
-    local: bool,
-    inventory: bool,
-    example_manifest: &Path,
+    options: ExternalMetadataOptions<'_>,
 ) -> Json {
+    let ExternalMetadataOptions {
+        source,
+        asynchronous,
+        local,
+        inventory,
+        example_manifest,
+    } = options;
     let sibling_source = source == DependencySource::SiblingSource;
     let qubit_fs_override = sibling_source.then(|| root.join("../rs-fs"));
     let qubit_fs_local_override = sibling_source.then(|| root.join("../rs-fs-local"));
@@ -687,7 +712,10 @@ pub fn validate_external_metadata(
         .iter()
         .map(|entry| {
             let id = entry["id"].as_str().expect("package ID");
-            let node = nodes.iter().find(|node| node["id"].as_str() == Some(id)).expect("resolved package node");
+            let node = nodes
+                .iter()
+                .find(|node| node["id"].as_str() == Some(id))
+                .expect("resolved package node");
             json!({
                 "id": id,
                 "name": entry["name"],
@@ -699,7 +727,9 @@ pub fn validate_external_metadata(
         })
         .collect::<Vec<_>>();
     packages.sort_by(|left, right| {
-        left["name"].as_str().cmp(&right["name"].as_str())
+        left["name"]
+            .as_str()
+            .cmp(&right["name"].as_str())
             .then_with(|| left["version"].as_str().cmp(&right["version"].as_str()))
             .then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
     });
@@ -780,7 +810,8 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
                 );
                 let fs_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-fs"));
                 let local_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-fs-local"));
-                let local_files_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-local-files"));
+                let local_files_source =
+                    (source == DependencySource::SiblingSource).then(|| root.join("../rs-local-files"));
                 let resolved_metadata: Json = from_slice(&metadata.stdout).expect("parse Cargo metadata");
                 check_graph(
                     &resolved_metadata,
@@ -827,7 +858,9 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
                     );
                     example_evidence.push(json!({"target": name, "status": "passed"}));
                 }
-                let nodes = resolved_metadata["resolve"]["nodes"].as_array().expect("resolved nodes");
+                let nodes = resolved_metadata["resolve"]["nodes"]
+                    .as_array()
+                    .expect("resolved nodes");
                 let mut packages = resolved_metadata["packages"]
                     .as_array()
                     .expect("metadata packages")
@@ -849,14 +882,18 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
                     })
                     .collect::<Vec<_>>();
                 packages.sort_by(|left, right| {
-                    left["name"].as_str().cmp(&right["name"].as_str())
+                    left["name"]
+                        .as_str()
+                        .cmp(&right["name"].as_str())
                         .then_with(|| left["version"].as_str().cmp(&right["version"].as_str()))
                         .then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
                 });
                 if local {
                     for required in ["qubit-fs-local", "qubit-local-files"] {
-                        assert!(packages.iter().any(|package| package["name"] == required),
-                            "local example resolution summary is missing {required}");
+                        assert!(
+                            packages.iter().any(|package| package["name"] == required),
+                            "local example resolution summary is missing {required}"
+                        );
                     }
                 }
                 group_evidence.push(json!({
@@ -881,7 +918,10 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
             "input_sha256": std::env::var("REGISTRY_INPUT_SHA256").unwrap_or_default(),
             "groups": group_evidence,
         });
-        fs::write(path, serde_json::to_vec_pretty(&evidence).expect("serialize documentation evidence"))
-            .expect("write documentation evidence");
+        fs::write(
+            path,
+            serde_json::to_vec_pretty(&evidence).expect("serialize documentation evidence"),
+        )
+        .expect("write documentation evidence");
     }
 }

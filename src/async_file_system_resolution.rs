@@ -79,11 +79,7 @@ impl AsyncFileSystemResolution {
     ///
     /// Returns an [`FsError`] when the path violates facade constraints or
     /// limits, or when the canonical URI scheme is unsupported.
-    pub fn try_new(
-        file_system: AsyncFileSystem,
-        path: Path,
-        canonical_uri: Uri,
-    ) -> Result<Self, FsError> {
+    pub fn try_new(file_system: AsyncFileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
         let p = file_system.properties();
         validate_resolution(p, &path, &canonical_uri)?;
         Ok(Self {

@@ -74,11 +74,7 @@ impl FileSystemResolution {
     ///
     /// Returns an [`FsError`] when the path violates facade constraints or
     /// limits, or when the canonical URI scheme is unsupported.
-    pub fn try_new(
-        file_system: FileSystem,
-        path: Path,
-        canonical_uri: Uri,
-    ) -> Result<Self, FsError> {
+    pub fn try_new(file_system: FileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
         let properties = file_system.properties();
         validate_resolution(properties, &path, &canonical_uri)?;
         Ok(Self {

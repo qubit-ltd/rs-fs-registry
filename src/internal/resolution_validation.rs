@@ -19,6 +19,12 @@ use qubit_fs::path::Uri;
 /// Path validation runs first so its error takes precedence when both the
 /// path and URI are invalid. A canonical URI must use a scheme advertised by
 /// the filesystem, and a filesystem with no advertised schemes is rejected.
+///
+/// # Parameters
+///
+/// - `properties`: The properties advertised by the filesystem.
+/// - `path`: The provider-decoded path to validate.
+/// - `canonical_uri`: The canonical URI returned by the provider.
 pub(crate) fn validate_resolution(
     properties: &FileSystemProperties,
     path: &Path,

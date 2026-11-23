@@ -114,7 +114,8 @@ qubit_spi::submit_async_provider! {
     provider = DuplicateAsyncProvider;
 }
 
-/// Async inventory construction reports selector conflicts through the registry API.
+/// Async inventory construction reports selector conflicts through the registry
+/// API.
 #[cfg(feature = "async")]
 #[test]
 fn test_async_inventory_conflict_preserves_source_and_reason() {
