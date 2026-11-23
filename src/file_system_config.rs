@@ -86,8 +86,14 @@ impl FileSystemConfig {
     ///
     /// # Returns
     ///
-    /// `Some` with the configured selection, or `None` when resolution should
-    /// derive a selection from the URI.
+    /// `Some` with the configured selection, or `None` when this configuration
+    /// carries no embedded selection. Resolution through
+    /// [`crate::FileSystemRegistry::resolve_config`] or its async counterpart,
+    /// `AsyncFileSystemRegistry::resolve_config`, derives selection from the
+    /// URI. [`crate::FileSystemRegistry::resolve_selected_config`] and
+    /// [`crate::FileSystemRegistry::resolve_default_config`] (and their async
+    /// counterparts) use the requested or current default selection and reject
+    /// a conflicting embedded selection.
     #[inline]
     pub const fn selection(&self) -> Option<&ProviderSelection> {
         self.selection.as_ref()

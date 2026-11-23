@@ -9,6 +9,7 @@
 
 mod provider_adapter;
 mod registry_support;
+mod resolution_validation;
 #[cfg(feature = "async")]
 mod validating_async_file_system_provider;
 mod validating_file_system_provider;
@@ -16,6 +17,7 @@ mod validating_file_system_provider;
 pub(super) use registry_support::ensure_selection_matches_config;
 pub(super) use registry_support::selection_for_config;
 pub(super) use registry_support::validate_credentials;
+pub(super) use resolution_validation::validate_resolution;
 #[cfg(feature = "async")]
 pub(super) use validating_async_file_system_provider::ValidatingAsyncFileSystemProvider;
 pub(super) use validating_file_system_provider::ValidatingFileSystemProvider;

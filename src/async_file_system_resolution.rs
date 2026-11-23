@@ -14,9 +14,9 @@ use std::fmt::Result as FmtResult;
 use qubit_fs::AsyncFileSystem;
 use qubit_fs::FsError;
 use qubit_fs::Path;
-use qubit_fs::error::FsErrorKind;
-use qubit_fs::error::FsOperation;
 use qubit_fs::path::Uri;
+
+use crate::internal::validate_resolution;
 
 /// A configured asynchronous facade paired with its decoded location.
 ///
@@ -81,15 +81,7 @@ impl AsyncFileSystemResolution {
     /// limits, or when the canonical URI scheme is unsupported.
     pub fn try_new(file_system: AsyncFileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
         let p = file_system.properties();
-        p.validate_path(&path, FsOperation::ParsePath)?;
-        if !p.info().schemes().iter().any(|s| s == canonical_uri.scheme()) {
-            return Err(FsError::new(
-                FsErrorKind::InvalidUri,
-                FsOperation::Provider,
-                "canonical URI scheme is not supported by the filesystem",
-            )
-            .with_provider(p.info().provider_id().to_owned()));
-        }
+        validate_resolution(p, &path, &canonical_uri)?;
         Ok(Self {
             file_system,
             path,

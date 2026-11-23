@@ -118,12 +118,22 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 
 ## 8. 当前版本与验证
 
-本文适用于 registry 0.8、fs 0.3、local provider 0.11、`qubit-spi` 0.14。用户名本身不是内嵌秘密，
-可以与外部引用共存。异步方法返回 future 前取得快照，首次轮询才开始创建；返回身份不符按
-InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，URI 的
-安全结构由 `Uri` 类型保证。
+本文描述 registry 0.8 的当前源码候选（0.8.3）：它要求 `qubit-fs ^0.4`、
+`qubit-fs-local` 0.11.2、`qubit-local-files` 0.6.0 和 `qubit-spi` 0.14。当前已发布且
+可工作的组合是 registry 0.8.2、`qubit-fs` 0.3.3 与 `qubit-fs-local` 0.11.2。
+用户名本身不是内嵌秘密，可以与外部引用共存。异步方法在返回 future 前取得快照，首次轮询才开始创建；
+返回身份不符按 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，
+URI 的安全结构由 `Uri` 类型保证。
 
-相关示例应统一依赖版本。协同开发期间，从项目根目录运行
-`python3 scripts/check_published_docs.py .`，需要 Python 3.12+ 与 Rust 1.94.0；该检查使用 crates.io 依赖验证打包归档和 Markdown 示例。registry 0.8 尚未发布时，首次发布存在依赖闭环：local provider 0.11 需要 registry `^0.8`，而 registry 检查需要 local provider 0.11 已发布。此时停止并记录缺失版本，再另行评审发布政策或依赖设计。前置版本可用后，针对拟发布的同一 ref 运行检查，成功后才能发布。CI 会在 pull request、推送到 `main` 和手动运行时执行同一检查。若失败，保留诊断、修复问题并重新运行。
+先用 `python3 -m pip install -r requirements.txt` 安装 Python 依赖（Python 3.12+）。
+`python3 scripts/check_published_docs.py .` 默认检查当前候选归档和它的 Markdown；
+`python3 scripts/check_published_docs.py . --mode published` 则检查 crates.io 最新已发布归档及其自带 Markdown。
+当前候选因 crates.io 尚无 `qubit-fs ^0.4` 而无法通过依赖解析。该版本发布后，还须核验候选依赖图与
+local provider 0.11.2 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
+
+历史首发背景：registry 0.8 尚未发布时，local provider 0.11 已依赖
+`qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查又要求 local provider 0.11 已发布，
+因此当时形成首发闭环。这是历史发布条件；当前候选的阻塞是缺少 `qubit-fs ^0.4` 发布版，
+且仍须核验候选 provider 依赖兼容性。该历史背景不改变当前发布要求。
 
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)
