@@ -2,13 +2,17 @@
 
 [Back to the user guide](user_guide.md) · [简体中文](async_resolution_example.zh_CN.md)
 
-```bash
-cargo add qubit-fs@0.4 qubit-spi@0.14
-cargo add qubit-fs-registry@0.8 --features async
-cargo add futures@0.3
-```
-
-The example uses filesystem and SPI APIs directly, so declare both dependencies explicitly; transitive dependencies do not replace the caller's direct dependencies. The filesystem, SPI, and registry release requirements follow this package's manifest; `futures` supplies the executor and is not a registry runtime dependency. This complete in-memory provider demonstrates async creation and resolution only; its SPI methods return unsupported errors because file IO is outside the example.
+The candidate manifest needs `qubit-fs ^0.4`, `qubit-spi ^0.14`,
+`qubit-fs-registry 0.8.3` with `async`, and `futures ^0.3`. The filesystem and
+SPI APIs are direct dependencies; transitive dependencies do not replace the
+caller's direct dependencies. No matching `qubit-fs ^0.4` release is currently
+published, so this example is source-workspace-only. Check it from the repository
+root with `cargo test --locked --all-features --test integration_tests readme_examples_tests::test_documentation -- --nocapture`.
+The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3
+and does not validate this candidate example. `futures` supplies the executor
+and is not a registry runtime dependency. This complete in-memory provider
+demonstrates async creation and resolution only; its SPI methods return
+unsupported errors because file IO is outside the example.
 
 <!-- registry-example: async -->
 ```rust

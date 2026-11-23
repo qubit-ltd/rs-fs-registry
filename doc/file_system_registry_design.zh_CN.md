@@ -1,6 +1,6 @@
 # Qubit FS Registry 设计
 
-> 状态：已批准并已实现，适用于 `qubit-fs-registry` 0.8、`qubit-fs` 0.3 与 `qubit-spi` 0.14。
+> 状态：该合约已在 registry 0.8.3 源码候选中实现（`qubit-fs ^0.4`、`qubit-spi ^0.14`）。目前已发布且可工作的版本线是 registry 0.8.2 与 `qubit-fs` 0.3.3；候选所需的 `qubit-fs ^0.4` 尚未发布。
 > 本文定义 `qubit-fs-registry` 在 filesystem 门面/SPI 重构后的长期边界。
 
 ## 1. 定位
@@ -202,7 +202,12 @@ future，因此可以兑现以下契约：
 发现的 provider 与显式注册一样通过 validating adapter，校验返回门面的
 provider ID。重复 ID 或别名使构建返回
 `FileSystemRegistryError::InventoryBuild`，保留提交来源及 SPI 注册错误，且不会
-暴露部分构建的注册表。构建时运行 provider 工厂；实际 service 创建仍发生在
+暴露部分构建的注册表。注册冲突的 reason code 为
+`inventory_registration_conflict`，提交来源歧义为
+`inventory_source_ambiguity`。多个发现条目声明自同一来源时属于歧义错误；错误会指出该来源，
+且不会运行任何工厂。注册冲突则表示提交的 provider 违反注册表修改规则，例如 provider ID
+或别名重复；错误保留提交来源与 mutation error。构建时运行
+provider 工厂，因此正常注册阶段的校验与副作用发生在注册表返回前；实际 service 创建仍发生在
 resolution 阶段，异步情况下发生于 future 被轮询时。
 
 ## 8. Selection 与 fallback
@@ -392,6 +397,10 @@ Operation SPI 的 `ProviderContractViolation` 不由 registry 改写为 registry
 `InventoryBuild` 保留出错 provider 的提交来源和注册冲突；转成 `FsError`
 时使用 `Conflict`，并保留原始错误作为 source。
 
+`reason_code()` 将 inventory 注册冲突（`inventory_registration_conflict`）与提交来源
+歧义（`inventory_source_ambiguity`）区分开。reason code 只标识失败类别；详细诊断仍由
+typed source 保留。
+
 ## 12. 与 `qubit-spi` 的边界
 
 `qubit-spi` 继续负责：
@@ -492,7 +501,7 @@ README、指南和异步解析附录中的 Rust 代码块是完整程序；六�
 附录中的完整异步程序以 `<!-- registry-example: async -->` 标记，并在最小异步依赖工程中运行。
 指南中的短示例使用 `rust,no_run`：会编译但不执行。未知标记和未闭合围栏必须报错，每个程序有独立工作目录。
 
-检查器始终使用 crates.io 依赖验证实际打包归档和随包发布的 Markdown 示例。它先将当前仓库输入复制到隔离的临时包目录，在副本中规范化 Cargo path 提示，然后打包、解包并检查。它确认解析到的依赖均来自 crates.io，在解包归档上运行默认及全部 feature 的 Rustdoc 测试，并执行 Markdown 示例 harness。每条 Cargo 命令都有独立日志；成功摘要包含源码输入摘要和实际解析的包版本。使用 Python 3.12+ 和固定 Rust 工具链运行 `python3 scripts/check_published_docs.py .`。缺失发布版本或出现 crates.io 以外的依赖来源时会失败，不会回退。手动 **Published Registry Consumption** workflow 会在拟发布 ref 上运行同一门禁；成功后再发布。
+先运行 `python3 -m pip install -r requirements.txt` 安装 Python 依赖。使用 Python 3.12+ 和固定 Rust 工具链时，`python3 scripts/check_published_docs.py .`（默认 `candidate` 模式）会打包当前工作区，并通过 crates.io 依赖检查该归档的 Rustdoc 与 Markdown 示例。`--mode published` 则下载最新已发布 registry 归档，检查归档自带的 Rustdoc 与 Markdown，不验证候选文档。当前候选要求 `qubit-fs ^0.4`，但 crates.io 尚无匹配版本，因此 candidate 模式目前会在依赖解析时失败。已发布的 0.8.2 使用 `qubit-fs` 0.3.3，属于不同的可用版本线。缺少版本或依赖来源不符合要求时都会失败，不会回退；拟发布 ref 的 candidate 检查通过后才能发布。
 
 契约回归通过信号控制创建期间的目录修改与异步 Pending，检查未轮询 future 不触发创建、
 注册 descriptor 保持快照、身份失败遵守 fallback，以及路径字节数与语义边界。CI 的覆盖率与
