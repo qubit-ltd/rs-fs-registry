@@ -14,9 +14,9 @@ use std::fmt::Result as FmtResult;
 use qubit_fs::FileSystem;
 use qubit_fs::FsError;
 use qubit_fs::Path;
-use qubit_fs::error::FsErrorKind;
-use qubit_fs::error::FsOperation;
 use qubit_fs::path::Uri;
+
+use crate::internal::validate_resolution;
 
 /// A configured synchronous facade paired with its decoded location.
 ///
@@ -74,22 +74,13 @@ impl FileSystemResolution {
     ///
     /// Returns an [`FsError`] when the path violates facade constraints or
     /// limits, or when the canonical URI scheme is unsupported.
-    pub fn try_new(file_system: FileSystem, path: Path, canonical_uri: Uri) -> Result<Self, FsError> {
+    pub fn try_new(
+        file_system: FileSystem,
+        path: Path,
+        canonical_uri: Uri,
+    ) -> Result<Self, FsError> {
         let properties = file_system.properties();
-        properties.validate_path(&path, FsOperation::ParsePath)?;
-        if !properties
-            .info()
-            .schemes()
-            .iter()
-            .any(|scheme| scheme == canonical_uri.scheme())
-        {
-            return Err(FsError::new(
-                FsErrorKind::InvalidUri,
-                FsOperation::Provider,
-                "canonical URI scheme is not supported by the filesystem",
-            )
-            .with_provider(properties.info().provider_id().to_owned()));
-        }
+        validate_resolution(properties, &path, &canonical_uri)?;
         Ok(Self {
             file_system,
             path,

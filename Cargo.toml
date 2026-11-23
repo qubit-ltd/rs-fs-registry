@@ -52,6 +52,11 @@ name = "inventory_conflict_tests"
 path = "tests/file_system_inventory_conflict_tests.rs"
 required-features = ["inventory"]
 
+[[test]]
+name = "inventory_ambiguity_tests"
+path = "tests/file_system_inventory_ambiguity_tests.rs"
+required-features = ["inventory"]
+
 [dependencies]
 qubit-fs = { version = "^0.4", path = "../rs-fs", default-features = false }
 qubit-redact = { version = "^0.10" }
