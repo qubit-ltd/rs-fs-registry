@@ -76,6 +76,41 @@ class PublishedDocsTests(unittest.TestCase):
         self.assertLess(summary.index("qubit-fs-registry@0.8.0"), summary.index("zeta@2.0.0"))
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
+    def test_documentation_evidence_requires_complete_digests_and_local_dependencies(self):
+        package = lambda name: {
+            "id": f"{name} 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "name": name,
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "features": [],
+        }
+        evidence = {
+            "schema_version": 1,
+            "source_mode": "candidate",
+            "verified": True,
+            "archive_sha256": "archive-digest",
+            "input_sha256": "input-digest",
+            "groups": [{
+                "features": {"local": True},
+                "packages": [package("qubit-fs-local"), package("qubit-local-files")],
+                "examples": [{"target": "example", "status": "passed"},
+                             {"target": "example-no-run", "status": "no_run"}],
+            }],
+        }
+        checker.validate_documentation_evidence(evidence, "candidate", "archive-digest", "input-digest")
+        incomplete = json.loads(json.dumps(evidence))
+        incomplete["verified"] = False
+        with self.assertRaisesRegex(ValueError, "successful"):
+            checker.validate_documentation_evidence(incomplete, "candidate", "archive-digest", "input-digest")
+        wrong_digest = json.loads(json.dumps(evidence))
+        wrong_digest["input_sha256"] = "different"
+        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+            checker.validate_documentation_evidence(wrong_digest, "candidate", "archive-digest", "input-digest")
+        missing_local = json.loads(json.dumps(evidence))
+        missing_local["groups"][0]["packages"].pop()
+        with self.assertRaisesRegex(ValueError, "omits"):
+            checker.validate_documentation_evidence(missing_local, "candidate", "archive-digest", "input-digest")
+
     def test_registry_check_never_probes_siblings_or_falls_back(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "source"
@@ -96,6 +131,46 @@ class PublishedDocsTests(unittest.TestCase):
             self.assertEqual(parsed["dependencies"]["qubit-fs"]["version"], "^0.3")
             self.assertNotIn("path", parsed["dependencies"]["qubit-fs"])
             self.assertEqual(original.splitlines()[0:3], manifest.read_text().splitlines()[0:3])
+
+    def test_registry_package_copy_structurally_drops_paths_in_all_dependency_scopes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "Cargo.toml"
+            original = '''[package]
+name = "fixture"
+version = "1.0.0"
+
+[dependencies]
+first = { path = "../first", version = "^1", default-features = false }
+middle = { version = "^2", path = "../middle", features = ["a"] }
+last = { version = "^3", features = ["b"], path = "../last" }
+
+[dev-dependencies]
+dev = { version = "^4", path = "../dev" }
+
+[build-dependencies]
+build = { path = "../build", version = "^5" }
+
+[target.'cfg(unix)'.dependencies]
+target = { version = "^6", path = "../target" }
+
+[package.metadata.documentation]
+path = "inert metadata, not a Cargo source"
+'''
+            manifest.write_text(original)
+            checker._normalize_registry_package_manifest(manifest)
+            parsed = __import__("tomllib").loads(manifest.read_text())
+            for dependencies in (
+                parsed["dependencies"], parsed["dev-dependencies"], parsed["build-dependencies"],
+                parsed["target"]["cfg(unix)"]["dependencies"],
+            ):
+                for dependency in dependencies.values():
+                    self.assertNotIn("path", dependency)
+                    self.assertIn("version", dependency)
+            self.assertFalse(manifest.with_name("Cargo.toml.registry").exists())
+            self.assertEqual(
+                parsed["package"]["metadata"]["documentation"]["path"],
+                "inert metadata, not a Cargo source",
+            )
 
 
 
@@ -395,6 +470,27 @@ class PublishedDocsTests(unittest.TestCase):
             self.assertTrue(workspace.is_dir())
             message = stderr.getvalue().split("Diagnostics preserved at ", 1)[1].strip()
             self.assertTrue(Path(message).samefile(workspace))
+
+    def test_main_published_mode_dispatches_to_published_consumer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "diagnostics"
+            workspace.mkdir()
+            with patch.object(checker.tempfile, "mkdtemp", return_value=str(workspace)), \
+                    patch.object(checker, "check_published") as published, \
+                    patch.object(checker, "check") as candidate, \
+                    patch("sys.argv", ["check_published_docs.py", directory, "--mode", "published"]), \
+                    redirect_stdout(StringIO()):
+                self.assertEqual(checker.main(), 0)
+            published.assert_called_once_with(Path(directory).resolve(), workspace.resolve())
+            candidate.assert_not_called()
+
+    def test_main_rejects_unknown_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("sys.argv", ["check_published_docs.py", directory, "--mode", "unknown"]), \
+                    redirect_stderr(StringIO()):
+                with self.assertRaises(SystemExit) as result:
+                    checker.main()
+            self.assertEqual(result.exception.code, 2)
 
     def test_ci_runs_published_documentation_gate_for_all_required_events(self):
         repository = Path(__file__).parents[2]

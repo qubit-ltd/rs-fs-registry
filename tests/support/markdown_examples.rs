@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use serde_json::Value as Json;
 use serde_json::from_slice;
+use serde_json::json;
 use tempfile::TempDir;
 use toml::Table;
 use toml::Value;
@@ -41,6 +42,29 @@ pub struct Snippet {
     pub local: bool,
     pub inventory: bool,
     pub run: bool,
+}
+
+/// Selects which package delivery state a documentation consumer checks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DependencySource {
+    /// The active checkout and its declared sibling source dependencies.
+    SiblingSource,
+    /// The extracted candidate package archive and registry dependencies.
+    CandidateArchive,
+    /// A published consumer resolved entirely from crates.io.
+    PublishedConsumer,
+}
+
+impl DependencySource {
+    /// Parses the stable source-mode names accepted by the verifier.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "source" => Ok(Self::SiblingSource),
+            "candidate" => Ok(Self::CandidateArchive),
+            "published" => Ok(Self::PublishedConsumer),
+            _ => Err(format!("unknown documentation dependency source: {value}")),
+        }
+    }
 }
 
 /// Extracts complete Rust programs, rejecting malformed or unknown directives.
@@ -120,19 +144,55 @@ pub fn manifest(root: &Path) -> Value {
 /// Builds a minimal example manifest with sibling source dependencies for the
 /// current filesystem, registry, and optional local provider.
 pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, local: bool, inventory: bool) -> Value {
+    documentation_manifest_for_source(
+        root,
+        input,
+        asynchronous,
+        local,
+        inventory,
+        DependencySource::SiblingSource,
+        None,
+    )
+}
+
+/// Builds an example consumer manifest for an explicitly selected package source.
+pub fn documentation_manifest_for_source(
+    root: &Path,
+    input: &Value,
+    asynchronous: bool,
+    local: bool,
+    inventory: bool,
+    source: DependencySource,
+    published_version: Option<&str>,
+) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
         if let Some(value) = input.get("dependencies").and_then(|deps| deps.get(name)) {
             let path = match name {
-                "qubit-fs" => Some(root.join("../rs-fs")),
-                "qubit-fs-registry" => Some(root.to_path_buf()),
+                "qubit-fs" if source == DependencySource::SiblingSource => Some(root.join("../rs-fs")),
+                "qubit-fs-registry" if source != DependencySource::PublishedConsumer => Some(root.to_path_buf()),
                 _ => None,
             };
-            dependencies.insert(
-                name.into(),
-                path.map_or_else(|| dependency(value), |path| source_dependency(value, &path)),
-            );
+            let mut selected = path.map_or_else(|| dependency(value), |path| source_dependency(value, &path));
+            if name == "qubit-fs" && source == DependencySource::PublishedConsumer {
+                if let Ok(requirement) = std::env::var("REGISTRY_PUBLISHED_FS_REQUIREMENT") {
+                    selected.as_table_mut().expect("filesystem dependency table").insert(
+                        "version".into(),
+                        Value::String(requirement),
+                    );
+                }
+            }
+            if name == "qubit-fs-registry" && source == DependencySource::PublishedConsumer {
+                let version = published_version.unwrap_or_else(|| {
+                    input["package"]["version"].as_str().expect("published package version")
+                });
+                selected.as_table_mut().expect("registry dependency table").insert(
+                    "version".into(),
+                    Value::String(format!("={version}")),
+                );
+            }
+            dependencies.insert(name.into(), selected);
         }
     }
     let extra = input["package"]
@@ -148,29 +208,38 @@ pub fn documentation_manifest(root: &Path, input: &Value, asynchronous: bool, lo
                 continue;
             }
             if name == "qubit-fs-local" {
-                dependencies.insert(name.clone(), source_dependency(value, &root.join("../rs-fs-local")));
+                let selected = if source == DependencySource::SiblingSource {
+                    source_dependency(value, &root.join("../rs-fs-local"))
+                } else {
+                    dependency(value)
+                };
+                dependencies.insert(name.clone(), selected);
             } else {
                 dependencies.insert(name.clone(), dependency(value));
             }
         }
     }
     let mut current = Table::new();
+    let package_version = if source == DependencySource::PublishedConsumer {
+        published_version.unwrap_or_else(|| input["package"]["version"].as_str().expect("package version"))
+    } else {
+        input["package"]["version"].as_str().expect("package version")
+    };
     current.insert(
         "version".into(),
-        Value::String(format!(
-            "={}",
-            input["package"]["version"].as_str().expect("package version")
-        )),
+        Value::String(format!("={package_version}")),
     );
-    current.insert(
-        "path".into(),
-        Value::String(
-            root.canonicalize()
-                .expect("tested source exists")
-                .to_string_lossy()
-                .into_owned(),
-        ),
-    );
+    if source != DependencySource::PublishedConsumer {
+        current.insert(
+            "path".into(),
+            Value::String(
+                root.canonicalize()
+                    .expect("tested source exists")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        );
+    }
     current.insert("default-features".into(), Value::Boolean(false));
     let mut features = Vec::new();
     if asynchronous {
@@ -466,11 +535,13 @@ pub fn executable_artifacts(output: &[u8]) -> Result<BTreeMap<String, PathBuf>, 
 
 /// Checks source-integrated programs in isolated directories with an explicit
 /// feature matrix.
-pub fn check_documents(root: &Path) {
+/// Checks documentation examples under the selected dependency-source contract.
+pub fn check_documents_for_source(root: &Path, source: DependencySource, published_version: Option<&str>) {
     let input = manifest(root);
     let package = input["package"]["name"].as_str().expect("package name");
     let workspace = TempDir::new().expect("isolated documentation workspace");
     let target = workspace.path().join("target");
+    let mut group_evidence = Vec::new();
     for asynchronous in [false, true] {
         for local in [false, true] {
             for inventory in [false, true] {
@@ -508,7 +579,15 @@ pub fn check_documents(root: &Path) {
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
-                let example_manifest = documentation_manifest(root, &input, asynchronous, local, inventory);
+                let example_manifest = documentation_manifest_for_source(
+                    root,
+                    &input,
+                    asynchronous,
+                    local,
+                    inventory,
+                    source,
+                    published_version,
+                );
                 fs::write(
                     project.join("Cargo.toml"),
                     to_string(&example_manifest).expect("serialize manifest"),
@@ -526,20 +605,24 @@ pub fn check_documents(root: &Path) {
                     &["metadata", "--locked", "--format-version", "1"],
                     &format!("Cargo metadata in group {label}"),
                 );
+                let fs_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-fs"));
+                let local_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-fs-local"));
+                let local_files_source = (source == DependencySource::SiblingSource).then(|| root.join("../rs-local-files"));
+                let resolved_metadata: Json = from_slice(&metadata.stdout).expect("parse Cargo metadata");
                 check_graph(
-                    &from_slice(&metadata.stdout).expect("parse Cargo metadata"),
+                    &resolved_metadata,
                     package,
                     root,
                     GraphOptions {
-                        published: false,
-                        registry: false,
+                        published: source == DependencySource::PublishedConsumer,
+                        registry: source != DependencySource::SiblingSource,
                         asynchronous,
                         local,
                         inventory,
-                        qubit_fs_override: Some(&root.join("../rs-fs")),
-                        qubit_fs_local_override: Some(&root.join("../rs-fs-local")),
-                        qubit_local_files_override: None,
-                        qubit_operation_override: Some(&root.join("../rs-operation")),
+                        qubit_fs_override: fs_source.as_deref(),
+                        qubit_fs_local_override: local_source.as_deref(),
+                        qubit_local_files_override: local_files_source.as_deref(),
+                        qubit_operation_override: None,
                         example_manifest: Some(&project.join("Cargo.toml")),
                     },
                 );
@@ -550,11 +633,13 @@ pub fn check_documents(root: &Path) {
                     &format!("Cargo build in group {label}"),
                 );
                 let executables = executable_artifacts(&build.stdout).expect("parse Cargo executable artifacts");
+                let mut example_evidence = Vec::new();
                 for (name, run, context) in programs {
                     let executable = executables
                         .get(&name)
                         .unwrap_or_else(|| panic!("Cargo did not report an executable for {name}"));
                     if !run {
+                        example_evidence.push(json!({"target": name, "status": "no_run"}));
                         continue;
                     }
                     let execution = TempDir::new().expect("isolated example working directory");
@@ -567,8 +652,63 @@ pub fn check_documents(root: &Path) {
                         "{name}: {}",
                         String::from_utf8_lossy(&output.stderr)
                     );
+                    example_evidence.push(json!({"target": name, "status": "passed"}));
                 }
+                let nodes = resolved_metadata["resolve"]["nodes"].as_array().expect("resolved nodes");
+                let mut packages = resolved_metadata["packages"]
+                    .as_array()
+                    .expect("metadata packages")
+                    .iter()
+                    .map(|entry| {
+                        let id = entry["id"].as_str().expect("package ID");
+                        let node = nodes
+                            .iter()
+                            .find(|node| node["id"].as_str() == Some(id))
+                            .expect("resolved package node");
+                        json!({
+                            "id": id,
+                            "name": entry["name"],
+                            "version": entry["version"],
+                            "source": entry["source"].as_str().map(str::to_owned)
+                                .unwrap_or_else(|| format!("path:{}", entry["manifest_path"].as_str().unwrap_or_default())),
+                            "features": node["features"],
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                packages.sort_by(|left, right| {
+                    left["name"].as_str().cmp(&right["name"].as_str())
+                        .then_with(|| left["version"].as_str().cmp(&right["version"].as_str()))
+                        .then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
+                });
+                if local {
+                    for required in ["qubit-fs-local", "qubit-local-files"] {
+                        assert!(packages.iter().any(|package| package["name"] == required),
+                            "local example resolution summary is missing {required}");
+                    }
+                }
+                group_evidence.push(json!({
+                    "group": group,
+                    "features": {"async": asynchronous, "local": local, "inventory": inventory},
+                    "packages": packages,
+                    "examples": example_evidence,
+                }));
             }
         }
+    }
+    if let Ok(path) = std::env::var("REGISTRY_DOCS_EVIDENCE") {
+        let evidence = json!({
+            "schema_version": 1,
+            "source_mode": match source {
+                DependencySource::SiblingSource => "source",
+                DependencySource::CandidateArchive => "candidate",
+                DependencySource::PublishedConsumer => "published",
+            },
+            "verified": true,
+            "archive_sha256": std::env::var("REGISTRY_ARCHIVE_SHA256").unwrap_or_default(),
+            "input_sha256": std::env::var("REGISTRY_INPUT_SHA256").unwrap_or_default(),
+            "groups": group_evidence,
+        });
+        fs::write(path, serde_json::to_vec_pretty(&evidence).expect("serialize documentation evidence"))
+            .expect("write documentation evidence");
     }
 }

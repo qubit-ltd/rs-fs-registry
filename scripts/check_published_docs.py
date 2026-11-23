@@ -19,6 +19,8 @@ import tarfile
 import tempfile
 import time
 import tomllib
+import tomlkit
+from urllib.request import Request, urlopen
 from types import SimpleNamespace
 from ctypes import wintypes
 
@@ -72,7 +74,7 @@ def validate_manifest(manifest: dict) -> None:
 def _normalize_registry_package_manifest(path: Path) -> None:
     """Remove Cargo-only path hints from the isolated package copy, retaining version requirements."""
     source = path.read_text()
-    manifest = tomllib.loads(source)
+    manifest = tomlkit.parse(source)
     scopes = [manifest, *manifest.get("target", {}).values()]
     for scope in scopes:
         for section in ("dependencies", "dev-dependencies", "build-dependencies"):
@@ -82,10 +84,9 @@ def _normalize_registry_package_manifest(path: Path) -> None:
                         raise ValueError(f"registry package dependency {name} needs an explicit version")
                     # Cargo removes path hints from published manifests; keep the
                     # isolated consumer check registry-only.
-                    pattern = re.compile(r"(\{[^{}]*?)\bpath\s*=\s*\"[^\"]*\"\s*,?")
-                    source = pattern.sub(lambda match: match.group(1), source)
+                    dependency.pop("path")
     rewritten = path.with_name("Cargo.toml.registry")
-    rewritten.write_text(source)
+    rewritten.write_text(tomlkit.dumps(manifest))
     try:
         rewritten.replace(path)
         validate_manifest(tomllib.loads(path.read_text()))
@@ -130,6 +131,38 @@ def resolution_summary(metadata: dict, archive: Path, input_digest: str) -> str:
     packages.sort()
     resolved = "; ".join(f"{name}@{version} source={source}" for name, version, source in packages)
     return f"archive={archive.resolve()} input_sha256={input_digest}; resolved=[{resolved}]"
+
+
+def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: str, input_digest: str) -> None:
+    """Require complete success evidence for every generated documentation group."""
+    if evidence.get("schema_version") != 1 or evidence.get("verified") is not True:
+        raise ValueError("documentation evidence is missing a successful schema-version-1 result")
+    if evidence.get("source_mode") != mode:
+        raise ValueError(f"documentation evidence mode mismatch: expected {mode}")
+    if evidence.get("archive_sha256") != archive_digest or evidence.get("input_sha256") != input_digest:
+        raise ValueError("documentation evidence digest mismatch")
+    groups = evidence.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise ValueError("documentation evidence has no verified feature groups")
+    for group in groups:
+        packages = group.get("packages") if isinstance(group, dict) else None
+        if not isinstance(packages, list) or not all(
+            isinstance(package, dict)
+            and all(isinstance(package.get(field), str) for field in ("id", "name", "version", "source"))
+            and isinstance(package.get("features"), list)
+            for package in packages
+        ):
+            raise ValueError("documentation evidence contains an incomplete package identity")
+        if group.get("features", {}).get("local"):
+            names = {package["name"] for package in packages}
+            if not {"qubit-fs-local", "qubit-local-files"}.issubset(names):
+                raise ValueError("local example evidence omits its provider or local-files dependency")
+        examples = group.get("examples")
+        if not isinstance(examples, list) or any(
+            not isinstance(example, dict) or example.get("status") not in {"passed", "no_run"}
+            for example in examples
+        ):
+            raise ValueError("documentation evidence contains a failed or missing example status")
 
 
 def _windows_job_functions():
@@ -583,7 +616,38 @@ def _copy_git_inputs(root: Path, destination: Path, expected_digest: str) -> Non
 
 
 def check(root: Path, workspace: Path) -> None:
-    """Validate a package archive using only crates.io dependencies."""
+    """Validate the current candidate archive using registry dependencies."""
+    _check(root, workspace, "candidate")
+
+
+def check_published(root: Path, workspace: Path) -> None:
+    """Validate documentation examples against the latest resolvable published release."""
+    version, filesystem_requirement = _published_registry_contract()
+    _check(root, workspace, "published", version, filesystem_requirement)
+
+
+def _published_registry_contract() -> tuple[str, str]:
+    """Read the current published package and its filesystem requirement from crates.io."""
+    headers = {"User-Agent": "qubit-fs-registry-documentation-check/1"}
+    with urlopen(Request("https://crates.io/api/v1/crates/qubit-fs-registry", headers=headers), timeout=30) as response:
+        package = json.load(response)["crate"]
+    version = package["max_version"]
+    url = f"https://crates.io/api/v1/crates/qubit-fs-registry/{version}/dependencies"
+    with urlopen(Request(url, headers=headers), timeout=30) as response:
+        dependencies = json.load(response)["dependencies"]
+    filesystem = next(
+        (dependency["req"] for dependency in dependencies
+         if dependency["crate_id"] == "qubit-fs" and dependency["kind"] == "normal"),
+        None,
+    )
+    if filesystem is None:
+        raise ValueError(f"published qubit-fs-registry {version} has no qubit-fs dependency")
+    return version, filesystem
+
+
+def _check(root: Path, workspace: Path, mode: str, published_version: str | None = None,
+           filesystem_requirement: str | None = None) -> None:
+    """Validate the selected consumer mode using an isolated Cargo workspace."""
     try:
         toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
@@ -591,23 +655,48 @@ def check(root: Path, workspace: Path) -> None:
     if not isinstance(toolchain, str) or not _EXACT_VERSION.fullmatch(toolchain):
         raise ValueError(f"toolchain channel must be an exact three-part version, found {toolchain!r}")
     inputs = _collect_git_inputs(root)
-    snapshot = workspace / "package-input" / "rs-fs-registry"
-    _copy_git_inputs(root, snapshot, _input_digest(inputs))
-    (snapshot / "Cargo.lock").unlink(missing_ok=True)
-    manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
-    package, version = manifest["package"]["name"], manifest["package"]["version"]
-    _normalize_registry_package_manifest(snapshot / "Cargo.toml")
+    source_digest = _input_digest(inputs)
     environment = isolated_environment(workspace, toolchain)
+    environment["REGISTRY_DOCS_SOURCE"] = mode
+    if published_version is not None:
+        environment["REGISTRY_PUBLISHED_VERSION"] = published_version
+    if filesystem_requirement is not None:
+        environment["REGISTRY_PUBLISHED_FS_REQUIREMENT"] = filesystem_requirement
     cargo = shutil.which("cargo")
     if cargo is None:
         raise RuntimeError("cargo is required")
-    command_cwd = workspace / "cargo-command"
-    command_cwd.mkdir()
-    run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
-        command_cwd, environment, workspace / "package.log", timeout_seconds=900, context="Cargo package (registry)")
-    archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
+    if mode == "published":
+        if published_version is None:
+            raise ValueError("published mode needs a resolved published package version")
+        package = "qubit-fs-registry"
+        version = published_version
+        archive = workspace / "published.crate"
+        archive_url = f"https://static.crates.io/crates/{package}/{package}-{version}.crate"
+        with urlopen(Request(archive_url, headers={"User-Agent": "qubit-fs-registry-documentation-check/1"}),
+                     timeout=60) as response:
+            archive.write_bytes(response.read())
+        input_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    else:
+        snapshot = workspace / "package-input" / "rs-fs-registry"
+        _copy_git_inputs(root, snapshot, source_digest)
+        (snapshot / "Cargo.lock").unlink(missing_ok=True)
+        manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
+        package, version = manifest["package"]["name"], manifest["package"]["version"]
+        _normalize_registry_package_manifest(snapshot / "Cargo.toml")
+        command_cwd = workspace / "cargo-command"
+        command_cwd.mkdir()
+        run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
+            command_cwd, environment, workspace / "package.log", timeout_seconds=900,
+            context="Cargo package (candidate)")
+        archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
+        input_digest = source_digest
+    archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    environment["REGISTRY_ARCHIVE_SHA256"] = archive_digest
+    environment["REGISTRY_INPUT_SHA256"] = input_digest
+    evidence_path = workspace / "documentation-evidence.json"
+    environment["REGISTRY_DOCS_EVIDENCE"] = str(evidence_path)
     with tarfile.open(archive) as source:
         for member in source.getmembers():
             destination = (unpacked.resolve() / member.name).resolve()
@@ -626,18 +715,27 @@ def check(root: Path, workspace: Path) -> None:
         timeout_seconds=900, context="Cargo registry all-feature doctests")
     run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
         extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
+    if not evidence_path.is_file():
+        raise ValueError("documentation tests succeeded without writing their success evidence")
+    evidence = json.loads(evidence_path.read_text())
+    validate_documentation_evidence(evidence, mode, archive_digest, input_digest)
     print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; "
-          f"{resolution_summary(resolved_metadata, archive, _input_digest(inputs))}")
+          f"{resolution_summary(resolved_metadata, archive, input_digest)}; "
+          f"documentation_evidence_json={json.dumps(evidence, sort_keys=True, separators=(',', ':'))}")
 
 
 def main() -> int:
     """Retain a uniquely owned diagnostic workspace until a check succeeds."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--mode", choices=("candidate", "published"), default="candidate")
     args = parser.parse_args()
     workspace = Path(tempfile.mkdtemp(prefix="qubit-registry-published-")).resolve()
     try:
-        check(args.root.resolve(), workspace)
+        if args.mode == "published":
+            check_published(args.root.resolve(), workspace)
+        else:
+            check(args.root.resolve(), workspace)
     except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, tarfile.TarError) as error:
         print(f"{error}\nDiagnostics preserved at {workspace}", file=sys.stderr)
         return 1

@@ -11,8 +11,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::support::markdown_examples::CHECKED_DOCUMENTS;
+use crate::support::markdown_examples::DependencySource;
 use crate::support::markdown_examples::GraphOptions;
-use crate::support::markdown_examples::check_documents;
+use crate::support::markdown_examples::check_documents_for_source;
+use crate::support::markdown_examples::documentation_manifest_for_source;
 use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
@@ -337,6 +339,37 @@ fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
     }
 }
 
+#[test]
+fn test_candidate_and_published_manifests_do_not_probe_sibling_sources() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let candidate = documentation_manifest_for_source(
+        root,
+        &input,
+        false,
+        false,
+        false,
+        DependencySource::CandidateArchive,
+        None,
+    );
+    assert!(candidate["dependencies"]["qubit-fs"].get("path").is_none());
+    assert!(candidate["dependencies"]["qubit-fs-registry"].get("path").is_some());
+
+    let published = documentation_manifest_for_source(
+        root,
+        &input,
+        false,
+        true,
+        false,
+        DependencySource::PublishedConsumer,
+        Some("0.8.2"),
+    );
+    assert!(published["dependencies"]["qubit-fs"].get("path").is_none());
+    assert!(published["dependencies"]["qubit-fs-registry"].get("path").is_none());
+    assert_eq!(published["dependencies"]["qubit-fs-registry"]["version"].as_str(), Some("=0.8.2"));
+    assert!(published["dependencies"]["qubit-fs-local"].get("path").is_none());
+}
+
 /// Example directives compose and each dependency group declares only its
 /// needs.
 #[test]
@@ -604,7 +637,21 @@ fn test_cargo_executable_artifacts_validate_messages() {
 /// Each example is compiled and run with its documented minimum features.
 #[test]
 fn test_shipped_markdown_rust_examples_run() {
-    check_documents(Path::new(env!("CARGO_MANIFEST_DIR")));
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = std::env::var("REGISTRY_DOCS_SOURCE")
+        .ok()
+        .map(|value| DependencySource::parse(&value).unwrap_or_else(|error| panic!("{error}")))
+        .unwrap_or(DependencySource::SiblingSource);
+    let version = std::env::var("REGISTRY_PUBLISHED_VERSION").ok();
+    check_documents_for_source(root, source, version.as_deref());
+}
+
+#[test]
+fn test_documentation_dependency_source_parser_rejects_unknown_input() {
+    assert_eq!(DependencySource::parse("source"), Ok(DependencySource::SiblingSource));
+    assert_eq!(DependencySource::parse("candidate"), Ok(DependencySource::CandidateArchive));
+    assert_eq!(DependencySource::parse("published"), Ok(DependencySource::PublishedConsumer));
+    assert!(DependencySource::parse("siblings").unwrap_err().contains("unknown documentation dependency source"));
 }
 
 /// Both language appendices stay in the verifier and retain async execution.
