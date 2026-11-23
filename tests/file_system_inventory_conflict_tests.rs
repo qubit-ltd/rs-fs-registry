@@ -8,12 +8,20 @@
 
 use qubit_fs::FsError;
 use qubit_fs::error::FsErrorKind;
+#[cfg(feature = "async")]
+use qubit_fs_registry::AsyncFileSystemRegistry;
+#[cfg(feature = "async")]
+use qubit_fs_registry::AsyncFileSystemResolution;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemResolution;
 use qubit_fs_registry::FileSystemSpec;
+#[cfg(feature = "async")]
+use qubit_spi::AsyncServiceProvider;
 use qubit_spi::ProviderDescriptor;
+#[cfg(feature = "async")]
+use qubit_spi::ProviderFuture;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderMetadata;
 use qubit_spi::ServiceProvider;
@@ -70,6 +78,61 @@ fn test_inventory_conflict_preserves_source_and_reason() {
     let converted: FsError = FileSystemRegistryError::InventoryBuild(build_error).into();
     assert_eq!(converted.kind(), FsErrorKind::Conflict);
     assert!(std::error::Error::source(&converted).is_some());
+}
+
+#[cfg(feature = "async")]
+struct DuplicateAsyncProvider;
+
+#[cfg(feature = "async")]
+impl ProviderMetadata for DuplicateAsyncProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(ProviderId::new("duplicate-async").expect("static ID"))
+    }
+}
+
+#[cfg(feature = "async")]
+impl AsyncServiceProvider<FileSystemSpec> for DuplicateAsyncProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _config: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        unreachable!("registration fails before creation")
+    }
+}
+
+#[cfg(feature = "async")]
+qubit_spi::submit_async_provider! {
+    inventory_entry = qubit_fs_registry::async_file_system_providers::Entry;
+    spec = FileSystemSpec;
+    provider = DuplicateAsyncProvider;
+}
+
+#[cfg(feature = "async")]
+qubit_spi::submit_async_provider! {
+    inventory_entry = qubit_fs_registry::async_file_system_providers::Entry;
+    spec = FileSystemSpec;
+    provider = DuplicateAsyncProvider;
+}
+
+/// Async inventory construction reports selector conflicts through the registry API.
+#[cfg(feature = "async")]
+#[test]
+fn test_async_inventory_conflict_preserves_source_and_reason() {
+    let error = AsyncFileSystemRegistry::from_inventory().expect_err("duplicate selector should fail");
+    assert_eq!(error.reason_code(), "inventory_registration_conflict");
+    assert!(std::error::Error::source(&error).is_some());
+    let FileSystemRegistryError::InventoryBuild(build_error) = error else {
+        panic!("expected inventory build error")
+    };
+    assert_eq!(build_error.source_location().crate_name(), "qubit-fs-registry");
+    assert!(matches!(
+        build_error.registration_error(),
+        Some(RegistryMutationError::DuplicateSelector { .. })
+    ));
+    assert_eq!(
+        Some("duplicate-async"),
+        build_error.registration_error().and_then(|cause| cause.selector())
+    );
 }
 
 struct AmbiguousSpec;
