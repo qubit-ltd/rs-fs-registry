@@ -538,8 +538,8 @@ pub fn check_documents(root: &Path) {
                         inventory,
                         qubit_fs_override: Some(&root.join("../rs-fs")),
                         qubit_fs_local_override: Some(&root.join("../rs-fs-local")),
-                        qubit_local_files_override: None,
-                        qubit_operation_override: Some(&root.join("../rs-operation")),
+                        qubit_local_files_override: Some(&root.join("../rs-local-files")),
+                        qubit_operation_override: None,
                         example_manifest: Some(&project.join("Cargo.toml")),
                     },
                 );
