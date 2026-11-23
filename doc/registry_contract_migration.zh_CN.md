@@ -131,4 +131,9 @@ URI 的安全结构由 `Uri` 类型保证。
 当前候选因 crates.io 尚无 `qubit-fs ^0.4` 而无法通过依赖解析。该版本发布后，还须核验候选依赖图与
 local provider 0.11.2 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
 
+历史首发背景：registry 0.8 尚未发布时，local provider 0.11 已依赖
+`qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查又要求 local provider 0.11 已发布，
+因此当时形成首发闭环。这是历史发布条件；当前候选的阻塞是缺少 `qubit-fs ^0.4` 发布版，
+且仍须核验候选 provider 依赖兼容性。该历史背景不改变当前发布要求。
+
 [English](registry_contract_migration.md) · [中文设计](file_system_registry_design.zh_CN.md)

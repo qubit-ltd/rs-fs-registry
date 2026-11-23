@@ -103,4 +103,12 @@ and raw URI text are not concatenated or reinterpreted as selector input.
    one is available, verify the candidate provider graph rather than assuming
    local provider 0.11.2 compatibility from the older published combination.
 
+Historical first-release context: before registry 0.8 was published, local
+provider 0.11 required `qubit-fs-registry ^0.8`, while the strict registry 0.8
+check required local provider 0.11 to be published. That created a bootstrap
+cycle at the time. This is a historical release condition; the current
+candidate blocker is the missing `qubit-fs ^0.4` release, and its provider
+compatibility still needs verification. This history does not change the
+current release requirements.
+
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)
