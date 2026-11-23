@@ -91,16 +91,24 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 5. Obtain a new resolution after catalog/default changes when new state is required.
 6. Use the documented selector grammar; do not route by userinfo, authority or query.
 7. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
-8. Use fs 0.3, registry 0.8, local provider 0.11 and `qubit-spi` 0.14 in related examples.
-   Run `python3 scripts/check_published_docs.py .` with Python 3.12+ and Rust
-   1.94.0 installed. This check validates the packaged archive and Markdown
-   examples with crates.io dependencies only. The 0.8 line has a first-release
-   cycle while registry 0.8 is unpublished: local provider 0.11 requires registry
-   `^0.8`, while the registry check requires local provider 0.11. Stop and record
-   missing versions, then resolve the release policy or dependency design through
-   separate review. Once prerequisites are available, run the check on the exact
-   source ref and publish only after it succeeds. CI runs the same check for pull
-   requests, pushes to `main`, and manual workflow runs. If validation fails,
-   preserve diagnostics, fix the issue, and rerun the check.
+8. The current source candidate is registry 0.8.3 with `qubit-fs ^0.4`, local
+   provider 0.11.2, `qubit-local-files` 0.6.0, and `qubit-spi` 0.14. The currently
+   published working combination is registry 0.8.2, `qubit-fs` 0.3.3, and local
+   provider 0.11.2. Install Python dependencies with
+   `python3 -m pip install -r requirements.txt` (Python 3.12+), then run
+   `python3 scripts/check_published_docs.py .` to check the current candidate's
+   archive and Markdown. `python3 scripts/check_published_docs.py . --mode published`
+   instead checks the latest published archive and its own Markdown. Candidate
+   mode currently fails because crates.io has no `qubit-fs ^0.4` release; after
+   one is available, verify the candidate provider graph rather than assuming
+   local provider 0.11.2 compatibility from the older published combination.
+
+Historical first-release context: before registry 0.8 was published, local
+provider 0.11 required `qubit-fs-registry ^0.8`, while the strict registry 0.8
+check required local provider 0.11 to be published. That created a bootstrap
+cycle at the time. This is a historical release condition; the current
+candidate blocker is the missing `qubit-fs ^0.4` release, and its provider
+compatibility still needs verification. This history does not change the
+current release requirements.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

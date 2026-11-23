@@ -19,6 +19,8 @@ import tarfile
 import tempfile
 import time
 import tomllib
+import tomlkit
+from urllib.request import Request, urlopen
 from types import SimpleNamespace
 from ctypes import wintypes
 
@@ -26,6 +28,14 @@ _WIN32_CREATE_SUSPENDED = 0x00000004  # CREATE_SUSPENDED from WinBase.h
 
 
 _EXACT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_CHECKED_DOCUMENTS = (
+    "README.md",
+    "README.zh_CN.md",
+    "doc/user_guide.md",
+    "doc/user_guide.zh_CN.md",
+    "doc/async_resolution_example.md",
+    "doc/async_resolution_example.zh_CN.md",
+)
 
 
 def load_toolchain(root: Path) -> str:
@@ -72,7 +82,7 @@ def validate_manifest(manifest: dict) -> None:
 def _normalize_registry_package_manifest(path: Path) -> None:
     """Remove Cargo-only path hints from the isolated package copy, retaining version requirements."""
     source = path.read_text()
-    manifest = tomllib.loads(source)
+    manifest = tomlkit.parse(source)
     scopes = [manifest, *manifest.get("target", {}).values()]
     for scope in scopes:
         for section in ("dependencies", "dev-dependencies", "build-dependencies"):
@@ -82,10 +92,9 @@ def _normalize_registry_package_manifest(path: Path) -> None:
                         raise ValueError(f"registry package dependency {name} needs an explicit version")
                     # Cargo removes path hints from published manifests; keep the
                     # isolated consumer check registry-only.
-                    pattern = re.compile(r"(\{[^{}]*?)\bpath\s*=\s*\"[^\"]*\"\s*,?")
-                    source = pattern.sub(lambda match: match.group(1), source)
+                    dependency.pop("path")
     rewritten = path.with_name("Cargo.toml.registry")
-    rewritten.write_text(source)
+    rewritten.write_text(tomlkit.dumps(manifest))
     try:
         rewritten.replace(path)
         validate_manifest(tomllib.loads(path.read_text()))
@@ -130,6 +139,156 @@ def resolution_summary(metadata: dict, archive: Path, input_digest: str) -> str:
     packages.sort()
     resolved = "; ".join(f"{name}@{version} source={source}" for name, version, source in packages)
     return f"archive={archive.resolve()} input_sha256={input_digest}; resolved=[{resolved}]"
+
+
+def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: str, input_digest: str) -> None:
+    """Require complete success evidence for every generated documentation group."""
+    if evidence.get("schema_version") != 1 or evidence.get("verified") is not True:
+        raise ValueError("documentation evidence is missing a successful schema-version-1 result")
+    if evidence.get("source_mode") != mode:
+        raise ValueError(f"documentation evidence mode mismatch: expected {mode}")
+    if evidence.get("archive_sha256") != archive_digest or evidence.get("input_sha256") != input_digest:
+        raise ValueError("documentation evidence digest mismatch")
+    expected_input_kind = "published_archive" if mode == "published" else "candidate_source_checkout"
+    if evidence.get("input_kind") != expected_input_kind or not isinstance(evidence.get("source_checkout_sha256"), str):
+        raise ValueError("documentation evidence does not identify its source checkout and tested input")
+    document_inputs = evidence.get("documentation_inputs")
+    if not isinstance(document_inputs, list) or not all(isinstance(entry, dict) for entry in document_inputs):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if [entry.get("path") for entry in document_inputs] != list(_CHECKED_DOCUMENTS):
+        raise ValueError("documentation evidence does not list the checked Markdown inputs")
+    if not all(
+        isinstance(entry, dict)
+        and isinstance(entry.get("sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+        for entry in document_inputs
+    ):
+        raise ValueError("documentation evidence contains an invalid Markdown input digest")
+    document_digest = hashlib.sha256(
+        json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if evidence.get("documentation_inputs_sha256") != document_digest:
+        raise ValueError("documentation input digest mismatch")
+    groups = evidence.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise ValueError("documentation evidence has no verified feature groups")
+    for group in groups:
+        packages = group.get("packages") if isinstance(group, dict) else None
+        if not isinstance(packages, list) or not all(
+            isinstance(package, dict)
+            and all(isinstance(package.get(field), str) for field in ("id", "name", "version", "source"))
+            and isinstance(package.get("features"), list)
+            for package in packages
+        ):
+            raise ValueError("documentation evidence contains an incomplete package identity")
+        if group.get("features", {}).get("local"):
+            names = {package["name"] for package in packages}
+            if not {"qubit-fs-local", "qubit-local-files"}.issubset(names):
+                raise ValueError("local example evidence omits its provider or local-files dependency")
+        examples = group.get("examples")
+        if not isinstance(examples, list) or any(
+            not isinstance(example, dict) or example.get("status") not in {"passed", "no_run"}
+            for example in examples
+        ):
+            raise ValueError("documentation evidence contains a failed or missing example status")
+
+
+def _prepare_published_test_harness(source_root: Path, extracted: Path, workspace: Path) -> Path:
+    """Run the current source-mode-aware harness against an untouched published package copy."""
+    harness = workspace / "published-test-harness"
+    shutil.copytree(extracted, harness)
+    tests = harness / "tests"
+    support = tests / "support"
+    support.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_root / "tests/readme_examples_tests.rs", tests / "readme_examples_tests.rs")
+    for module in ("markdown_examples.rs", "process_runner.rs"):
+        shutil.copy2(source_root / "tests/support" / module, support / module)
+    (support / "mod.rs").write_text("pub mod markdown_examples;\npub mod process_runner;\n")
+    (tests / "mod.rs").write_text("mod readme_examples_tests;\nmod support;\n")
+    return harness
+
+
+def _run_rust_docs_helper(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
+                         action: str, *, overall_deadline: float, group: dict | None = None,
+                         input_path: Path | None = None) -> dict | list:
+    """Run the Rust manifest/graph/artifact helper; the helper never starts Cargo."""
+    output_path = workspace / f"helper-{action}-{group['group'] if group else 'all'}.json"
+    helper_environment = environment.copy()
+    helper_environment["REGISTRY_DOCS_HELPER_ACTION"] = action
+    helper_environment["REGISTRY_DOCS_HELPER_OUTPUT"] = str(output_path)
+    if action == "prepare":
+        helper_environment["REGISTRY_DOCS_WORKSPACE"] = str(workspace / "example-projects")
+    if group is not None:
+        helper_environment["REGISTRY_DOCS_PROJECT"] = str(Path(group["project"]))
+        for name, key in (("async", "REGISTRY_DOCS_ASYNC"),
+                          ("local", "REGISTRY_DOCS_LOCAL"),
+                          ("inventory", "REGISTRY_DOCS_INVENTORY")):
+            helper_environment[key] = "1" if group["features"][name] else "0"
+    if input_path is not None:
+        helper_environment["REGISTRY_DOCS_HELPER_INPUT"] = str(input_path)
+    manifest_root = test_root / "Cargo.toml"
+    command = ["test", "--locked", "--manifest-path", str(manifest_root), "--test", "integration_tests",
+               "test_registry_docs_helper_step", "--", "--nocapture"]
+    context = f"Cargo Rust documentation helper action={action}" + (f" group={group['group']}" if group else "")
+    run(cargo, command, test_root, helper_environment, workspace / f"{action}-{group['group'] if group else 'all'}.log",
+        timeout_seconds=900, context=context, overall_deadline=overall_deadline)
+    if not output_path.is_file():
+        raise ValueError(f"Rust documentation helper did not write {output_path}")
+    return json.loads(output_path.read_text())
+
+
+def _check_documentation_examples(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
+                                  *, overall_deadline: float) -> list[dict]:
+    """Let Python supervise every Cargo step and executable in each docs group."""
+    plan = _run_rust_docs_helper(cargo, test_root, environment, workspace, "prepare",
+                                 overall_deadline=overall_deadline)
+    evidence_groups = []
+    for group in plan["groups"]:
+        project = Path(group["project"])
+        label = group["group"]
+        run(cargo, ["generate-lockfile"], project, environment, workspace / f"lock-{label}.log",
+            timeout_seconds=180, context=f"Cargo generate-lockfile group={label}", overall_deadline=overall_deadline)
+        metadata_path = workspace / f"metadata-{label}.json"
+        metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], project, environment,
+                       workspace / f"metadata-{label}.log", timeout_seconds=180,
+                       context=f"Cargo metadata group={label}", overall_deadline=overall_deadline)
+        metadata_path.write_text(metadata)
+        packages = _run_rust_docs_helper(cargo, test_root, environment, workspace, "validate",
+                                        overall_deadline=overall_deadline, group=group, input_path=metadata_path)
+        build = run(cargo, ["build", "--locked", "--bins", "--message-format=json"], project, environment,
+                    workspace / f"build-{label}.log", timeout_seconds=900,
+                    context=f"Cargo build group={label}", overall_deadline=overall_deadline)
+        build_path = workspace / f"build-{label}.jsonl"
+        build_path.write_text(build)
+        artifacts = _run_rust_docs_helper(cargo, test_root, environment, workspace, "artifacts",
+                                         overall_deadline=overall_deadline, group=group, input_path=build_path)
+        examples = []
+        for program in group["programs"]:
+            name = program["target"]
+            if not program["run"]:
+                examples.append({"target": name, "status": "no_run"})
+                continue
+            executable = artifacts.get(name)
+            if executable is None:
+                raise ValueError(f"Cargo did not report an executable for {name} in group {label}")
+            execution = workspace / f"execution-{label}-{name}"
+            execution.mkdir()
+            run(executable, [], execution, environment, workspace / f"example-{label}-{name}.log",
+                timeout_seconds=30, context=program["context"], overall_deadline=overall_deadline)
+            examples.append({"target": name, "status": "passed"})
+        evidence_groups.append({"group": label, "features": group["features"],
+                                "packages": packages, "examples": examples})
+    return evidence_groups
+
+
+def _documentation_inputs(root: Path) -> tuple[list[dict[str, str]], str]:
+    """Hash the exact Markdown files consumed by the Rust documentation harness."""
+    inputs = [
+        {"path": relative, "sha256": hashlib.sha256((root / relative).read_bytes()).hexdigest()}
+        for relative in _CHECKED_DOCUMENTS
+    ]
+    digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return inputs, digest
 
 
 def _windows_job_functions():
@@ -367,7 +526,8 @@ def terminate_process_tree(process: subprocess.Popen, job_handle=None, *,
 
 
 def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str], log: Path,
-        *, timeout_seconds: float, context: str = "published documentation check") -> str:
+        *, timeout_seconds: float, context: str = "published documentation check",
+        overall_deadline: float | None = None) -> str:
     """Run one checked operation and retain diagnostics on failure."""
     command = [cargo, *arguments]
     with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as stdout, \
@@ -390,13 +550,20 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
             raise RuntimeError(
                 f"{context} could not start {command!r}; log: {log}: {error}; rollback: {rollback}"
             ) from error
-        deadline = time.monotonic() + timeout_seconds
+        command_deadline = time.monotonic() + timeout_seconds
+        deadline = min(command_deadline, overall_deadline) if overall_deadline is not None else command_deadline
+        overall_expired = False
         timed_out = False
-        while process.poll() is None:
-            if time.monotonic() >= deadline:
+        while True:
+            returncode = process.poll()
+            observed_at = time.monotonic()
+            if observed_at >= deadline:
                 timed_out = True
+                overall_expired = overall_deadline is not None and overall_deadline <= command_deadline
                 break
-            time.sleep(0.05)
+            if returncode is not None:
+                break
+            time.sleep(min(0.05, deadline - observed_at))
         cleanup = "not required"
         cleanup_error = None
         if timed_out:
@@ -454,6 +621,11 @@ def run(cargo: str, arguments: list[str], cwd: Path, environment: dict[str, str]
         err = stderr.read()
         log.write_text(out + err)
     if timed_out:
+        if overall_expired:
+            raise RuntimeError(
+                f"overall publication deadline expired while running {context}: {command!r}; "
+                f"log: {log}; cleanup: {cleanup}"
+            )
         raise RuntimeError(
             f"{context} timed out after {timeout_seconds}s: {command!r}; log: {log}; cleanup: {cleanup}"
         )
@@ -583,7 +755,39 @@ def _copy_git_inputs(root: Path, destination: Path, expected_digest: str) -> Non
 
 
 def check(root: Path, workspace: Path) -> None:
-    """Validate a package archive using only crates.io dependencies."""
+    """Validate the current candidate archive using registry dependencies."""
+    _check(root, workspace, "candidate")
+
+
+def check_published(root: Path, workspace: Path) -> None:
+    """Validate documentation examples against the latest resolvable published release."""
+    version, filesystem_requirement = _published_registry_contract()
+    _check(root, workspace, "published", version, filesystem_requirement)
+
+
+def _published_registry_contract() -> tuple[str, str]:
+    """Read the current published package and its filesystem requirement from crates.io."""
+    headers = {"User-Agent": "qubit-fs-registry-documentation-check/1"}
+    with urlopen(Request("https://crates.io/api/v1/crates/qubit-fs-registry", headers=headers), timeout=30) as response:
+        package = json.load(response)["crate"]
+    version = package["max_version"]
+    url = f"https://crates.io/api/v1/crates/qubit-fs-registry/{version}/dependencies"
+    with urlopen(Request(url, headers=headers), timeout=30) as response:
+        dependencies = json.load(response)["dependencies"]
+    filesystem = next(
+        (dependency["req"] for dependency in dependencies
+         if dependency["crate_id"] == "qubit-fs" and dependency["kind"] == "normal"),
+        None,
+    )
+    if filesystem is None:
+        raise ValueError(f"published qubit-fs-registry {version} has no qubit-fs dependency")
+    return version, filesystem
+
+
+def _check(root: Path, workspace: Path, mode: str, published_version: str | None = None,
+           filesystem_requirement: str | None = None) -> None:
+    """Validate the selected consumer mode using an isolated Cargo workspace."""
+    overall_deadline = time.monotonic() + 7200
     try:
         toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
     except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
@@ -591,23 +795,46 @@ def check(root: Path, workspace: Path) -> None:
     if not isinstance(toolchain, str) or not _EXACT_VERSION.fullmatch(toolchain):
         raise ValueError(f"toolchain channel must be an exact three-part version, found {toolchain!r}")
     inputs = _collect_git_inputs(root)
-    snapshot = workspace / "package-input" / "rs-fs-registry"
-    _copy_git_inputs(root, snapshot, _input_digest(inputs))
-    (snapshot / "Cargo.lock").unlink(missing_ok=True)
-    manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
-    package, version = manifest["package"]["name"], manifest["package"]["version"]
-    _normalize_registry_package_manifest(snapshot / "Cargo.toml")
+    source_digest = _input_digest(inputs)
     environment = isolated_environment(workspace, toolchain)
+    environment["REGISTRY_DOCS_SOURCE"] = mode
+    if published_version is not None:
+        environment["REGISTRY_PUBLISHED_VERSION"] = published_version
+    if filesystem_requirement is not None:
+        environment["REGISTRY_PUBLISHED_FS_REQUIREMENT"] = filesystem_requirement
     cargo = shutil.which("cargo")
     if cargo is None:
         raise RuntimeError("cargo is required")
-    command_cwd = workspace / "cargo-command"
-    command_cwd.mkdir()
-    run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
-        command_cwd, environment, workspace / "package.log", timeout_seconds=900, context="Cargo package (registry)")
-    archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
     unpacked = workspace / "unpacked"
     unpacked.mkdir()
+    if mode == "published":
+        if published_version is None:
+            raise ValueError("published mode needs a resolved published package version")
+        package = "qubit-fs-registry"
+        version = published_version
+        archive = workspace / "published.crate"
+        archive_url = f"https://static.crates.io/crates/{package}/{package}-{version}.crate"
+        with urlopen(Request(archive_url, headers={"User-Agent": "qubit-fs-registry-documentation-check/1"}),
+                     timeout=60) as response:
+            archive.write_bytes(response.read())
+        input_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    else:
+        snapshot = workspace / "package-input" / "rs-fs-registry"
+        _copy_git_inputs(root, snapshot, source_digest)
+        (snapshot / "Cargo.lock").unlink(missing_ok=True)
+        manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
+        package, version = manifest["package"]["name"], manifest["package"]["version"]
+        _normalize_registry_package_manifest(snapshot / "Cargo.toml")
+        command_cwd = workspace / "cargo-command"
+        command_cwd.mkdir()
+        run(cargo, ["package", "--manifest-path", str(snapshot / "Cargo.toml"), "--allow-dirty", "--no-verify"],
+            command_cwd, environment, workspace / "package.log", timeout_seconds=900,
+            context="Cargo package (candidate)", overall_deadline=overall_deadline)
+        archive = Path(environment["CARGO_TARGET_DIR"]) / "package" / f"{package}-{version}.crate"
+        input_digest = source_digest
+    archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    environment["REGISTRY_ARCHIVE_SHA256"] = archive_digest
+    environment["REGISTRY_INPUT_SHA256"] = input_digest
     with tarfile.open(archive) as source:
         for member in source.getmembers():
             destination = (unpacked.resolve() / member.name).resolve()
@@ -616,28 +843,53 @@ def check(root: Path, workspace: Path) -> None:
         source.extractall(unpacked.resolve(), filter="data")
     extracted = (unpacked / f"{package}-{version}").resolve()
     validate_manifest(tomllib.loads((extracted / "Cargo.toml").read_text()))
-    metadata = run(cargo, ["metadata", "--format-version", "1"], extracted, environment,
-                   workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata")
+    run(cargo, ["generate-lockfile"], extracted, environment, workspace / "archive-lock.log",
+        timeout_seconds=180, context="Cargo generate-lockfile (archive)", overall_deadline=overall_deadline)
+    test_root = extracted
+    if mode == "published":
+        test_root = _prepare_published_test_harness(root, extracted, workspace)
+    metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
+                   workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata",
+                   overall_deadline=overall_deadline)
     resolved_metadata = json.loads(metadata)
     validate_graph(resolved_metadata, package, extracted)
-    run(cargo, ["test", "--doc"], extracted, environment, workspace / "doctests-default.log",
-        timeout_seconds=900, context="Cargo registry default doctests")
-    run(cargo, ["test", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
-        timeout_seconds=900, context="Cargo registry all-feature doctests")
-    run(cargo, ["test", "--all-features", "--test", "integration_tests", "test_shipped_markdown_rust_examples_run", "--", "--nocapture"],
-        extracted, environment, workspace / "examples.log", timeout_seconds=3600, context="Cargo registry examples")
+    run(cargo, ["test", "--locked", "--doc"], extracted, environment, workspace / "doctests-default.log",
+        timeout_seconds=900, context="Cargo registry default doctests", overall_deadline=overall_deadline)
+    run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
+        timeout_seconds=900, context="Cargo registry all-feature doctests", overall_deadline=overall_deadline)
+    groups = _check_documentation_examples(cargo, test_root, environment, workspace,
+                                           overall_deadline=overall_deadline)
+    evidence = {
+        "schema_version": 1,
+        "source_mode": mode,
+        "verified": True,
+        "archive_sha256": archive_digest,
+        "input_sha256": input_digest,
+        "groups": groups,
+    }
+    document_inputs, document_digest = _documentation_inputs(extracted)
+    evidence["input_kind"] = "published_archive" if mode == "published" else "candidate_source_checkout"
+    evidence["source_checkout_sha256"] = source_digest
+    evidence["documentation_inputs"] = document_inputs
+    evidence["documentation_inputs_sha256"] = document_digest
+    validate_documentation_evidence(evidence, mode, archive_digest, input_digest)
     print(f"Published registry archive and examples verified: {package} {version}; source=crates.io registry; "
-          f"{resolution_summary(resolved_metadata, archive, _input_digest(inputs))}")
+          f"{resolution_summary(resolved_metadata, archive, input_digest)}; "
+          f"documentation_evidence_json={json.dumps(evidence, sort_keys=True, separators=(',', ':'))}")
 
 
 def main() -> int:
     """Retain a uniquely owned diagnostic workspace until a check succeeds."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--mode", choices=("candidate", "published"), default="candidate")
     args = parser.parse_args()
     workspace = Path(tempfile.mkdtemp(prefix="qubit-registry-published-")).resolve()
     try:
-        check(args.root.resolve(), workspace)
+        if args.mode == "published":
+            check_published(args.root.resolve(), workspace)
+        else:
+            check(args.root.resolve(), workspace)
     except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, tarfile.TarError) as error:
         print(f"{error}\nDiagnostics preserved at {workspace}", file=sys.stderr)
         return 1

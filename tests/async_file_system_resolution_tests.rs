@@ -92,3 +92,17 @@ fn test_async_resolution_rejects_canonical_uri_when_no_scheme_is_advertised() {
     assert_eq!(error.operation(), FsOperation::Provider);
     assert_eq!(error.provider(), Some("async-resolution-provider"));
 }
+
+/// Async path errors take precedence over canonical URI scheme validation.
+#[test]
+fn test_async_resolution_validates_path_before_canonical_uri_scheme() {
+    let error = async_resolution_with_path_properties(
+        "async-resolution-provider",
+        "relative",
+        FileSystemLimits::unknown(),
+        PathConstraints::absolute(),
+    )
+    .expect_err("path validation must run before URI scheme validation");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+    assert_eq!(error.operation(), FsOperation::ParsePath);
+}

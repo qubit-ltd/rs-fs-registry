@@ -2,13 +2,14 @@
 
 [返回用户指南](user_guide.zh_CN.md) · [English](async_resolution_example.md)
 
-```bash
-cargo add qubit-fs@0.4 qubit-spi@0.14
-cargo add qubit-fs-registry@0.8 --features async
-cargo add futures@0.3
-```
-
-示例直接使用文件系统和 SPI API，因此必须显式声明这两个依赖；传递依赖不能代替调用方的直接依赖。文件系统、SPI 和注册表的版本要求以本 package 的 manifest 为准；`futures` 只提供执行器，不是注册表的运行时依赖。这个完整的内存 provider 示例只演示异步创建与解析；由于示例不执行文件 IO，其 SPI 方法会返回不支持错误。
+候选 manifest 需要 `qubit-fs ^0.4`、`qubit-spi ^0.14`、启用 `async` 的
+`qubit-fs-registry 0.8.3`，以及 `futures ^0.3`。文件系统和 SPI API 都是直接依赖，
+不能由传递依赖替代。crates.io 尚无匹配的 `qubit-fs ^0.4` 发布版本，因此此示例目前只能
+在源码工作区运行。请从仓库根目录执行
+`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture`。
+目前已发布且兼容的组合是 registry 0.8.2 与 `qubit-fs` 0.3.3，不能用于验证这个候选示例。
+`futures` 只提供执行器，不是注册表运行时依赖。这个完整的内存 provider 示例只演示异步创建与解析；
+由于示例不执行文件 IO，其 SPI 方法会返回不支持错误。
 
 <!-- registry-example: async -->
 ```rust

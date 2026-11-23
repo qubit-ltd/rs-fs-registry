@@ -19,6 +19,23 @@ cargo add qubit-fs@0.4 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 
+These commands describe the current 0.8.3 source candidate. Since `qubit-fs ^0.4`
+is not yet published, they cannot currently resolve from crates.io; the local
+provider examples in this checkout require the sibling source workspace.
+The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3
+and `qubit-fs-local` 0.11.2. Install that older line with:
+
+```bash
+cargo add qubit-fs@0.3 qubit-fs-registry@0.8
+cargo add qubit-fs-local@0.11 --features registry
+```
+
+The candidate source uses sibling versions `qubit-fs` 0.4.0,
+`qubit-fs-local` 0.11.2, `qubit-local-files` 0.6.0, and `qubit-operation`
+0.3.1. Verify local-provider compatibility against that graph when the missing
+`qubit-fs ^0.4` release becomes available; the older published combination does
+not establish candidate compatibility.
+
 The default feature set is synchronous. For asynchronous providers, enable
 `qubit-fs-registry/async`. SPI selection types require a direct `qubit-spi@0.14`
 dependency; this crate does not re-export them.
@@ -134,45 +151,48 @@ cargo test --all-features
 ./.infra/bin/coverage.sh
 
 # Verify documentation against published dependencies before publishing
+python3 -m pip install -r requirements.txt
 python3 scripts/check_published_docs.py .
+
+# Check the latest published registry archive and its shipped Markdown instead
+python3 scripts/check_published_docs.py . --mode published
 ```
 
-The published dependency check requires Python 3.12+ and the Rust toolchain
-channel configured in `rust-toolchain.toml`.
-It runs default and all-feature Rustdoc tests on the extracted package archive,
-then checks the Markdown examples, including both complete async-resolution
-appendices. It must succeed for the same source state you intend to publish.
-The check resolves all dependencies from crates.io, validates the packaged archive,
-runs default and all-feature Rustdoc tests, and executes the shipped Markdown
-examples. CI runs it for pull requests, pushes to `main`, and manual workflow runs;
-failure never falls back to local dependency overrides.
+The checker requires Python 3.12+, the packages in `requirements.txt`, and the
+Rust toolchain channel configured in `rust-toolchain.toml`. The default
+`candidate` mode packages this checkout, then checks its default and all-feature
+Rustdoc tests and shipped Markdown examples, including both async-resolution
+appendices. Run it on the exact source state intended for release. The
+`published` mode downloads the latest registry archive from crates.io and checks
+that archive's own Rustdoc and Markdown examples; it does not validate this
+checkout's candidate Markdown. Both modes resolve dependencies from crates.io
+and fail without local-source fallback.
 
-Before publishing, verify that the required registry versions are already
-published and satisfy the normal dependency requirements: `qubit-fs` 0.3.2,
-`qubit-fs-local` 0.11, and `qubit-local-files` 0.5.3. Optional dependencies
-remain in published crate metadata even when their features are disabled. In
-particular, the first release of registry 0.8 has a dependency cycle:
-`qubit-fs-local` 0.11 requires registry 0.8, while the strict registry 0.8
-check requires `qubit-fs-local` 0.11. If these prerequisites are not already
-published, stop and record the missing versions and dependency chain; resolve
-the release policy or dependency design through separate review. A successful check does not permit bypassing this gate.
+The published `0.8.2` line has a working documented combination with
+`qubit-fs` 0.3.3 and `qubit-fs-local` 0.11.2. The current 0.8.3 source candidate
+instead requires `qubit-fs ^0.4`, for which no matching crates.io release is
+available, so candidate mode currently fails during dependency resolution.
+`qubit-fs-local` 0.11.2 also needs to be checked against the candidate dependency
+graph when compatible `qubit-fs` 0.4 and registry candidate releases are
+available. Do not infer that compatibility from the older published
+combination. Keep the candidate gate in place and resolve the missing release
+prerequisite before publishing.
 See the [Published Documentation Check](doc/user_guide.md#published-documentation-check)
 section of the English user guide for the full release prerequisites.
 
-Once a compatible registry prerequisite is published, publish any missing
-`qubit-fs`, `qubit-fs-local`, and `qubit-local-files` releases, then run the
-strict registry consumer check:
+After the missing compatible `qubit-fs ^0.4` release and candidate provider
+compatibility are verified, run candidate mode on the release source. To inspect
+the latest published registry consumer, use:
 
 ```bash
-python3 scripts/check_published_docs.py .
+python3 scripts/check_published_docs.py . --mode published
 ```
 
-This mode resolves the declared dependencies from crates.io and checks the
-packaged archive, default and all-feature doctests, and all shipped Markdown
-examples. It uses no sibling overrides or provider shim, and fails without
-falling back when a required release is unavailable or a dependency resolves
-outside crates.io. Run the manual **Published Registry Consumption** workflow
-on the exact release ref; publish only after it succeeds. The result records
+That mode resolves the declared dependencies from crates.io and checks the
+published archive, default and all-feature doctests, and that archive's shipped
+Markdown examples. It uses no sibling overrides and fails without fallback when
+a required release is unavailable or a dependency resolves outside crates.io.
+Run candidate mode on the exact release ref before publishing. The result records
 the source digest and resolved package versions. Failed runs preserve separate
 Cargo logs for diagnosis.
 

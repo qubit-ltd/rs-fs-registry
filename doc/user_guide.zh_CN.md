@@ -4,8 +4,7 @@
 
 ## 手册目标与读者
 
-本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，覆盖当前
-`qubit-fs-registry` 0.8 API，包括同步与异步 resolution。
+本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，说明当前 0.8.3 源码候选的同步与异步 resolution。候选源码组合为 `qubit-fs` 0.4.0、`qubit-fs-local` 0.11.2、`qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。候选要求 `qubit-fs ^0.4`，但该版本尚未发布。目前已发布且可用的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
 
 ## 概念模型
 
@@ -40,6 +39,17 @@ resolution = filesystem + decoded path + canonical URI
 
 ```bash
 cargo add qubit-fs@0.4 qubit-fs-registry@0.8
+cargo add qubit-fs-local@0.11 --features registry
+```
+
+这些命令描述 0.8.3 源码候选；由于 `qubit-fs ^0.4` 尚未发布，目前无法从 crates.io 解析。
+下文示例需要 sibling 源码工作区。在当前仓库检查示例时，请运行
+`cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture`。
+目前已发布且可工作的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
+若要安装该旧版本线，请改用：
+
+```bash
+cargo add qubit-fs@0.3 qubit-fs-registry@0.8
 cargo add qubit-fs-local@0.11 --features registry
 ```
 
@@ -524,18 +534,28 @@ URI 到 path 的语义仍由 provider 负责。不要将其视为跨 provider �
 
 CI feature 矩阵会检查默认组合、仅 `async`、仅 `inventory`，以及 `async` 与 `inventory` 同时启用的组合。
 
-发布前，使用 Python 3.12+ 和 `rust-toolchain.toml` 中的 Rust 工具链运行
-`python3 scripts/check_published_docs.py .`。检查器会将当前仓库输入复制到隔离的临时包目录，生成并解包实际 Cargo 归档，确认依赖从 crates.io 解析，运行默认及全部 feature 的 Rustdoc 测试，并执行随包发布的所有 Markdown 示例。修改源码、manifest 或示例后应重新运行。
-
-执行发布顺序前，先核实文档 provider 所需的 registry 版本已发布，并满足普通依赖版本要求。0.8 这条文档依赖线要求 `qubit-fs` 0.3、`qubit-local-files` 0.5.1 和 `qubit-fs-local` 0.11。可选的普通依赖仍会出现在已发布 crate 的依赖元数据中；关闭对应 feature 不会移除发布前提。`qubit-fs-local` 0.11 声明了可选依赖 `qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查也需要文档所用的 local provider 0.11 已发布。registry 0.8 尚未发布时，首次发布顺序会形成依赖闭环：local 0.11 需要 registry 0.8，registry 0.8 的严格检查又需要 local 0.11。此时应停止发布并记录所有缺失版本及依赖链。快照检查成功不能解除该闭环；这些命令不授权绕过门禁。继续前须另行评审发布政策或依赖设计。
-
-若兼容的 registry 前置版本已发布，可先发布缺少的依赖版本，再针对 registry 的精确源码 ref 运行严格消费检查：
+先安装 Python 依赖：`python3 -m pip install -r requirements.txt`。使用 Python 3.12+ 和
+`rust-toolchain.toml` 指定的 Rust 工具链，默认 candidate 命令为：
 
 ```bash
 python3 scripts/check_published_docs.py .
 ```
 
-严格模式从 crates.io 解析声明的依赖，检查打包归档、默认及全部 feature 的 Rustdoc 测试和所有 Markdown 示例；不使用 sibling 路径覆盖或 provider shim。如果所需版本不可用，或依赖解析到 crates.io 以外，检查会失败且不会回退。请在拟发布的同一 ref 上手动运行 **Published Registry Consumption** workflow，并仅在成功后发布 registry。若缺少依赖版本或检查因其他原因失败，应保留诊断，不能以其他检查替代。结果记录实际解析的包版本和源码输入摘要；失败运行保留独立 Cargo 日志。
+该命令打包当前源码，在归档上运行默认和全部 feature 的 Rustdoc 测试，并执行所有随包
+Markdown 示例。修改源码、manifest 或示例后应重跑；准备发布时也要针对同一源码 ref
+运行。若要对照最新已发布 registry 归档，运行：
+
+```bash
+python3 scripts/check_published_docs.py . --mode published
+```
+
+published 模式从 crates.io 下载最新 registry 归档，检查归档自带的 Rustdoc 和 Markdown，
+不会验证当前候选的 Markdown。两种模式都只从 crates.io 解析依赖，不会回退到本地路径。
+目前已发布的 0.8.2 可与 `qubit-fs` 0.3.3、`qubit-fs-local` 0.11.2 配合。当前工作区
+0.8.3 候选要求 `qubit-fs ^0.4`，但 crates.io 尚无匹配发布版本，因此 candidate 模式会在
+依赖解析阶段失败。待兼容的 `qubit-fs` 版本发布后，还要核验候选依赖图与
+`qubit-fs-local` 0.11.2 的兼容性；旧版已发布组合不能证明这一点。先解决缺少的发布前提，
+再继续候选验收。两种模式失败时都应保留诊断；published 模式通过不能替代候选验证。
 
 ## 延伸阅读
 

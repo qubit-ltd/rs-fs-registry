@@ -1,6 +1,6 @@
 # Qubit FS Registry Design
 
-Status: implemented contract for `qubit-fs-registry` 0.8, `qubit-fs` 0.3 and `qubit-spi` 0.14.
+Status: implemented contract in the 0.8.3 source candidate (`qubit-fs ^0.4`, `qubit-spi ^0.14`). The currently published working line is registry 0.8.2 with `qubit-fs` 0.3.3; the candidate `qubit-fs ^0.4` prerequisite is not yet published.
 
 [中文](file_system_registry_design.zh_CN.md) · [User guide](user_guide.md)
 
@@ -112,9 +112,16 @@ as explicit registration, including facade provider-ID checks.
 
 Duplicate IDs or aliases fail construction with
 `FileSystemRegistryError::InventoryBuild`, retaining the SPI inventory error's
-submission source and mutation error. A failed build exposes no partial registry.
-Factories run during construction; service creation remains deferred until
-resolution (and until polling for async providers).
+submission source and mutation error. Conflicting registrations report
+`inventory_registration_conflict`; ambiguous submission sources report
+`inventory_source_ambiguity`. This ambiguity means multiple discovered entries
+share one declaration source; the build reports that source and runs no factories.
+A registration conflict means a submitted provider violates registry mutation
+rules, such as reusing a provider ID or alias; the error retains its source and
+mutation error.
+Factories run during construction, so their registration-time validation and
+side effects happen before the registry is returned. Service creation remains
+deferred until resolution (and until polling for async providers).
 
 ## 8. Selection and Fallback
 
@@ -207,6 +214,11 @@ represented by nested diagnostics, not additional top-level variants. Creation
 conversion uses the decisive attempt's provider ID; other conversions do not invent one.
 All conversions use the provider operation and retain the typed registry source.
 
+`reason_code()` distinguishes inventory registration conflicts
+(`inventory_registration_conflict`) from ambiguous inventory submission sources
+(`inventory_source_ambiguity`). These codes identify the failure category only;
+the typed source retains the diagnostic details.
+
 `Display`/`Debug` format bounded safe context with immutable `Redactor::standard()`.
 They do not read the application-default redactor, emit internal messages as raw text,
 or recursively format provider sources. Static internal messages are treated as
@@ -282,16 +294,16 @@ set. Short guide examples use `rust,no_run`: they compile but are not executed.
 Unknown directives and unclosed fences fail. Programs run in separate working
 directories and prepare their own input files.
 
-The checker validates the actual packaged archive and its shipped Markdown examples
-using crates.io dependencies. It first copies the current repository inputs into an
-isolated temporary package tree, normalizes Cargo path hints in that copy, then
-packages and extracts it. It verifies that resolved dependencies come from
-crates.io, runs default and all-feature doctests on the extracted archive, and
-executes the Markdown example harness. Each Cargo operation keeps a separate log;
-the success summary reports the source digest and resolved package versions.
-Run `python3 scripts/check_published_docs.py .` with Python 3.12+ and the pinned
-Rust toolchain. Missing releases and non-crates.io sources fail without fallback.
-The manual **Published Registry Consumption** workflow runs the same gate on the
-intended release ref; publish only after it succeeds.
+Install the Python dependency with `python3 -m pip install -r requirements.txt`.
+With Python 3.12+ and the pinned Rust toolchain, `python3 scripts/check_published_docs.py .`
+(default `candidate` mode) packages this checkout and tests its archived Rustdoc
+and Markdown examples using crates.io dependencies. The `--mode published` option
+instead downloads the latest published registry archive and checks that archive's
+own Rustdoc and Markdown. It does not validate the candidate documentation.
+The current candidate requires `qubit-fs ^0.4`, which has no matching crates.io
+release, so candidate mode currently fails dependency resolution. The published
+0.8.2 archive is a separate working line using `qubit-fs` 0.3.3. Missing releases
+and non-crates.io sources fail without fallback; publish only after candidate mode
+passes on the intended release ref.
 
 [Migration](registry_contract_migration.md) · [User guide](user_guide.md)

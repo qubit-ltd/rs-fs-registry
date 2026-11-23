@@ -1,5 +1,6 @@
 """Regression tests for the isolation gate, without network or filesystem mutations."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -76,6 +77,51 @@ class PublishedDocsTests(unittest.TestCase):
         self.assertLess(summary.index("qubit-fs-registry@0.8.0"), summary.index("zeta@2.0.0"))
         self.assertIn("source=path:/archive/Cargo.toml", summary)
 
+    def test_documentation_evidence_requires_complete_digests_and_local_dependencies(self):
+        document_inputs = [
+            {"path": path, "sha256": "0" * 64}
+            for path in checker._CHECKED_DOCUMENTS
+        ]
+        package = lambda name: {
+            "id": f"{name} 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            "name": name,
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "features": [],
+        }
+        evidence = {
+            "schema_version": 1,
+            "source_mode": "candidate",
+            "verified": True,
+            "archive_sha256": "archive-digest",
+            "input_sha256": "input-digest",
+            "input_kind": "candidate_source_checkout",
+            "source_checkout_sha256": "source-digest",
+            "documentation_inputs": document_inputs,
+            "documentation_inputs_sha256": hashlib.sha256(
+                json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "groups": [{
+                "features": {"local": True},
+                "packages": [package("qubit-fs-local"), package("qubit-local-files")],
+                "examples": [{"target": "example", "status": "passed"},
+                             {"target": "example-no-run", "status": "no_run"}],
+            }],
+        }
+        checker.validate_documentation_evidence(evidence, "candidate", "archive-digest", "input-digest")
+        incomplete = json.loads(json.dumps(evidence))
+        incomplete["verified"] = False
+        with self.assertRaisesRegex(ValueError, "successful"):
+            checker.validate_documentation_evidence(incomplete, "candidate", "archive-digest", "input-digest")
+        wrong_digest = json.loads(json.dumps(evidence))
+        wrong_digest["input_sha256"] = "different"
+        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+            checker.validate_documentation_evidence(wrong_digest, "candidate", "archive-digest", "input-digest")
+        missing_local = json.loads(json.dumps(evidence))
+        missing_local["groups"][0]["packages"].pop()
+        with self.assertRaisesRegex(ValueError, "omits"):
+            checker.validate_documentation_evidence(missing_local, "candidate", "archive-digest", "input-digest")
+
     def test_registry_check_never_probes_siblings_or_falls_back(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "source"
@@ -96,6 +142,53 @@ class PublishedDocsTests(unittest.TestCase):
             self.assertEqual(parsed["dependencies"]["qubit-fs"]["version"], "^0.3")
             self.assertNotIn("path", parsed["dependencies"]["qubit-fs"])
             self.assertEqual(original.splitlines()[0:3], manifest.read_text().splitlines()[0:3])
+
+    def test_registry_package_copy_structurally_drops_paths_in_all_dependency_scopes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "Cargo.toml"
+            source_manifest = Path(directory) / "source-Cargo.toml"
+            original = '''[package]
+name = "fixture"
+version = "1.0.0"
+
+[dependencies]
+first = { path = "../first", version = "^1", default-features = false }
+middle = { version = "^2", path = "../middle", features = ["a"] }
+last = { version = "^3", features = ["b"], path = "../last" }
+
+[dependencies.subtable]
+version = "^3"
+path = "../subtable"
+
+[dev-dependencies]
+dev = { version = "^4", path = "../dev" }
+
+[build-dependencies]
+build = { path = "../build", version = "^5" }
+
+[target.'cfg(unix)'.dependencies]
+target = { version = "^6", path = "../target" }
+
+[package.metadata.documentation]
+path = "inert metadata, not a Cargo source"
+'''
+            manifest.write_text(original)
+            source_manifest.write_text(original)
+            checker._normalize_registry_package_manifest(manifest)
+            parsed = __import__("tomllib").loads(manifest.read_text())
+            for dependencies in (
+                parsed["dependencies"], parsed["dev-dependencies"], parsed["build-dependencies"],
+                parsed["target"]["cfg(unix)"]["dependencies"],
+            ):
+                for dependency in dependencies.values():
+                    self.assertNotIn("path", dependency)
+                    self.assertIn("version", dependency)
+            self.assertFalse(manifest.with_name("Cargo.toml.registry").exists())
+            self.assertEqual(
+                parsed["package"]["metadata"]["documentation"]["path"],
+                "inert metadata, not a Cargo source",
+            )
+            self.assertEqual(source_manifest.read_text(), original)
 
 
 
@@ -327,6 +420,104 @@ class PublishedDocsTests(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 5)
             self.assertIn("partial marker", log.read_text())
 
+    def test_successful_poll_after_overall_deadline_is_still_a_timeout(self):
+        class FakeClock:
+            now = 0.0
+
+            def monotonic(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += seconds
+
+        clock = FakeClock()
+        signals = []
+
+        class LateSuccessProcess:
+            pid = 1234
+            returncode = 0
+
+            def __init__(self, *args, stdout, **kwargs):
+                stdout.write("late successful output marker")
+                stdout.flush()
+
+            def poll(self):
+                clock.now = 0.6
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        def missing_group(_group, received_signal):
+            signals.append(received_signal)
+            raise ProcessLookupError()
+
+        fake_subprocess = SimpleNamespace(Popen=LateSuccessProcess,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        fake_os = SimpleNamespace(name="posix", killpg=missing_group)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "late-success.log"
+            with patch.object(checker, "os", fake_os), \
+                    patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker, "signal", SimpleNamespace(SIGTERM=15, SIGKILL=9)), \
+                    patch.object(checker.time, "monotonic", side_effect=clock.monotonic), \
+                    patch.object(checker.time, "sleep", side_effect=clock.sleep):
+                with self.assertRaisesRegex(RuntimeError, "overall publication deadline.*late successful group=boundary"):
+                    checker.run("fake-cargo", [], root, {}, log, timeout_seconds=30,
+                                overall_deadline=0.5,
+                                context="late successful group=boundary")
+            self.assertEqual(signals, [15, 9])
+            self.assertIn("late successful output marker", log.read_text())
+
+    def test_outer_timeout_cancels_nested_supervisor_and_reports_command_group_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "must-not-complete"
+            log = root / "nested.log"
+            leaf = "import pathlib,sys,time; time.sleep(1); pathlib.Path(sys.argv[1]).write_text('done')"
+            nested = (
+                "import subprocess,sys,time; print('nested supervisor started',flush=True); "
+                f"subprocess.Popen([sys.executable,'-c',{leaf!r},sys.argv[1]]); time.sleep(30)"
+            )
+            started = time.monotonic()
+            with self.assertRaisesRegex(RuntimeError, "overall publication deadline.*nested supervisor"):
+                checker.run(sys.executable, ["-c", nested, str(marker)], root, {}, log,
+                            timeout_seconds=30, overall_deadline=started + 0.3,
+                            context="nested supervisor group=archive-examples")
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertIn("nested supervisor started", log.read_text())
+            self.assertFalse(marker.exists())
+
+    def test_python_supervises_each_cargo_step_and_example_with_one_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            test_root = root / "package"
+            project = root / "examples" / "0-1-0"
+            project.mkdir(parents=True)
+            (test_root / "Cargo.toml").parent.mkdir(parents=True)
+            group = {
+                "group": "0-1-0",
+                "project": str(project),
+                "features": {"async": False, "local": True, "inventory": False},
+                "programs": [{"target": "example_bin", "run": True, "context": "doc example group=0-1-0"}],
+            }
+            deadline = time.monotonic() + 60
+            with patch.object(checker, "_run_rust_docs_helper", side_effect=[{"groups": [group]}, [] ,
+                                                                             {"example_bin": "/tmp/example_bin"}]) as helper, \
+                    patch.object(checker, "run", return_value='{"packages":[],"resolve":{"nodes":[]}}') as run_command:
+                evidence = checker._check_documentation_examples(
+                    "cargo", test_root, {}, root, overall_deadline=deadline,
+                )
+            self.assertEqual(evidence[0]["group"], "0-1-0")
+            self.assertEqual(evidence[0]["examples"], [{"target": "example_bin", "status": "passed"}])
+            self.assertEqual([call.args[4] for call in helper.call_args_list], ["prepare", "validate", "artifacts"])
+            self.assertGreaterEqual(run_command.call_count, 4)
+            self.assertTrue(all(call.kwargs["overall_deadline"] == deadline for call in run_command.call_args_list))
+
     def test_run_timeout_stops_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:
             heartbeat = Path(directory) / "heartbeat"
@@ -395,6 +586,27 @@ class PublishedDocsTests(unittest.TestCase):
             self.assertTrue(workspace.is_dir())
             message = stderr.getvalue().split("Diagnostics preserved at ", 1)[1].strip()
             self.assertTrue(Path(message).samefile(workspace))
+
+    def test_main_published_mode_dispatches_to_published_consumer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "diagnostics"
+            workspace.mkdir()
+            with patch.object(checker.tempfile, "mkdtemp", return_value=str(workspace)), \
+                    patch.object(checker, "check_published") as published, \
+                    patch.object(checker, "check") as candidate, \
+                    patch("sys.argv", ["check_published_docs.py", directory, "--mode", "published"]), \
+                    redirect_stdout(StringIO()):
+                self.assertEqual(checker.main(), 0)
+            published.assert_called_once_with(Path(directory).resolve(), workspace.resolve())
+            candidate.assert_not_called()
+
+    def test_main_rejects_unknown_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("sys.argv", ["check_published_docs.py", directory, "--mode", "unknown"]), \
+                    redirect_stderr(StringIO()):
+                with self.assertRaises(SystemExit) as result:
+                    checker.main()
+            self.assertEqual(result.exception.code, 2)
 
     def test_ci_runs_published_documentation_gate_for_all_required_events(self):
         repository = Path(__file__).parents[2]
