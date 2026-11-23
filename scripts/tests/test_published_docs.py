@@ -420,6 +420,59 @@ path = "inert metadata, not a Cargo source"
             self.assertLess(time.monotonic() - started, 5)
             self.assertIn("partial marker", log.read_text())
 
+    def test_successful_poll_after_overall_deadline_is_still_a_timeout(self):
+        class FakeClock:
+            now = 0.0
+
+            def monotonic(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += seconds
+
+        clock = FakeClock()
+        signals = []
+
+        class LateSuccessProcess:
+            pid = 1234
+            returncode = 0
+
+            def __init__(self, *args, stdout, **kwargs):
+                stdout.write("late successful output marker")
+                stdout.flush()
+
+            def poll(self):
+                clock.now = 0.6
+                return self.returncode
+
+            def wait(self, timeout=None):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+        def missing_group(_group, received_signal):
+            signals.append(received_signal)
+            raise ProcessLookupError()
+
+        fake_subprocess = SimpleNamespace(Popen=LateSuccessProcess,
+                                          TimeoutExpired=checker.subprocess.TimeoutExpired)
+        fake_os = SimpleNamespace(name="posix", killpg=missing_group)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "late-success.log"
+            with patch.object(checker, "os", fake_os), \
+                    patch.object(checker, "subprocess", fake_subprocess), \
+                    patch.object(checker, "signal", SimpleNamespace(SIGTERM=15, SIGKILL=9)), \
+                    patch.object(checker.time, "monotonic", side_effect=clock.monotonic), \
+                    patch.object(checker.time, "sleep", side_effect=clock.sleep):
+                with self.assertRaisesRegex(RuntimeError, "overall publication deadline.*late successful group=boundary"):
+                    checker.run("fake-cargo", [], root, {}, log, timeout_seconds=30,
+                                overall_deadline=0.5,
+                                context="late successful group=boundary")
+            self.assertEqual(signals, [15, 9])
+            self.assertIn("late successful output marker", log.read_text())
+
     def test_outer_timeout_cancels_nested_supervisor_and_reports_command_group_output(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
