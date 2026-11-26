@@ -240,6 +240,10 @@ impl FileSystemRegistry {
     /// scheme.
     ///
     /// This method never falls back to the registry default selection.
+    /// Before provider creation, it checks for both an embedded URI secret and
+    /// an external [`crate::CredentialRef`]. URI inspection uses the policy
+    /// snapshot captured at parse time plus the standard sensitivity floor;
+    /// incomplete or invalid inspection is conservatively treated as a secret.
     ///
     /// # Parameters
     ///
@@ -267,6 +271,11 @@ impl FileSystemRegistry {
             .map_err(Into::into)
     }
     /// Resolves a URI-only configuration through its scheme-derived selection.
+    ///
+    /// The URI's captured policy snapshot and the standard sensitivity floor
+    /// are used for credential inspection. A username alone is allowed; a
+    /// detected or conservatively assumed embedded secret is rejected when an
+    /// external credential reference is also present in a full configuration.
     ///
     /// # Parameters
     ///

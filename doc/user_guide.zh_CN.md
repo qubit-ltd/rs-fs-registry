@@ -4,7 +4,7 @@
 
 ## 手册目标与读者
 
-本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，说明当前 0.8.3 源码候选的同步与异步 resolution。候选源码组合为 `qubit-fs` 0.4.0、`qubit-fs-local` 0.11.2、`qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。候选要求 `qubit-fs ^0.4`，但该版本尚未发布。目前已发布且可用的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
+本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，说明当前 0.8.3 源码候选的同步与异步 resolution。候选源码组合为 `qubit-fs` 0.4.0、`qubit-fs-local` 0.12、`qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。候选要求 `qubit-fs ^0.4`，但该版本尚未发布。目前已发布且可用的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
 
 ## 概念模型
 
@@ -49,8 +49,8 @@ cargo add qubit-fs-local@0.12 --features registry
 若要安装该旧版本线，请改用：
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
 不使用本地 provider 或链接期发现的同步示例只需默认 feature：
@@ -218,6 +218,12 @@ credential 配置。此时返回 `FileSystemRegistryError::CredentialSourceConfl
 secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_code()` 为
 `credential_source_conflict`。reason code 可安全写入结构化诊断，不包含 URI、reference
 或 secret 内容。
+
+URI 保存解析时捕获的脱敏策略快照；registry 检查还会始终应用标准敏感度下限。仅用户名的
+userinfo（例如 `s3://reports-user@bucket/key`）可与外部 reference 并存。组件无效或检测超过
+预算时，会保守地按包含 secret 处理。`NonSensitiveMetadata` 按标准敏感度策略校验键，但原样
+保留值。需要时通过显式读取访问值，并在写日志前应用输出策略。Provider 负责返回位置信息干净、
+不含凭据的规范 URI。
 
 启动配置完成后可调用 `seal()` 封存 registry。clone 共享封存状态；封存后，注册 provider
 和更新默认 selection 都会返回 `FileSystemRegistryError::RegistryMutation`，已有解析能力仍可
@@ -554,7 +560,7 @@ published 模式从 crates.io 下载最新 registry 归档，检查归档自带�
 目前已发布的 0.8.2 可与 `qubit-fs` 0.3.3、`qubit-fs-local` 0.11.2 配合。当前工作区
 0.8.3 候选要求 `qubit-fs ^0.4`，但 crates.io 尚无匹配发布版本，因此 candidate 模式会在
 依赖解析阶段失败。待兼容的 `qubit-fs` 版本发布后，还要核验候选依赖图与
-`qubit-fs-local` 0.11.2 的兼容性；旧版已发布组合不能证明这一点。先解决缺少的发布前提，
+`qubit-fs-local` 0.12 的兼容性；旧版已发布组合不能证明这一点。先解决缺少的发布前提，
 再继续候选验收。两种模式失败时都应保留诊断；published 模式通过不能替代候选验证。
 
 ## 延伸阅读

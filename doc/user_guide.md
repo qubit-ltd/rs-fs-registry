@@ -5,7 +5,7 @@
 ## Purpose and Audience
 
 This guide is for application and provider authors who need to bind
-`qubit-fs` to runtime-registered filesystem providers. It documents the current 0.8.3 source candidate, including synchronous and asynchronous resolution. Its source dependency set is `qubit-fs` 0.4.0, `qubit-fs-local` 0.11.2, `qubit-local-files` 0.6.0, and `qubit-operation` 0.3.1. The candidate requires `qubit-fs ^0.4`, which is not yet published. The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3 and local provider 0.11.2.
+`qubit-fs` to runtime-registered filesystem providers. It documents the current 0.8.3 source candidate, including synchronous and asynchronous resolution. Its source dependency set is `qubit-fs` 0.4.0, `qubit-fs-local` 0.12, `qubit-local-files` 0.6.0, and `qubit-operation` 0.3.1. The candidate requires `qubit-fs ^0.4`, which is not yet published. The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3 and local provider 0.11.2.
 
 ## Conceptual Model
 
@@ -58,8 +58,8 @@ The currently published compatible line is registry 0.8.2, `qubit-fs` 0.3.3,
 and local provider 0.11.2. To install that older line instead, use:
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
 A synchronous example without a local provider or linked discovery uses only the default feature set:
@@ -246,6 +246,16 @@ credential conflicts before provider creation. This returns
 `reason_code()` is `credential_source_conflict` when an embedded URI
 secret and an external `CredentialRef` occupy the same slot. The reason code is
 safe structured data and contains no URI, reference, or secret payload.
+
+The URI carries the redaction-policy snapshot captured when it was parsed;
+registry checks also apply the standard sensitivity floor. Username-only
+userinfo such as `s3://reports-user@bucket/key` is allowed beside a reference.
+An invalid component or inspection that exceeds its budget is conservatively
+treated as secret-bearing. `NonSensitiveMetadata` validates keys against the
+standard sensitivity policy, but retains values unchanged. Read values
+explicitly when needed and apply an output policy before logging them. Providers
+are responsible for returning canonical URIs with clean, credential-free
+location information.
 
 Register providers and choose the default during startup, then call `seal()`
 when configuration is complete. Clones share the sealed state. After sealing,
@@ -612,7 +622,7 @@ local path fallback. The latest published 0.8.2 line works with `qubit-fs`
 0.3.3 and `qubit-fs-local` 0.11.2. This checkout's 0.8.3 candidate requires
 `qubit-fs ^0.4`, which currently has no matching crates.io release, so
 candidate mode fails at dependency resolution. The candidate provider graph
-must also be checked against `qubit-fs-local` 0.11.2 after the compatible
+must also be checked against `qubit-fs-local` 0.12 after the compatible
 `qubit-fs` release exists; the older published combination does not prove that
 compatibility. Keep the candidate check as a release gate and resolve that
 missing prerequisite first. Preserve diagnostics for either mode; a published

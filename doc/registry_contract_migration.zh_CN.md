@@ -1,10 +1,22 @@
 # Registry 合约迁移说明
 
 本文面向采用当前 filesystem facade/SPI 合约的应用和 provider 作者：
-`qubit-fs-registry` 0.8、`qubit-fs` 0.3、`qubit-fs-local` 0.11 与 `qubit-spi` 0.14。
+0.8.3 源码候选中的 filesystem facade/SPI 合约，依赖 `qubit-fs` 0.4、
+`qubit-fs-local` 0.12 与 `qubit-spi` 0.14。兼容的历史已发布组合为 registry 0.8.2、
+`qubit-fs` 0.3.3 与 `qubit-fs-local` 0.11.2。
 本文说明这些已实现合约的可观察行为，补充[中文用户手册](user_guide.zh_CN.md)，
 重点说明错误、快照、fallback、canonical URI 与 scheme selection 的兼容边界；
 本文不引入新的公开 API，也不改变 selection/fallback 语义。
+
+要安装历史组合，请对各包使用精确版本约束，并保留 local provider 的 `registry` feature：
+
+```bash
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
+```
+
+候选示例使用 sibling 源码工作区。普通源码工作流检查当前 checkout；手动的已发布消费工作流
+检查最新发布归档及其中随包提供的 Markdown。
 
 ## 1. 凭据来源冲突
 
@@ -119,7 +131,7 @@ scheme component 参与 selection；authority、userinfo、query 和原始 URI �
 ## 8. 当前版本与验证
 
 本文描述 registry 0.8 的当前源码候选（0.8.3）：它要求 `qubit-fs ^0.4`、
-`qubit-fs-local` 0.11.2、`qubit-local-files` 0.6.0 和 `qubit-spi` 0.14。当前已发布且
+`qubit-fs-local` 0.12、`qubit-local-files` 0.6.0 和 `qubit-spi` 0.14。当前已发布且
 可工作的组合是 registry 0.8.2、`qubit-fs` 0.3.3 与 `qubit-fs-local` 0.11.2。
 用户名本身不是内嵌秘密，可以与外部引用共存。异步方法在返回 future 前取得快照，首次轮询才开始创建；
 返回身份不符按 InitializationFailed/ProviderContractViolation 分类。空 schemes 不能构造 resolution，
@@ -129,7 +141,7 @@ URI 的安全结构由 `Uri` 类型保证。
 `python3 scripts/check_published_docs.py .` 默认检查当前候选归档和它的 Markdown；
 `python3 scripts/check_published_docs.py . --mode published` 则检查 crates.io 最新已发布归档及其自带 Markdown。
 当前候选因 crates.io 尚无 `qubit-fs ^0.4` 而无法通过依赖解析。该版本发布后，还须核验候选依赖图与
-local provider 0.11.2 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
+local provider 0.12 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
 
 历史首发背景：registry 0.8 尚未发布时，local provider 0.11 已依赖
 `qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查又要求 local provider 0.11 已发布，

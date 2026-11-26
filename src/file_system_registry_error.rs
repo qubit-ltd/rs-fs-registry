@@ -59,6 +59,12 @@ pub enum FileSystemRegistryError {
     },
     /// Configuration contains more than one credential source.
     ///
+    /// The registry detects embedded URI secrets using the policy snapshot
+    /// captured when the URI was parsed and the standard sensitivity floor.
+    /// Username-only userinfo is allowed. If inspection is invalid or cannot
+    /// complete, the registry conservatively treats the URI as secret-bearing.
+    /// This error is returned before a provider factory is called.
+    ///
     /// [`Self::reason_code`] always returns `credential_source_conflict` for
     /// this variant.
     CredentialSourceConflict,
