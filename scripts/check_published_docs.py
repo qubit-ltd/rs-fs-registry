@@ -172,6 +172,14 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
     groups = evidence.get("groups")
     if not isinstance(groups, list) or not groups:
         raise ValueError("documentation evidence has no verified feature groups")
+    expected_groups = evidence.get("expected_groups")
+    if (
+        not isinstance(expected_groups, list)
+        or not expected_groups
+        or not all(isinstance(label, str) and re.fullmatch(r"[01]-[01]-[01]", label) for label in expected_groups)
+        or len(expected_groups) != len(set(expected_groups))
+    ):
+        raise ValueError("documentation evidence has an invalid Rust-planned feature group set")
     seen_groups: set[str] = set()
     for group in groups:
         if not isinstance(group, dict):
@@ -225,6 +233,10 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
         actual = [(example.get("target"), example.get("status")) for example in examples]
         if len({target for target, _ in expected}) != len(expected) or actual != expected:
             raise ValueError(f"documentation evidence target or status mismatch for group {label}")
+    if seen_groups != set(expected_groups):
+        missing = sorted(set(expected_groups) - seen_groups)
+        unexpected = sorted(seen_groups - set(expected_groups))
+        raise ValueError(f"documentation evidence has missing feature groups={missing} or unexpected groups={unexpected}")
 
 
 def _prepare_published_test_harness(source_snapshot: Path, extracted: Path, workspace: Path) -> Path:
@@ -272,7 +284,7 @@ def _run_rust_docs_helper(cargo: str, test_root: Path, environment: dict[str, st
 
 
 def _check_documentation_examples(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
-                                  *, overall_deadline: float) -> list[dict]:
+                                  *, overall_deadline: float) -> dict:
     """Let Python supervise every Cargo step and executable in each docs group."""
     plan = _run_rust_docs_helper(cargo, test_root, environment, workspace, "prepare",
                                  overall_deadline=overall_deadline)
@@ -321,7 +333,7 @@ def _check_documentation_examples(cargo: str, test_root: Path, environment: dict
             examples.append({"target": name, "status": "passed"})
         evidence_groups.append({"group": label, "features": group["features"],
                                 "packages": packages, "programs": group["programs"], "examples": examples})
-    return evidence_groups
+    return {"expected_groups": [group["group"] for group in planned_groups], "groups": evidence_groups}
 
 
 def _documentation_inputs(root: Path) -> tuple[list[dict[str, str]], str]:
@@ -900,15 +912,16 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         timeout_seconds=900, context="Cargo registry default doctests", overall_deadline=overall_deadline)
     run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
         timeout_seconds=900, context="Cargo registry all-feature doctests", overall_deadline=overall_deadline)
-    groups = _check_documentation_examples(cargo, test_root, environment, workspace,
-                                           overall_deadline=overall_deadline)
+    documentation_evidence = _check_documentation_examples(
+        cargo, test_root, environment, workspace, overall_deadline=overall_deadline
+    )
     evidence = {
         "schema_version": 1,
         "source_mode": mode,
         "verified": True,
         "archive_sha256": archive_digest,
         "input_sha256": input_digest,
-        "groups": groups,
+        **documentation_evidence,
     }
     document_inputs, document_digest = _documentation_inputs(extracted)
     evidence["input_kind"] = "published_archive" if mode == "published" else "candidate_source_checkout"

@@ -101,6 +101,7 @@ class PublishedDocsTests(unittest.TestCase):
             "documentation_inputs_sha256": hashlib.sha256(
                 json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
+            "expected_groups": ["0-1-0"],
             "groups": [{
                 "group": "0-1-0",
                 "features": {"async": False, "local": True, "inventory": False},
@@ -111,6 +112,10 @@ class PublishedDocsTests(unittest.TestCase):
             }],
         }
         checker.validate_documentation_evidence(evidence, "candidate", "archive-digest", "input-digest")
+        proper_subset = json.loads(json.dumps(evidence))
+        proper_subset["expected_groups"] = ["0-1-0", "1-0-0"]
+        with self.assertRaisesRegex(ValueError, "missing feature group"):
+            checker.validate_documentation_evidence(proper_subset, "candidate", "archive-digest", "input-digest")
         incomplete = json.loads(json.dumps(evidence))
         incomplete["verified"] = False
         with self.assertRaisesRegex(ValueError, "successful"):
@@ -141,7 +146,6 @@ class PublishedDocsTests(unittest.TestCase):
         cases.append((wrong_target, "target"))
         wrong_features = json.loads(json.dumps(evidence)); wrong_features["groups"][0]["features"]["async"] = True
         cases.append((wrong_features, "feature"))
-        missing_artifact = json.loads(json.dumps(evidence)); missing_artifact["groups"][0]["artifacts"] = ["example"]
         empty_packages = json.loads(json.dumps(evidence)); empty_packages["groups"][0]["packages"] = []
         cases.append((empty_packages, "empty package identity"))
         for invalid, message in cases:
@@ -540,8 +544,9 @@ path = "inert metadata, not a Cargo source"
                 evidence = checker._check_documentation_examples(
                     "cargo", test_root, {}, root, overall_deadline=deadline,
                 )
-            self.assertEqual(evidence[0]["group"], "0-1-0")
-            self.assertEqual(evidence[0]["examples"], [{"target": "example_bin", "status": "passed"}])
+            self.assertEqual(evidence["expected_groups"], ["0-1-0"])
+            self.assertEqual(evidence["groups"][0]["group"], "0-1-0")
+            self.assertEqual(evidence["groups"][0]["examples"], [{"target": "example_bin", "status": "passed"}])
             self.assertEqual([call.args[4] for call in helper.call_args_list], ["prepare", "validate", "artifacts"])
             self.assertGreaterEqual(run_command.call_count, 4)
             self.assertTrue(all(call.kwargs["overall_deadline"] == deadline for call in run_command.call_args_list))
