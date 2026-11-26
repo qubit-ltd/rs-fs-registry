@@ -32,7 +32,8 @@ use crate::FileSystemRegistryResult;
 /// embeds a secret while an external credential reference is also configured.
 #[inline]
 pub(crate) fn validate_credentials(config: &FileSystemConfig) -> FileSystemRegistryResult<()> {
-    if config.uri().has_embedded_secret() && config.credential().is_some() {
+    let has_credential_reference = config.credential().is_some();
+    if has_credential_reference && config.uri().has_embedded_secret() {
         return Err(FileSystemRegistryError::CredentialSourceConflict);
     }
     Ok(())
