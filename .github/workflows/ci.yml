@@ -40,19 +40,37 @@ jobs:
       - name: Run published checker unit tests
         run: python3 -B -m unittest discover -s scripts/tests -v
 
-  published-documentation:
+  source-documentation:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rs-fs-registry
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          python-version: '3.12'
-      - name: Install published checker dependencies
-        run: python3 -m pip install -r requirements.txt
-      - name: Install the documented Rust toolchain
-        run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
-      - name: Verify isolated published documentation
-        run: python3 scripts/check_published_docs.py .
+          path: rs-fs-registry
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-fs
+          ref: main
+          path: rs-fs
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-fs-local
+          ref: main
+          path: rs-fs-local
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-local-files
+          ref: main
+          path: rs-local-files
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.94.0
+      - name: Verify source documentation examples and package graph
+        run: cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture
+      - name: Verify source doctests
+        run: cargo test --locked --all-features --doc
 
   windows-process-cleanup:
     runs-on: windows-latest
@@ -75,6 +93,18 @@ jobs:
       - name: Install the documented Rust toolchain
         id: rust-toolchain
         run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
+      - name: Checkout rs-fs-local source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-fs-local
+          ref: main
+          path: rs-fs-local
+      - name: Checkout rs-local-files source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: qubit-ltd/rs-local-files
+          ref: main
+          path: rs-local-files
       - name: Checkout rs-fs for the integration test target
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         id: filesystem-checkout
@@ -88,13 +118,10 @@ jobs:
       - name: Run Rust process descendant cleanup tests on Windows
         id: rust-regressions
         run: 'cargo test --locked --test integration_tests process_runner_tests:: -- --nocapture'
-      - name: Verify strict candidate archive doctests and examples
-        id: candidate-archive
-        run: python scripts/check_published_docs.py .
-      - name: Verify official published archive doctests and examples
-        id: published-archive
-        if: ${{ always() && !cancelled() && steps.registry-checkout.outcome == 'success' && steps.python-setup.outcome == 'success' && steps.checker-dependencies.outcome == 'success' && steps.rust-toolchain.outcome == 'success' && steps.filesystem-checkout.outcome == 'success' && steps.python-regressions.outcome == 'success' && steps.rust-regressions.outcome == 'success' }}
-        run: python scripts/check_published_docs.py . --mode published
+      - name: Verify source documentation examples and package graph
+        run: cargo test --locked --all-features --test integration_tests readme_examples_tests::test_shipped_markdown_rust_examples_run -- --nocapture
+      - name: Verify source doctests
+        run: cargo test --locked --all-features --doc
 
   prepare-feature-matrix:
     runs-on: ubuntu-latest

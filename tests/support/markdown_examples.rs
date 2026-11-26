@@ -166,6 +166,30 @@ pub fn documentation_manifest_for_source(
     source: DependencySource,
     published_version: Option<&str>,
 ) -> Value {
+    documentation_manifest_for_source_at(
+        root,
+        input,
+        asynchronous,
+        local,
+        inventory,
+        source,
+        published_version,
+        root,
+    )
+}
+
+/// Builds a consumer manifest whose local references are relative to its own
+/// directory, including consumers generated outside the repository.
+pub fn documentation_manifest_for_source_at(
+    root: &Path,
+    input: &Value,
+    asynchronous: bool,
+    local: bool,
+    inventory: bool,
+    source: DependencySource,
+    published_version: Option<&str>,
+    manifest_dir: &Path,
+) -> Value {
     let package = input["package"]["name"].as_str().expect("package name");
     let mut dependencies = Table::new();
     for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
@@ -175,7 +199,8 @@ pub fn documentation_manifest_for_source(
                 "qubit-fs-registry" if source != DependencySource::PublishedConsumer => Some(root.to_path_buf()),
                 _ => None,
             };
-            let mut selected = path.map_or_else(|| dependency(value), |path| source_dependency(value, &path));
+            let mut selected =
+                path.map_or_else(|| dependency(value), |path| source_dependency(value, &path, manifest_dir));
             if name == "qubit-fs"
                 && source == DependencySource::PublishedConsumer
                 && let Ok(requirement) = std::env::var("REGISTRY_PUBLISHED_FS_REQUIREMENT")
@@ -210,7 +235,7 @@ pub fn documentation_manifest_for_source(
             }
             if name == "qubit-fs-local" {
                 let selected = if source == DependencySource::SiblingSource {
-                    source_dependency(value, &root.join("../rs-fs-local"))
+                    source_dependency(value, &root.join("../rs-fs-local"), manifest_dir)
                 } else {
                     dependency(value)
                 };
@@ -230,12 +255,7 @@ pub fn documentation_manifest_for_source(
     if source != DependencySource::PublishedConsumer {
         current.insert(
             "path".into(),
-            Value::String(
-                root.canonicalize()
-                    .expect("tested source exists")
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
+            Value::String(relative_path(manifest_dir, root).to_string_lossy().into_owned()),
         );
     }
     current.insert("default-features".into(), Value::Boolean(false));
@@ -258,11 +278,33 @@ pub fn documentation_manifest_for_source(
 
 /// Retains the semver requirement and features while pointing an isolated
 /// source example at a sibling package.
-fn source_dependency(value: &Value, path: &Path) -> Value {
+fn source_dependency(value: &Value, path: &Path, manifest_dir: &Path) -> Value {
     let mut table = dependency(value).as_table().expect("dependency table").clone();
-    let path = path.canonicalize().expect("sibling source dependency exists");
-    table.insert("path".into(), Value::String(path.to_string_lossy().into_owned()));
+    table.insert(
+        "path".into(),
+        Value::String(relative_path(manifest_dir, path).to_string_lossy().into_owned()),
+    );
     Value::Table(table)
+}
+
+fn relative_path(from: &Path, to: &Path) -> PathBuf {
+    let from = from.canonicalize().expect("consumer manifest directory exists");
+    let to = to.canonicalize().expect("source dependency exists");
+    let from_components = from.components().collect::<Vec<_>>();
+    let to_components = to.components().collect::<Vec<_>>();
+    let common = from_components
+        .iter()
+        .zip(&to_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut relative = PathBuf::new();
+    for _ in common..from_components.len() {
+        relative.push("..");
+    }
+    for component in &to_components[common..] {
+        relative.push(component.as_os_str());
+    }
+    relative
 }
 
 /// Keeps declared version and feature requirements while removing Cargo path
@@ -629,7 +671,7 @@ pub fn prepare_documents_for_external(
                 if programs.is_empty() {
                     continue;
                 }
-                let example_manifest = documentation_manifest_for_source(
+                let example_manifest = documentation_manifest_for_source_at(
                     root,
                     &input,
                     asynchronous,
@@ -637,6 +679,7 @@ pub fn prepare_documents_for_external(
                     inventory,
                     source,
                     published_version,
+                    &project,
                 );
                 fs::write(
                     project.join("Cargo.toml"),
@@ -782,7 +825,7 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
                 eprintln!(
                     "checking documentation example group {label} (async={asynchronous}, local={local}, inventory={inventory})"
                 );
-                let example_manifest = documentation_manifest_for_source(
+                let example_manifest = documentation_manifest_for_source_at(
                     root,
                     &input,
                     asynchronous,
@@ -790,6 +833,7 @@ pub fn check_documents_for_source(root: &Path, source: DependencySource, publish
                     inventory,
                     source,
                     published_version,
+                    &project,
                 );
                 fs::write(
                     project.join("Cargo.toml"),
