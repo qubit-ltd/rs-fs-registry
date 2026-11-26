@@ -90,7 +90,9 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Panics
     ///
-    /// Propagates a panic from a submitted factory or descriptor callback.
+    /// Propagates a panic from a submitted inventory factory or descriptor
+    /// callback. These run while this method builds the registry; provider
+    /// service creation remains deferred until resolution.
     #[cfg(feature = "inventory")]
     pub fn from_inventory() -> FileSystemRegistryResult<Self> {
         let providers = crate::async_file_system_providers::build_registry_with(|provider| {
@@ -152,6 +154,9 @@ impl AsyncFileSystemRegistry {
     /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline]
     pub fn register_shared(&self, provider: Arc<AsyncFileSystemProvider>) -> FileSystemRegistryResult<()> {
+        if self.providers.is_sealed() {
+            return Err(qubit_spi::error::RegistryMutationError::Sealed.into());
+        }
         self.providers
             .register(ValidatingAsyncFileSystemProvider::new(provider))
             .map_err(Into::into)
@@ -248,6 +253,12 @@ impl AsyncFileSystemRegistry {
     ///
     /// Validation and provider snapshotting occur before this method returns;
     /// the resulting future owns both the configuration and snapshot.
+    /// Service creation through `create_configured_async` begins when the
+    /// returned future is polled.
+    /// When an external credential reference is present, credential validation
+    /// uses the URI policy snapshot captured at parse time and the standard
+    /// sensitivity floor. Username-only userinfo is allowed; invalid or
+    /// incomplete inspection is conservatively treated as an embedded secret.
     ///
     /// # Parameters
     ///
@@ -261,13 +272,16 @@ impl AsyncFileSystemRegistry {
     /// # Errors
     ///
     /// The returned future yields a structured error when credential sources
-    /// conflict, the selection is invalid or unavailable, or creation fails.
+    /// conflict, the selection is invalid, no provider route is available, or
+    /// provider creation fails. Creation errors retain ordered attempts and
+    /// the decisive failure.
     ///
     /// # Panics
     ///
-    /// A panic from a provider factory, creation method, or creation future
-    /// propagates when the returned future is polled; it does not trigger
-    /// fallback to another provider.
+    /// A panic from `create_configured_async` or its returned future propagates
+    /// when the returned future is polled; it does not trigger fallback.
+    /// Inventory submission factories have already run during
+    /// `from_inventory`.
     #[inline]
     pub fn resolve_config(
         &self,
@@ -291,13 +305,18 @@ impl AsyncFileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// The returned future yields the same errors as [`Self::resolve_config`].
+    /// The returned future yields selection errors, an unavailable route, or
+    /// provider creation failures. The creation aggregate identifies attempted
+    /// providers and the decisive failure. Because this entry point receives
+    /// only a URI, it cannot supply an external credential reference, so
+    /// credential-source conflict validation does not apply.
     ///
     /// # Panics
     ///
-    /// Provider factory, creation method, and creation future panics propagate
-    /// when the returned future is polled, as described for
-    /// [`Self::resolve_config`]; they do not trigger fallback.
+    /// Panics from `create_configured_async` or its returned future propagate
+    /// when the returned future is polled; they do not trigger fallback.
+    /// Inventory submission factories have already run during
+    /// `from_inventory`.
     #[inline]
     pub fn resolve_uri(
         &self,

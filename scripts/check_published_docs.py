@@ -172,37 +172,83 @@ def validate_documentation_evidence(evidence: dict, mode: str, archive_digest: s
     groups = evidence.get("groups")
     if not isinstance(groups, list) or not groups:
         raise ValueError("documentation evidence has no verified feature groups")
+    expected_groups = evidence.get("expected_groups")
+    if (
+        not isinstance(expected_groups, list)
+        or not expected_groups
+        or not all(isinstance(label, str) and re.fullmatch(r"[01]-[01]-[01]", label) for label in expected_groups)
+        or len(expected_groups) != len(set(expected_groups))
+    ):
+        raise ValueError("documentation evidence has an invalid Rust-planned feature group set")
+    seen_groups: set[str] = set()
     for group in groups:
+        if not isinstance(group, dict):
+            raise ValueError("documentation evidence contains an invalid feature group")
+        label = group.get("group")
+        match = re.fullmatch(r"([01])-([01])-([01])", label or "")
+        features = group.get("features")
+        if not match or label in seen_groups:
+            raise ValueError("documentation evidence contains a missing or duplicate feature group")
+        seen_groups.add(label)
+        expected_features = dict(zip(("async", "local", "inventory"), (part == "1" for part in match.groups())))
+        if features != expected_features:
+            raise ValueError(f"documentation evidence feature mismatch for group {label}")
         packages = group.get("packages") if isinstance(group, dict) else None
         if not isinstance(packages, list) or not all(
             isinstance(package, dict)
-            and all(isinstance(package.get(field), str) for field in ("id", "name", "version", "source"))
+            and all(isinstance(package.get(field), str) and package[field].strip()
+                    for field in ("id", "name", "version", "source"))
             and isinstance(package.get("features"), list)
             for package in packages
         ):
             raise ValueError("documentation evidence contains an incomplete package identity")
-        if group.get("features", {}).get("local"):
+        if not packages:
+            raise ValueError("documentation evidence contains an empty package identity list")
+        ids = [package["id"] for package in packages]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"documentation evidence contains duplicate package identity in group {label}")
+        registry = [package for package in packages if package["name"] == "qubit-fs-registry"]
+        if len(registry) != 1:
+            raise ValueError(f"documentation evidence is missing the registry identity in group {label}")
+        for package in packages:
+            source = package["source"]
+            if source.startswith("registry+") and source not in {
+                "registry+https://github.com/rust-lang/crates.io-index", "registry+https://index.crates.io/",
+            }:
+                raise ValueError(f"documentation evidence uses an unexpected registry source: {source}")
+        if features["local"]:
             names = {package["name"] for package in packages}
             if not {"qubit-fs-local", "qubit-local-files"}.issubset(names):
                 raise ValueError("local example evidence omits its provider or local-files dependency")
         examples = group.get("examples")
-        if not isinstance(examples, list) or any(
+        programs = group.get("programs")
+        if not isinstance(programs, list) or not programs:
+            raise ValueError(f"documentation evidence has no expected examples for group {label}")
+        if not isinstance(examples, list) or not examples or any(
             not isinstance(example, dict) or example.get("status") not in {"passed", "no_run"}
             for example in examples
         ):
-            raise ValueError("documentation evidence contains a failed or missing example status")
+            raise ValueError("documentation evidence contains a failed or missing examples status")
+        expected = [(program.get("target"), "passed" if program.get("run") else "no_run") for program in programs]
+        actual = [(example.get("target"), example.get("status")) for example in examples]
+        if len({target for target, _ in expected}) != len(expected) or actual != expected:
+            raise ValueError(f"documentation evidence target or status mismatch for group {label}")
+    if seen_groups != set(expected_groups):
+        missing = sorted(set(expected_groups) - seen_groups)
+        unexpected = sorted(seen_groups - set(expected_groups))
+        raise ValueError(f"documentation evidence has missing feature groups={missing} or unexpected groups={unexpected}")
 
 
-def _prepare_published_test_harness(source_root: Path, extracted: Path, workspace: Path) -> Path:
-    """Run the current source-mode-aware harness against an untouched published package copy."""
+def _prepare_published_test_harness(source_snapshot: Path, extracted: Path, workspace: Path) -> Path:
+    """Use hash-verified helper sources with untouched official package inputs."""
     harness = workspace / "published-test-harness"
     shutil.copytree(extracted, harness)
     tests = harness / "tests"
     support = tests / "support"
     support.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_root / "tests/readme_examples_tests.rs", tests / "readme_examples_tests.rs")
+    shutil.copy2(source_snapshot / "tests/readme_examples_tests.rs", tests / "readme_examples_tests.rs")
     for module in ("markdown_examples.rs", "process_runner.rs"):
-        shutil.copy2(source_root / "tests/support" / module, support / module)
+        shutil.copy2(source_snapshot / "tests/support" / module, support / module)
     (support / "mod.rs").write_text("pub mod markdown_examples;\npub mod process_runner;\n")
     (tests / "mod.rs").write_text("mod readme_examples_tests;\nmod support;\n")
     return harness
@@ -238,14 +284,23 @@ def _run_rust_docs_helper(cargo: str, test_root: Path, environment: dict[str, st
 
 
 def _check_documentation_examples(cargo: str, test_root: Path, environment: dict[str, str], workspace: Path,
-                                  *, overall_deadline: float) -> list[dict]:
+                                  *, overall_deadline: float) -> dict:
     """Let Python supervise every Cargo step and executable in each docs group."""
     plan = _run_rust_docs_helper(cargo, test_root, environment, workspace, "prepare",
                                  overall_deadline=overall_deadline)
     evidence_groups = []
-    for group in plan["groups"]:
+    planned_groups = plan.get("groups") if isinstance(plan, dict) else None
+    if not isinstance(planned_groups, list) or not planned_groups:
+        raise ValueError("Rust documentation helper returned no feature groups")
+    seen_labels: set[str] = set()
+    for group in planned_groups:
+        if not isinstance(group, dict) or not isinstance(group.get("programs"), list) or not group["programs"]:
+            raise ValueError("Rust documentation helper returned an empty or invalid example group")
         project = Path(group["project"])
         label = group["group"]
+        if label in seen_labels:
+            raise ValueError(f"Rust documentation helper returned duplicate feature group {label}")
+        seen_labels.add(label)
         run(cargo, ["generate-lockfile"], project, environment, workspace / f"lock-{label}.log",
             timeout_seconds=180, context=f"Cargo generate-lockfile group={label}", overall_deadline=overall_deadline)
         metadata_path = workspace / f"metadata-{label}.json"
@@ -265,20 +320,20 @@ def _check_documentation_examples(cargo: str, test_root: Path, environment: dict
         examples = []
         for program in group["programs"]:
             name = program["target"]
+            executable = artifacts.get(name)
+            if executable is None or not Path(executable).is_file():
+                raise ValueError(f"Cargo did not report an executable artifact for {name} in group {label}")
             if not program["run"]:
                 examples.append({"target": name, "status": "no_run"})
                 continue
-            executable = artifacts.get(name)
-            if executable is None:
-                raise ValueError(f"Cargo did not report an executable for {name} in group {label}")
             execution = workspace / f"execution-{label}-{name}"
             execution.mkdir()
             run(executable, [], execution, environment, workspace / f"example-{label}-{name}.log",
                 timeout_seconds=30, context=program["context"], overall_deadline=overall_deadline)
             examples.append({"target": name, "status": "passed"})
         evidence_groups.append({"group": label, "features": group["features"],
-                                "packages": packages, "examples": examples})
-    return evidence_groups
+                                "packages": packages, "programs": group["programs"], "examples": examples})
+    return {"expected_groups": [group["group"] for group in planned_groups], "groups": evidence_groups}
 
 
 def _documentation_inputs(root: Path) -> tuple[list[dict[str, str]], str]:
@@ -796,6 +851,8 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         raise ValueError(f"toolchain channel must be an exact three-part version, found {toolchain!r}")
     inputs = _collect_git_inputs(root)
     source_digest = _input_digest(inputs)
+    snapshot = workspace / "source-snapshot" / "rs-fs-registry"
+    _copy_git_inputs(root, snapshot, source_digest)
     environment = isolated_environment(workspace, toolchain)
     environment["REGISTRY_DOCS_SOURCE"] = mode
     if published_version is not None:
@@ -819,8 +876,6 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
             archive.write_bytes(response.read())
         input_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     else:
-        snapshot = workspace / "package-input" / "rs-fs-registry"
-        _copy_git_inputs(root, snapshot, source_digest)
         (snapshot / "Cargo.lock").unlink(missing_ok=True)
         manifest = tomllib.loads((snapshot / "Cargo.toml").read_text())
         package, version = manifest["package"]["name"], manifest["package"]["version"]
@@ -847,7 +902,7 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         timeout_seconds=180, context="Cargo generate-lockfile (archive)", overall_deadline=overall_deadline)
     test_root = extracted
     if mode == "published":
-        test_root = _prepare_published_test_harness(root, extracted, workspace)
+        test_root = _prepare_published_test_harness(snapshot, extracted, workspace)
     metadata = run(cargo, ["metadata", "--locked", "--format-version", "1"], extracted, environment,
                    workspace / "metadata.log", timeout_seconds=180, context="Cargo registry metadata",
                    overall_deadline=overall_deadline)
@@ -857,15 +912,16 @@ def _check(root: Path, workspace: Path, mode: str, published_version: str | None
         timeout_seconds=900, context="Cargo registry default doctests", overall_deadline=overall_deadline)
     run(cargo, ["test", "--locked", "--doc", "--all-features"], extracted, environment, workspace / "doctests-all-features.log",
         timeout_seconds=900, context="Cargo registry all-feature doctests", overall_deadline=overall_deadline)
-    groups = _check_documentation_examples(cargo, test_root, environment, workspace,
-                                           overall_deadline=overall_deadline)
+    documentation_evidence = _check_documentation_examples(
+        cargo, test_root, environment, workspace, overall_deadline=overall_deadline
+    )
     evidence = {
         "schema_version": 1,
         "source_mode": mode,
         "verified": True,
         "archive_sha256": archive_digest,
         "input_sha256": input_digest,
-        "groups": groups,
+        **documentation_evidence,
     }
     document_inputs, document_digest = _documentation_inputs(extracted)
     evidence["input_kind"] = "published_archive" if mode == "published" else "candidate_source_checkout"

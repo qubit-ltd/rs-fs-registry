@@ -28,6 +28,7 @@ use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemSpec;
+use qubit_redact::RedactionPolicy;
 use qubit_spi::AsyncServiceProvider;
 use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
@@ -39,6 +40,112 @@ use qubit_spi::error::ProviderFailure;
 
 use crate::support::common;
 use crate::support::provider_fixtures::ObservedProvider;
+
+/// Valid URI syntax with an invalid provider selector fails through both
+/// async URI and config routes before provider creation.
+#[test]
+fn test_async_registry_rejects_unselectable_uri_without_creation() {
+    let provider = ObservedProvider::new("archive");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("register provider");
+    registry
+        .set_default_selection(ProviderSelection::named("archive").expect("selection"))
+        .expect("set default");
+    let uri = ConnectionUri::parse("archive+:///report").expect("URI should parse");
+    let config = FileSystemConfig::new(uri.clone());
+
+    for error in [
+        common::block_on(registry.resolve_uri(uri.clone())).expect_err("URI selection is invalid"),
+        common::block_on(registry.resolve_config(config.clone())).expect_err("config selection is invalid"),
+    ] {
+        assert!(matches!(error, FileSystemRegistryError::Selection(_)));
+        assert_eq!(error.reason_code(), "invalid_selection");
+    }
+    assert!(calls.lock().expect("calls").is_empty());
+
+    let resolution = common::block_on(
+        registry.resolve_selected_config(ProviderSelection::named("archive").expect("selection"), config),
+    )
+    .expect("explicit valid selection should route");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "archive");
+    assert_eq!(calls.lock().expect("calls").len(), 1);
+}
+
+/// Async candidate attempts follow selection order even when registration
+/// order is reversed, and `OnAnyError` runs through the decisive candidate.
+#[test]
+fn test_async_registry_aggregates_failures_in_selection_order() {
+    let mut second = ObservedProvider::new("second");
+    second.fail = true;
+    let second_calls = Arc::clone(&second.calls);
+    let mut first = ObservedProvider::new("first");
+    first.fail = true;
+    let first_calls = Arc::clone(&first.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("selection")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI"));
+    let error = common::block_on(registry.resolve_selected_config(selection, config))
+        .expect_err("both selected providers fail");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected aggregate creation error");
+    };
+
+    assert_eq!(
+        registry
+            .descriptors()
+            .iter()
+            .map(|item| item.id().as_str())
+            .collect::<Vec<_>>(),
+        ["second", "first"],
+    );
+    assert_eq!(creation.attempts().len(), 2);
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|item| item.provider_id().as_str())
+            .collect::<Vec<_>>(),
+        ["first", "second"],
+    );
+    assert_eq!(creation.decisive_attempt().provider_id().as_str(), "second");
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|item| item.failure().kind())
+            .collect::<Vec<_>>(),
+        [qubit_spi::error::ProviderFailureKind::Unavailable; 2],
+    );
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert_eq!(second_calls.lock().expect("second calls").len(), 1);
+}
+
+/// A successful first async candidate stops selection-driven fallback.
+#[test]
+fn test_async_registry_success_stops_selection_driven_fallback() {
+    let second = ObservedProvider::new("second");
+    let second_calls = Arc::clone(&second.calls);
+    let first = ObservedProvider::new("first");
+    let first_calls = Arc::clone(&first.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("selection")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI"));
+
+    let resolution =
+        common::block_on(registry.resolve_selected_config(selection, config)).expect("first provider succeeds");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "first");
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
+}
 
 /// Shared asynchronous providers can be registered through their public
 /// trait-object contract.
@@ -153,6 +260,67 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
     let error = common::block_on(AsyncFileSystemRegistry::default().resolve_config(config))
         .expect_err("credential sources conflict");
     assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+}
+
+/// Embedded URI credentials remain routable without an external reference.
+#[test]
+fn test_async_registry_allows_embedded_credentials_without_reference() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"));
+
+    let _resolution = common::block_on(registry.resolve_config(config.clone())).expect("single source is allowed");
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
+
+/// Async credential routing honors explicit URI policy and fails closed when
+/// metadata inspection exceeds its configured input budget.
+#[test]
+fn test_async_registry_explicit_policy_and_inspection_budget_fail_closed() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+
+    let standard_username = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI"))
+        .with_credential(CredentialRef::DefaultChain);
+    let _resolution =
+        common::block_on(registry.resolve_config(standard_username.clone())).expect("username is not a secret");
+    calls.lock().expect("calls").clear();
+
+    let policy = RedactionPolicy::builder()
+        .fields(|fields| {
+            fields.secret_sensitive("tenant_payload");
+        })
+        .expect("policy should be valid")
+        .build()
+        .expect("policy should build");
+    let custom_secret = FileSystemConfig::new(
+        ConnectionUri::parse_with_policy("s3://bucket/key?tenant_payload=value", &policy).expect("URI"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+    let error = common::block_on(registry.resolve_config(custom_secret)).expect_err("custom secret conflicts");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert_eq!(error.reason_code(), "credential_source_conflict");
+
+    let limited = RedactionPolicy::builder()
+        .limits(|limits| {
+            limits.max_input_bytes(1);
+        })
+        .expect("policy should be valid")
+        .build()
+        .expect("policy should build");
+    let budget_exhausted =
+        FileSystemConfig::new(ConnectionUri::parse_with_policy("s3://bucket/key?region=cn", &limited).expect("URI"))
+            .with_credential(CredentialRef::DefaultChain);
+    let error = common::block_on(registry.resolve_config(budget_exhausted))
+        .expect_err("incomplete credential inspection is rejected");
+    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert_eq!(error.reason_code(), "credential_source_conflict");
+    assert!(calls.lock().expect("calls").is_empty());
 }
 
 /// An asynchronous default selection conflict takes precedence over resolving
@@ -352,6 +520,100 @@ fn test_resolve_default_config_snapshots_provider_before_default_changes() {
         common::block_on(future),
         Err(FileSystemRegistryError::Creation(_))
     ));
+}
+
+struct DescriptorObservedAsyncProvider {
+    id: &'static str,
+    descriptor_calls: Arc<AtomicUsize>,
+    on_descriptor: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+impl ProviderMetadata for DescriptorObservedAsyncProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.descriptor_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(callback) = &self.on_descriptor {
+            callback();
+        }
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider ID"))
+    }
+}
+
+impl AsyncServiceProvider<FileSystemSpec> for DescriptorObservedAsyncProvider {
+    fn create_configured<'a>(
+        &'a self,
+        _: &'a FileSystemConfig,
+    ) -> ProviderFuture<'a, Result<AsyncFileSystemResolution, ProviderFailure<FsError>>> {
+        Box::pin(async {
+            Err(ProviderFailure::unavailable(FsError::new(
+                FsErrorKind::ProviderUnavailable,
+                FsOperation::Provider,
+                "unavailable",
+            )))
+        })
+    }
+}
+
+fn descriptor_observed_async(id: &'static str) -> (DescriptorObservedAsyncProvider, Arc<AtomicUsize>) {
+    let descriptor_calls = Arc::new(AtomicUsize::new(0));
+    (
+        DescriptorObservedAsyncProvider {
+            id,
+            descriptor_calls: Arc::clone(&descriptor_calls),
+            on_descriptor: None,
+        },
+        descriptor_calls,
+    )
+}
+
+#[test]
+fn test_sealed_async_registry_owned_and_shared_registration_skip_descriptor() {
+    let registry = AsyncFileSystemRegistry::default();
+    registry.seal();
+    let (owned, owned_calls) = descriptor_observed_async("owned");
+    let error = registry.register(owned).expect_err("sealed registry");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(owned_calls.load(Ordering::SeqCst), 0);
+    let (shared, shared_calls) = descriptor_observed_async("shared");
+    let error = registry.register_shared(Arc::new(shared)).expect_err("sealed registry");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(shared_calls.load(Ordering::SeqCst), 0);
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn test_async_registry_sealing_during_descriptor_callback_blocks_insertion() {
+    let registry = AsyncFileSystemRegistry::default();
+    let callback_registry = registry.clone();
+    let descriptor_calls = Arc::new(AtomicUsize::new(0));
+    let provider = DescriptorObservedAsyncProvider {
+        id: "callback-seals",
+        descriptor_calls: Arc::clone(&descriptor_calls),
+        on_descriptor: Some(Arc::new(move || callback_registry.seal())),
+    };
+    let error = registry
+        .register(provider)
+        .expect_err("callback seals before insertion");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(descriptor_calls.load(Ordering::SeqCst), 1);
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn test_async_registry_successful_registration_calls_descriptor_once_and_resolves_snapshot() {
+    let registry = AsyncFileSystemRegistry::default();
+    let (provider, descriptor_calls) = descriptor_observed_async("snapshot-once");
+    registry.register(provider).expect("register");
+    assert_eq!(descriptor_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(registry.descriptors()[0].id().as_str(), "snapshot-once");
+    let result =
+        common::block_on(registry.resolve_uri(ConnectionUri::parse("snapshot-once:///resource").expect("URI")));
+    assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
+    assert_eq!(registry.descriptors()[0].id().as_str(), "snapshot-once");
+
+    let (shared, shared_descriptor_calls) = descriptor_observed_async("shared-once");
+    registry.register_shared(Arc::new(shared)).expect("register shared");
+    assert_eq!(shared_descriptor_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(registry.descriptors()[1].id().as_str(), "shared-once");
 }
 
 struct AsyncFailingProvider;

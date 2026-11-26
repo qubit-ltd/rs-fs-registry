@@ -194,6 +194,123 @@ fn test_documentation_commands_follow_manifest() {
     }
 }
 
+#[test]
+fn test_bilingual_release_and_credential_contracts() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let registry = input["package"]["version"].as_str().unwrap();
+    let fs_dependency = dependency(&input["dependencies"]["qubit-fs"]);
+    let fs = fs_dependency["version"].as_str().unwrap().trim_start_matches('^');
+    let local = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
+        .as_str()
+        .unwrap();
+    let candidate = registry.to_string();
+    let fs_candidate = fs.to_string();
+    let local_candidate = local.to_string();
+    let (sync_command, local_command, _) = installation_commands(root, &input);
+    let files = [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+    ];
+    for relative in files {
+        let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        assert!(source.contains(&candidate), "{relative}: candidate registry version");
+        assert!(source.contains(&fs_candidate), "{relative}: candidate core version");
+        assert!(
+            source.contains(&local_candidate),
+            "{relative}: candidate local provider version"
+        );
+        assert!(
+            source.contains("qubit-fs-registry@0.8"),
+            "{relative}: candidate command"
+        );
+        assert!(
+            source.contains("qubit-fs-local@0.12 --features registry"),
+            "{relative}: local command and feature"
+        );
+        assert!(
+            source.contains("registry 0.8.2"),
+            "{relative}: exact historical registry line"
+        );
+        assert!(source.contains("0.3.3"), "{relative}: historical core patch version");
+        assert!(source.contains("0.11.2"), "{relative}: historical local patch version");
+        assert!(
+            source.contains("--features registry"),
+            "{relative}: historical registry feature"
+        );
+        assert!(
+            source.contains("source workspace") || source.contains("source-workspace") || source.contains("源码工作区"),
+            "{relative}: source workflow"
+        );
+        assert!(
+            source.contains("qubit-fs-registry@0.8"),
+            "{relative}: candidate registry install command"
+        );
+        assert!(
+            source.contains("qubit-fs@0.4"),
+            "{relative}: candidate core requirement"
+        );
+        assert!(
+            source.contains(&local_command),
+            "{relative}: manifest-derived local candidate command"
+        );
+        assert!(
+            source.contains(&sync_command),
+            "{relative}: manifest-derived sync candidate command"
+        );
+        let changed = source.replace(&sync_command, "removed candidate command");
+        assert!(
+            std::panic::catch_unwind(|| assert!(changed.contains(&sync_command))).is_err(),
+            "{relative}: manifest-derived command assertion must fail after negative substitution"
+        );
+    }
+    for relative in [
+        "doc/registry_contract_migration.md",
+        "doc/registry_contract_migration.zh_CN.md",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        let normalized = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        if relative.ends_with(".zh_CN.md") {
+            assert!(
+                normalized.contains("`qubit-fs-local` 0.12"),
+                "{relative}: candidate local provider version"
+            );
+            assert!(
+                normalized.contains("核验候选依赖图与 local provider 0.12 的兼容性"),
+                "{relative}: candidate provider compatibility claim"
+            );
+        } else {
+            assert!(
+                normalized.contains("local provider 0.12"),
+                "{relative}: candidate local provider version"
+            );
+            assert!(
+                normalized.contains("verify `qubit-fs-local` 0.12 compatibility"),
+                "{relative}: candidate provider compatibility claim"
+            );
+        }
+        assert!(
+            source.contains("registry 0.8.2"),
+            "{relative}: historical registry line"
+        );
+        assert!(source.contains("0.3.3"), "{relative}: historical core patch version");
+        assert!(source.contains("0.11.2"), "{relative}: historical local patch version");
+        assert!(
+            source.contains("qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2"),
+            "{relative}: exact historical core and registry constraints"
+        );
+        assert!(
+            source.contains("qubit-fs-local@=0.11.2 --features registry"),
+            "{relative}: exact historical local constraint and feature"
+        );
+    }
+    let migration = std::fs::read_to_string(root.join("doc/registry_contract_migration.md")).unwrap();
+    assert!(migration.contains("FallbackPolicy::Never"));
+    assert!(migration.contains("first failure"));
+}
+
 /// Both migration guides keep every SPI release declaration aligned with Cargo.
 #[test]
 fn test_migration_spi_versions_follow_manifest() {
@@ -311,6 +428,33 @@ fn test_candidate_and_published_manifests_do_not_probe_sibling_sources() {
     );
     assert!(candidate["dependencies"]["qubit-fs"].get("path").is_none());
     assert!(candidate["dependencies"]["qubit-fs-registry"].get("path").is_some());
+    let candidate_local = documentation_manifest_for_source(
+        root,
+        &input,
+        false,
+        true,
+        false,
+        DependencySource::CandidateArchive,
+        Some("0.8.3"),
+    );
+    assert_eq!(
+        candidate_local["patch"]["crates-io"]["qubit-fs-registry"]["path"].as_str(),
+        candidate_local["dependencies"]["qubit-fs-registry"]["path"].as_str(),
+        "candidate local provider must be patched to the exact candidate archive path",
+    );
+    let sibling_local = documentation_manifest(root, &input, false, true, false);
+    assert_eq!(
+        PathBuf::from(
+            sibling_local["dependencies"]["qubit-fs-local"]["path"]
+                .as_str()
+                .unwrap()
+        ),
+        root.join("../rs-fs-local").canonicalize().unwrap(),
+    );
+    assert!(
+        sibling_local.get("patch").is_none(),
+        "sibling source graph needs no archive patch"
+    );
 
     let published = documentation_manifest_for_source(
         root,
@@ -499,6 +643,80 @@ fn test_graph_checks_registry_features() {
             local: true,
             ..GraphOptions::default()
         },
+    );
+    let candidate_root = tempfile::tempdir().expect("candidate archive");
+    let candidate_manifest = candidate_root.path().join("Cargo.toml");
+    std::fs::write(
+        &candidate_manifest,
+        "[package]\nname='qubit-fs-registry'\nversion='0.8.3'\n",
+    )
+    .unwrap();
+    let candidate_id = "qubit-fs-registry 0.8.3 (path+file:///candidate)";
+    let provider_id = "qubit-fs-local 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    let local_files_id = "qubit-local-files 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    let candidate_graph = serde_json::json!({
+        "packages": [
+            {"name":"qubit-fs-registry", "id":candidate_id, "manifest_path":candidate_manifest, "source":null},
+            {"name":"qubit-fs-local", "id":provider_id, "manifest_path":"/local/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"},
+            {"name":"qubit-local-files", "id":local_files_id, "manifest_path":"/local-files/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"},
+        ],
+        "resolve": {"nodes": [
+            {"id":candidate_id, "features":["inventory"], "dependencies":[]},
+            {"id":provider_id, "features":["registry"], "dependencies":[candidate_id, local_files_id]},
+            {"id":local_files_id, "features":[], "dependencies":[]},
+        ]}
+    });
+    let consumer = tempfile::tempdir().expect("candidate consumer");
+    let consumer_manifest = consumer.path().join("Cargo.toml");
+    std::fs::write(
+        &consumer_manifest,
+        "[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\n",
+    )
+    .unwrap();
+    let candidate_options = GraphOptions {
+        registry: true,
+        local: true,
+        example_manifest: Some(&consumer_manifest),
+        ..GraphOptions::default()
+    };
+    check_graph(
+        &candidate_graph,
+        "qubit-fs-registry",
+        candidate_root.path(),
+        candidate_options,
+    );
+    let mut wrong_archive = candidate_graph.clone();
+    wrong_archive["packages"][0]["manifest_path"] = serde_json::json!(root.join("Cargo.toml"));
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &wrong_archive,
+            "qubit-fs-registry",
+            candidate_root.path(),
+            candidate_options
+        ))
+        .is_err()
+    );
+    let mut wrong_edge = candidate_graph.clone();
+    wrong_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!(registry_id);
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &wrong_edge,
+            "qubit-fs-registry",
+            candidate_root.path(),
+            candidate_options
+        ))
+        .is_err()
+    );
+    let mut wrong_host = candidate_graph.clone();
+    wrong_host["packages"][1]["source"] = serde_json::json!("registry+https://example.invalid/index");
+    assert!(
+        std::panic::catch_unwind(|| check_graph(
+            &wrong_host,
+            "qubit-fs-registry",
+            candidate_root.path(),
+            candidate_options
+        ))
+        .is_err()
     );
     let mut missing_registry_edge = local.clone();
     missing_registry_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!("wrong-registry-id");

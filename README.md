@@ -23,15 +23,16 @@ These commands describe the current 0.8.3 source candidate. Since `qubit-fs ^0.4
 is not yet published, they cannot currently resolve from crates.io; the local
 provider examples in this checkout require the sibling source workspace.
 The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3
-and `qubit-fs-local` 0.11.2. Install that older line with:
+and `qubit-fs-local` 0.11.2. Install that historical combination with exact
+version constraints while preserving the provider's `registry` feature:
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
 The candidate source uses sibling versions `qubit-fs` 0.4.0,
-`qubit-fs-local` 0.11.2, `qubit-local-files` 0.6.0, and `qubit-operation`
+`qubit-fs-local` 0.12, `qubit-local-files` 0.6.0, and `qubit-operation`
 0.3.1. Verify local-provider compatibility against that graph when the missing
 `qubit-fs ^0.4` release becomes available; the older published combination does
 not establish candidate compatibility.
@@ -117,6 +118,14 @@ feature set continues to use explicit registration.
 embedded-secret/external-reference combinations fail before provider creation.
 `CredentialRef` identifies a source; never store secret values in it.
 
+Credential detection uses the redaction policy snapshot captured when the
+`ConnectionUri` is parsed together with the standard sensitivity floor. A
+username alone (for example, `s3://reports-user@bucket/key`) is allowed; invalid
+or incomplete inspection is treated conservatively as secret-bearing.
+Metadata keys are checked against the standard sensitivity policy, while values
+are retained and exposed only by explicit reads. Providers must return a
+credential-free canonical URI with clean location information.
+
 Resolution validates declared properties; it does not prove a file exists.
 Providers own URI decoding and storage operations. A canonical URI is scoped to
 the returned filesystem and is not a cross-provider identity or a sufficient cache key.
@@ -172,7 +181,7 @@ The published `0.8.2` line has a working documented combination with
 `qubit-fs` 0.3.3 and `qubit-fs-local` 0.11.2. The current 0.8.3 source candidate
 instead requires `qubit-fs ^0.4`, for which no matching crates.io release is
 available, so candidate mode currently fails during dependency resolution.
-`qubit-fs-local` 0.11.2 also needs to be checked against the candidate dependency
+`qubit-fs-local` 0.12 also needs to be checked against the candidate dependency
 graph when compatible `qubit-fs` 0.4 and registry candidate releases are
 available. Do not infer that compatibility from the older published
 combination. Keep the candidate gate in place and resolve the missing release

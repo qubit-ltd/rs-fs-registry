@@ -20,14 +20,15 @@ cargo add qubit-fs-local@0.12 --features registry
 
 这些命令描述当前 0.8.3 源码候选。由于 `qubit-fs ^0.4` 尚未发布，暂时无法从
 crates.io 解析；本工作区中的 local provider 示例需要 sibling 源码工作区。目前已发布且可用的
-组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 `qubit-fs-local` 0.11.2。安装这一旧版本线时使用：
+组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 `qubit-fs-local` 0.11.2。使用精确版本约束
+安装这一历史组合，并保留 provider 的 `registry` feature：
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
-候选源码组合使用 sibling 版本：`qubit-fs` 0.4.0、`qubit-fs-local` 0.11.2、
+候选源码组合使用 sibling 版本：`qubit-fs` 0.4.0、`qubit-fs-local` 0.12、
 `qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。待 `qubit-fs ^0.4` 发布后，
 还需针对该依赖图核验 local provider 兼容性；旧版已发布组合不能证明候选兼容。
 
@@ -105,6 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 使用注册表默认值。选择规则冲突，或内嵌秘密与外部凭据引用并存时，会在创建提供者之前报错。
 `CredentialRef` 仅标识凭据来源，不能存放秘密值。
 
+凭据检测使用 `ConnectionUri` 解析时捕获的脱敏策略快照，并始终应用标准敏感度下限。
+仅用户名的 userinfo（例如 `s3://reports-user@bucket/key`）可以使用；检测无效或无法完成时，
+会保守地按包含秘密处理。metadata 键按标准敏感度策略校验，值仍会保留且只能通过显式读取访问。
+Provider 必须返回不含凭据且位置信息干净的规范 URI。
+
 解析只校验声明的属性，不证明文件已存在。URI 解码和存储操作由提供者负责。
 规范 URI 的含义取决于返回的文件系统，不能单独作为跨提供者身份或缓存键。
 
@@ -153,7 +159,7 @@ python3 scripts/check_published_docs.py . --mode published
 已发布的 0.8.2 可与 `qubit-fs` 0.3.3 和 `qubit-fs-local` 0.11.2 配合使用。当前
 0.8.3 源码候选改为要求 `qubit-fs ^0.4`，但 crates.io 尚无匹配版本，因此 candidate
 模式目前会在依赖解析阶段失败。兼容的 `qubit-fs` 0.4 发布且候选依赖图就绪后，还须核验
-`qubit-fs-local` 0.11.2 与该候选依赖图的兼容性；不能从旧版已发布组合推定兼容。发布前必须
+`qubit-fs-local` 0.12 与该候选依赖图的兼容性；不能从旧版已发布组合推定兼容。发布前必须
 解决并验证这一缺失前置条件。
 
 只有在兼容的 `qubit-fs ^0.4` 和候选 provider 依赖关系均已核验后，才对准备发布的源码运行

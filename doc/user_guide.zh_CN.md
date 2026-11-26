@@ -4,7 +4,7 @@
 
 ## 手册目标与读者
 
-本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，说明当前 0.8.3 源码候选的同步与异步 resolution。候选源码组合为 `qubit-fs` 0.4.0、`qubit-fs-local` 0.11.2、`qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。候选要求 `qubit-fs ^0.4`，但该版本尚未发布。目前已发布且可用的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
+本手册面向需要将 `qubit-fs` 绑定到运行时注册文件系统 provider 的应用和 provider 作者，说明当前 0.8.3 源码候选的同步与异步 resolution。候选源码组合为 `qubit-fs` 0.4.0、`qubit-fs-local` 0.12、`qubit-local-files` 0.6.0 和 `qubit-operation` 0.3.1。候选要求 `qubit-fs ^0.4`，但该版本尚未发布。目前已发布且可用的组合是 registry 0.8.2、`qubit-fs` 0.3.3 和 local provider 0.11.2。
 
 ## 概念模型
 
@@ -49,8 +49,8 @@ cargo add qubit-fs-local@0.12 --features registry
 若要安装该旧版本线，请改用：
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
 不使用本地 provider 或链接期发现的同步示例只需默认 feature：
@@ -80,6 +80,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `AsyncFileSystemRegistry::from_inventory()`。应用仍须链接提交 provider 的 crate。
 发现的 provider 与显式注册一样接受身份校验；重复 selector 返回带提交来源的
 inventory build error。
+
+Inventory 的两个 reason code 是 `inventory_registration_conflict` 与
+`inventory_source_ambiguity`。两者都保留 typed submission source；仅注册冲突包含 typed
+mutation cause。来源歧义会在任何工厂运行前报告。生成的 `build_registry` 和
+`build_registry_with` 返回原始 SPI registry，不执行 filesystem facade 校验。`from_inventory`
+会将发现的 provider 接入 filesystem 保证；facade resolution 也会校验直接注册的 provider。
+公开的 `Entry` 仍是 provider submission 类型。
 
 本指南使用的本地 provider 启用 `qubit-fs-local` 的 `registry` feature 后也会启用
 inventory。链接的 provider crate 会提交一个工厂，创建使用
@@ -191,12 +198,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | 入口 | selection 规则 |
 | --- | --- |
 | `resolve_config` | config 的 selection；没有时从 URI scheme 构造 named selection。 |
-| `resolve_uri` | 从 URI scheme 构造 named selection。 |
+| `resolve_uri` | 从 URI scheme 构造 named selection；URI-only 输入不能提供外部 credential reference。 |
 | `resolve_selected_config` | 调用方提供的 selection；内嵌不同 selection 时出错。 |
 | `resolve_default_config` | 当前 registry 默认 selection；内嵌不同 selection 时出错。 |
 
 因此，`resolve_config` 不会回退到 registry 默认 selection。只有 selection 应由调用方而非 URI
 配置决定时，才使用 explicit/default 入口。
+
+`resolve_config` 和 `resolve_uri` 都可能返回结构化的 selection 无效、route 不可用或 provider
+创建失败。完整的 `resolve_config` 还可能在 URI 内嵌 secret 与外部 credential reference 同时存在时
+返回 credential-source conflict；`resolve_uri` 没有外部引用可供冲突。创建错误保留有序 provider
+尝试和 decisive failure。
+
+同步解析会在方法执行期间调用所选 provider 的 `create_configured`。异步解析在返回 future 前完成
+配置校验并捕获 provider 快照；只有 future 被轮询时才开始 `create_configured_async`。Inventory
+注册工厂已在 `from_inventory` 内运行，并在 registry 返回前完成；这与解析阶段的 service 创建调用
+是不同的时点。
 
 当 URI scheme 用作 named selection 时，会通过 `ProviderSelection::named` 校验。selector 必须是
 非空 ASCII token，首尾必须为字母或数字，正文只能包含小写 ASCII 字母、数字、`-`、`_`、`.` 和
@@ -218,6 +235,12 @@ credential 配置。此时返回 `FileSystemRegistryError::CredentialSourceConfl
 secret 与外部 `CredentialRef` 占用同一个 slot 时，稳定的 `reason_code()` 为
 `credential_source_conflict`。reason code 可安全写入结构化诊断，不包含 URI、reference
 或 secret 内容。
+
+URI 保存解析时捕获的脱敏策略快照；registry 检查还会始终应用标准敏感度下限。仅用户名的
+userinfo（例如 `s3://reports-user@bucket/key`）可与外部 reference 并存。组件无效或检测超过
+预算时，会保守地按包含 secret 处理。`NonSensitiveMetadata` 按标准敏感度策略校验键，但原样
+保留值。需要时通过显式读取访问值，并在写日志前应用输出策略。Provider 负责返回位置信息干净、
+不含凭据的规范 URI。
 
 启动配置完成后可调用 `seal()` 封存 registry。clone 共享封存状态；封存后，注册 provider
 和更新默认 selection 都会返回 `FileSystemRegistryError::RegistryMutation`，已有解析能力仍可
@@ -554,7 +577,7 @@ published 模式从 crates.io 下载最新 registry 归档，检查归档自带�
 目前已发布的 0.8.2 可与 `qubit-fs` 0.3.3、`qubit-fs-local` 0.11.2 配合。当前工作区
 0.8.3 候选要求 `qubit-fs ^0.4`，但 crates.io 尚无匹配发布版本，因此 candidate 模式会在
 依赖解析阶段失败。待兼容的 `qubit-fs` 版本发布后，还要核验候选依赖图与
-`qubit-fs-local` 0.11.2 的兼容性；旧版已发布组合不能证明这一点。先解决缺少的发布前提，
+`qubit-fs-local` 0.12 的兼容性；旧版已发布组合不能证明这一点。先解决缺少的发布前提，
 再继续候选验收。两种模式失败时都应保留诊断；published 模式通过不能替代候选验证。
 
 ## 延伸阅读

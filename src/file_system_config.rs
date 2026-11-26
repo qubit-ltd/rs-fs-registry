@@ -20,6 +20,21 @@ use crate::CredentialRef;
 
 /// Complete configuration passed to a filesystem provider factory.
 ///
+/// The [`ConnectionUri`] retains the redaction-policy snapshot captured when
+/// it was parsed. Credential validation inspects URI components against that
+/// snapshot and the immutable standard sensitivity floor. Username-only
+/// userinfo (for example, `s3://reports-user@bucket/key`) is not a secret and
+/// may accompany a [`CredentialRef`]. If inspection is invalid or cannot
+/// complete within its safety budget, the URI is conservatively treated as
+/// containing a secret.
+///
+/// Options and metadata use [`NonSensitiveMetadata`], whose keys are checked
+/// against the standard sensitivity policy when inserted. Values remain
+/// unchanged and are available only through explicit reads such as `get`;
+/// their presence in this wrapper does not make them safe to log. Providers
+/// must sanitize provider-controlled location details before returning a
+/// credential-free canonical URI.
+///
 /// # Examples
 ///
 /// ```
@@ -37,20 +52,27 @@ use crate::CredentialRef;
 #[derive(Clone, PartialEq)]
 #[must_use]
 pub struct FileSystemConfig {
-    /// Redacting connection URI that identifies the target filesystem.
+    /// Connection URI carrying the redaction-policy snapshot captured at parse
+    /// time; credential validation also applies the standard sensitivity floor.
     uri: ConnectionUri,
     /// Explicit provider selection, when configuration overrides URI routing.
     selection: Option<ProviderSelection>,
-    /// Validated non-sensitive options passed to the provider factory.
+    /// Options whose keys passed standard sensitivity validation; stored
+    /// values are retained and exposed only by explicit reads.
     options: NonSensitiveMetadata,
     /// External reference used to obtain credentials, when configured.
     credential: Option<CredentialRef>,
-    /// Validated non-sensitive metadata passed to the provider.
+    /// Metadata whose keys passed standard sensitivity validation; stored
+    /// values are retained and exposed only by explicit reads.
     metadata: NonSensitiveMetadata,
 }
 
 impl FileSystemConfig {
     /// Creates an empty configuration for `uri`.
+    ///
+    /// The URI keeps the policy snapshot captured by its parser. Registry
+    /// credential checks combine that snapshot with the standard sensitivity
+    /// floor and treat failed or incomplete inspection as secret-bearing.
     ///
     /// # Parameters
     ///
@@ -147,7 +169,11 @@ impl FileSystemConfig {
         self
     }
 
-    /// Replaces validated factory options.
+    /// Replaces factory options after their keys have passed sensitivity
+    /// checks.
+    ///
+    /// Values are retained unchanged. Reading them explicitly does not make
+    /// them safe to log or expose.
     ///
     /// # Parameters
     ///
@@ -177,7 +203,11 @@ impl FileSystemConfig {
         self
     }
 
-    /// Replaces validated provider metadata.
+    /// Replaces provider metadata after its keys have passed sensitivity
+    /// checks.
+    ///
+    /// Values are retained unchanged. Reading them explicitly does not make
+    /// them safe to log or expose.
     ///
     /// # Parameters
     ///

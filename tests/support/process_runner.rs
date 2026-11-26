@@ -25,6 +25,30 @@ const CLEANUP_GRACE: Duration = Duration::from_millis(100);
 const CLEANUP_WAIT: Duration = Duration::from_secs(5);
 const FINAL_REAP_WAIT: Duration = Duration::from_secs(1);
 
+#[derive(Debug)]
+pub(crate) enum PollObservation<T> {
+    Exited(T),
+    Running(Duration),
+    TimedOut,
+    Failed(io::Error),
+}
+
+pub(crate) fn poll_observation<T>(
+    result: io::Result<Option<T>>,
+    observed_at: Instant,
+    deadline: Instant,
+    poll_interval: Duration,
+) -> PollObservation<T> {
+    if observed_at >= deadline {
+        return PollObservation::TimedOut;
+    }
+    match result {
+        Ok(Some(status)) => PollObservation::Exited(status),
+        Ok(None) => PollObservation::Running(poll_interval.min(deadline.saturating_duration_since(observed_at))),
+        Err(error) => PollObservation::Failed(error),
+    }
+}
+
 enum ChildWait {
     Reaped,
     TimedOut,
@@ -105,10 +129,11 @@ pub fn run_with_timeout(command: &mut Command, timeout: Duration, context: &str)
     })?;
     let deadline = Instant::now() + timeout;
     let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => sleep(POLL_INTERVAL),
-            Ok(None) => {
+        let observation = poll_observation(child.try_wait(), Instant::now(), deadline, POLL_INTERVAL);
+        match observation {
+            PollObservation::Exited(status) => break status,
+            PollObservation::Running(wait) => sleep(wait),
+            PollObservation::TimedOut => {
                 let cleanup = terminate_tree(&mut child, &mut process_tree);
                 let mut stdout_reader = stdout.reopen()?;
                 let mut stderr_reader = stderr.reopen()?;
@@ -122,11 +147,18 @@ pub fn run_with_timeout(command: &mut Command, timeout: Duration, context: &str)
                     ),
                 ));
             }
-            Err(error) => {
+            PollObservation::Failed(error) => {
                 let cleanup = terminate_tree(&mut child, &mut process_tree);
+                let mut stdout_reader = stdout.reopen()?;
+                let mut stderr_reader = stderr.reopen()?;
+                let (out, err) = read_output(&mut stdout_reader, &mut stderr_reader)?;
                 return Err(io::Error::new(
                     error.kind(),
-                    format!("{context}: wait failed for {description}: {error}; cleanup: {cleanup}"),
+                    format!(
+                        "{context}: wait failed for {description}: {error}; cleanup: {cleanup}; stdout: {}; stderr: {}",
+                        String::from_utf8_lossy(&out),
+                        String::from_utf8_lossy(&err)
+                    ),
                 ));
             }
         }

@@ -332,13 +332,14 @@ fn test_creation_display_is_structured_without_leaf_message() {
     );
 }
 
-/// Conversion preserves the decisive failure and every typed leaf source.
+/// Selection order drives attempts independently of reversed catalog order,
+/// and the final selected failure is decisive after all attempts run.
 #[test]
 fn test_creation_conversion_preserves_decisive_failure_and_sources() {
     let registry = FileSystemRegistry::default();
     for (id, kind, source_message) in [
-        ("first", FsErrorKind::InvalidOptions, "first-source"),
         ("second", FsErrorKind::ProviderContractViolation, "second-source"),
+        ("first", FsErrorKind::InvalidOptions, "first-source"),
     ] {
         registry
             .register(ConversionFailureProvider {
@@ -352,6 +353,14 @@ fn test_creation_conversion_preserves_decisive_failure_and_sources() {
         .expect("fixture chain")
         .with_fallback_policy(FallbackPolicy::OnAnyError);
     let config = FileSystemConfig::new(ConnectionUri::parse("fixture:///resource").expect("fixture URI"));
+    assert_eq!(
+        registry
+            .descriptors()
+            .iter()
+            .map(|item| item.id().as_str())
+            .collect::<Vec<_>>(),
+        ["second", "first"],
+    );
     let error = registry
         .resolve_selected_config(&selection, &config)
         .expect_err("both fixtures fail");
@@ -367,6 +376,14 @@ fn test_creation_conversion_preserves_decisive_failure_and_sources() {
         panic!("creation source expected");
     };
     assert_eq!(creation.attempts().len(), 2);
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|item| item.provider_id().as_str())
+            .collect::<Vec<_>>(),
+        ["first", "second"],
+    );
     assert_eq!(creation.decisive_attempt().provider_id().as_str(), "second");
     let expected = [
         (

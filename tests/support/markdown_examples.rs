@@ -253,6 +253,22 @@ pub fn documentation_manifest_for_source(
         .as_table_mut()
         .expect("manifest table")
         .insert("dependencies".into(), Value::Table(dependencies));
+    if source == DependencySource::CandidateArchive && local {
+        let registry = Table::from_iter([(
+            "path".into(),
+            Value::String(
+                root.canonicalize()
+                    .expect("candidate archive exists")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        )]);
+        let patch = Table::from_iter([("qubit-fs-registry".into(), Value::Table(registry))]);
+        output.as_table_mut().expect("manifest table").insert(
+            "patch".into(),
+            Value::Table(Table::from_iter([("crates-io".into(), Value::Table(patch))])),
+        );
+    }
     output
 }
 
@@ -399,9 +415,14 @@ pub fn check_graph(metadata: &Json, package: &str, root: &Path, options: GraphOp
                 );
             } else {
                 assert!(
-                    entry["source"]
-                        .as_str()
-                        .is_some_and(|source| source.starts_with("registry+")),
+                    entry["source"].as_str().is_some_and(|source| {
+                        if options.registry {
+                            source == "registry+https://github.com/rust-lang/crates.io-index"
+                                || source == "registry+https://index.crates.io/"
+                        } else {
+                            source.starts_with("registry+")
+                        }
+                    }),
                     "source integration dependency must resolve from a registry or declared sibling: {name}"
                 );
             }

@@ -81,7 +81,9 @@ impl FileSystemRegistry {
     ///
     /// # Panics
     ///
-    /// Propagates a panic from a submitted factory or descriptor callback.
+    /// Propagates a panic from a submitted inventory factory or descriptor
+    /// callback. These run while this method builds the registry; provider
+    /// service creation remains deferred until resolution.
     #[cfg(feature = "inventory")]
     pub fn from_inventory() -> FileSystemRegistryResult<Self> {
         let providers = crate::sync_file_system_providers::build_registry_with(|provider| {
@@ -143,6 +145,9 @@ impl FileSystemRegistry {
     /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline]
     pub fn register_shared(&self, provider: Arc<FileSystemProvider>) -> FileSystemRegistryResult<()> {
+        if self.providers.is_sealed() {
+            return Err(qubit_spi::error::RegistryMutationError::Sealed.into());
+        }
         self.providers
             .register(ValidatingFileSystemProvider::new(provider))
             .map_err(Into::into)
@@ -237,6 +242,10 @@ impl FileSystemRegistry {
     /// scheme.
     ///
     /// This method never falls back to the registry default selection.
+    /// Before provider creation, it checks for both an embedded URI secret and
+    /// an external [`crate::CredentialRef`]. URI inspection uses the policy
+    /// snapshot captured at parse time plus the standard sensitivity floor;
+    /// incomplete or invalid inspection is conservatively treated as a secret.
     ///
     /// # Parameters
     ///
@@ -248,13 +257,14 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns a structured error when credential sources conflict, the
-    /// selection is invalid or unavailable, or provider creation fails.
+    /// Returns a structured error for credential-source or selection errors,
+    /// an unavailable route, or a provider creation failure. The creation
+    /// aggregate identifies attempted providers and the decisive failure.
     ///
     /// # Panics
     ///
-    /// Propagates a panic from a provider factory. A panic does not trigger
-    /// fallback to another provider.
+    /// Propagates a panic from the selected provider's `create_configured`
+    /// call. A panic does not trigger fallback to another provider.
     #[inline]
     pub fn resolve_config(&self, config: &FileSystemConfig) -> FileSystemRegistryResult<FileSystemResolution> {
         validate_credentials(config)?;
@@ -275,12 +285,16 @@ impl FileSystemRegistry {
     ///
     /// # Errors
     ///
-    /// Returns the same errors as [`Self::resolve_config`].
+    /// Returns selection errors, an unavailable route, or a provider creation
+    /// failure. The creation aggregate identifies attempted providers and the
+    /// decisive failure. Since this entry point receives only a URI, it
+    /// cannot supply an external credential reference.
     ///
     /// # Panics
     ///
-    /// Propagates provider factory panics as described for
-    /// [`Self::resolve_config`]; they do not trigger fallback.
+    /// Propagates a panic from the selected provider's `create_configured`
+    /// call. Inventory submission factories have already run during
+    /// `from_inventory`; resolution panics do not trigger fallback.
     #[inline]
     pub fn resolve_uri(&self, uri: &ConnectionUri) -> FileSystemRegistryResult<FileSystemResolution> {
         self.resolve_config(&FileSystemConfig::new(uri.clone()))

@@ -110,15 +110,23 @@ submission-source order. `async` and `inventory` together expose the matching
 `inventory`. All discovered providers pass through the same validating adapter
 as explicit registration, including facade provider-ID checks.
 
+The generated `build_registry` and `build_registry_with` functions expose the
+raw SPI registry and do not apply filesystem facade checks. Use
+`FileSystemRegistry::from_inventory()` (or its async counterpart) to adapt
+inventory providers with filesystem guarantees. Facade resolution likewise
+validates providers that were registered directly. The public `Entry` types
+remain available for provider submissions.
+
 Duplicate IDs or aliases fail construction with
 `FileSystemRegistryError::InventoryBuild`, retaining the SPI inventory error's
 submission source and mutation error. Conflicting registrations report
 `inventory_registration_conflict`; ambiguous submission sources report
-`inventory_source_ambiguity`. This ambiguity means multiple discovered entries
-share one declaration source; the build reports that source and runs no factories.
-A registration conflict means a submitted provider violates registry mutation
-rules, such as reusing a provider ID or alias; the error retains its source and
-mutation error.
+`inventory_source_ambiguity`. Both errors retain the typed inventory submission
+source. Ambiguity means multiple discovered entries share one declaration
+source; it has no mutation cause and is reported before any factory runs. A
+registration conflict means a submitted provider violates registry mutation
+rules, such as reusing a provider ID or alias; it retains both the source and
+typed mutation cause.
 Factories run during construction, so their registration-time validation and
 side effects happen before the registry is returned. Service creation remains
 deferred until resolution (and until polling for async providers).
@@ -178,10 +186,18 @@ local filesystems can have identical canonical URIs but different authority and 
 
 ## 10. Configuration and Credentials
 
-`FileSystemConfig` contains a redacting `ConnectionUri`, optional selection,
-validated non-sensitive options/metadata, and optional `CredentialRef`.
-Options must not contain tokens/passwords; providers use controlled connection input
-or external credential references instead.
+`FileSystemConfig` contains a `ConnectionUri` with its parse-time redaction-policy
+snapshot, optional selection, non-sensitive options/metadata, and optional
+`CredentialRef`. Credential checks combine that captured policy with the
+standard sensitivity floor. Username-only userinfo such as
+`s3://reports-user@bucket/key` is allowed. Invalid or incomplete URI inspection
+is conservatively treated as secret-bearing.
+
+`NonSensitiveMetadata` validates keys against the standard sensitivity policy;
+values are retained unchanged and can be accessed only through explicit reads.
+Their validated keys do not make values safe to log. Options must not contain
+tokens/passwords; providers use controlled connection input or external
+credential references instead.
 
 Any detected embedded secret plus an external reference returns
 `CredentialSourceConflict` before creation. There are no provider-specific exceptions.
@@ -191,7 +207,8 @@ Username-only userinfo is allowed with a reference because it contains no secret
 
 `CredentialRef` carries profile/environment/provider names, never actual secret values.
 Providers may temporarily access connection input through explicitly named controlled
-APIs, then return credential-free canonical URIs. Secrets cannot enter properties,
+APIs, then must return credential-free canonical URIs with clean location information.
+Secrets cannot enter properties,
 ordinary error formatting, or implicit serialization. Config clones retain protected
 values; normal formatting delegates to redacting components. `ConnectionUri` is not
 an ordinary cache key or a raw-string getter/deref abstraction.
@@ -203,7 +220,7 @@ an ordinary cache key or a raw-string getter/deref abstraction.
 | InvalidConfiguration | Static message | InvalidOptions |
 | CredentialSourceConflict | No source | InvalidOptions |
 | RegistryMutation | RegistryMutationError (`registry_sealed` or `registration_conflict`) | Conflict |
-| InventoryBuild | Inventory-gated `ProviderInventoryBuildError` retaining submission source and registration conflict | Conflict |
+| InventoryBuild | Inventory-gated `ProviderInventoryBuildError` retaining typed submission source; registration conflicts also retain a typed mutation cause | Conflict |
 | Selection | ProviderSelectionBuildError | InvalidUri |
 | SelectionConflict | Requested and configured selections | InvalidOptions |
 | Resolution | UnknownProviders, NoCandidates, EmptyRegistry, etc. | ProviderUnavailable |
@@ -216,8 +233,10 @@ All conversions use the provider operation and retain the typed registry source.
 
 `reason_code()` distinguishes inventory registration conflicts
 (`inventory_registration_conflict`) from ambiguous inventory submission sources
-(`inventory_source_ambiguity`). These codes identify the failure category only;
-the typed source retains the diagnostic details.
+(`inventory_source_ambiguity`). Both retain a typed inventory source; only a
+registration conflict has a mutation cause. Ambiguity is reported before any
+factory runs. These codes identify the failure category only; the typed source
+retains the diagnostic details.
 
 `Display`/`Debug` format bounded safe context with immutable `Redactor::standard()`.
 They do not read the application-default redactor, emit internal messages as raw text,

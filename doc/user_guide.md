@@ -5,7 +5,7 @@
 ## Purpose and Audience
 
 This guide is for application and provider authors who need to bind
-`qubit-fs` to runtime-registered filesystem providers. It documents the current 0.8.3 source candidate, including synchronous and asynchronous resolution. Its source dependency set is `qubit-fs` 0.4.0, `qubit-fs-local` 0.11.2, `qubit-local-files` 0.6.0, and `qubit-operation` 0.3.1. The candidate requires `qubit-fs ^0.4`, which is not yet published. The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3 and local provider 0.11.2.
+`qubit-fs` to runtime-registered filesystem providers. It documents the current 0.8.3 source candidate, including synchronous and asynchronous resolution. Its source dependency set is `qubit-fs` 0.4.0, `qubit-fs-local` 0.12, `qubit-local-files` 0.6.0, and `qubit-operation` 0.3.1. The candidate requires `qubit-fs ^0.4`, which is not yet published. The currently published compatible line is registry 0.8.2 with `qubit-fs` 0.3.3 and local provider 0.11.2.
 
 ## Conceptual Model
 
@@ -58,8 +58,8 @@ The currently published compatible line is registry 0.8.2, `qubit-fs` 0.3.3,
 and local provider 0.11.2. To install that older line instead, use:
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
 ```
 
 A synchronous example without a local provider or linked discovery uses only the default feature set:
@@ -92,6 +92,15 @@ requires both `async` and `inventory`, and uses
 submitting provider crate. Discovered providers receive the same identity
 validation as explicitly registered ones. Duplicate selectors return a typed
 inventory build error with the submission source.
+
+The two inventory failure codes are `inventory_registration_conflict` and
+`inventory_source_ambiguity`. Both retain the typed submission source; only a
+registration conflict carries a typed mutation cause. Ambiguity is detected
+before any factory runs. The generated `build_registry` and
+`build_registry_with` functions return raw SPI registries without filesystem
+facade checks. `from_inventory` adapts discovered providers to filesystem
+guarantees, and facade resolution validates directly registered providers.
+The public `Entry` remains the provider submission type.
 
 With the local provider used in this guide, the `registry` feature on
 `qubit-fs-local` enables inventory support. The linked provider crate submits a
@@ -211,13 +220,27 @@ returns the resolution.
 | Entry point | Selection rule |
 | --- | --- |
 | `resolve_config` | Configuration selection, otherwise a named selection from the URI scheme. |
-| `resolve_uri` | A named selection from the URI scheme. |
+| `resolve_uri` | A named selection from the URI scheme; the URI-only input cannot provide an external credential reference. |
 | `resolve_selected_config` | The supplied selection; a different embedded selection is an error. |
 | `resolve_default_config` | The current registry default; a different embedded selection is an error. |
 
 Therefore `resolve_config` does not fall back to the registry default. Use the
 explicit/default entry points only when the caller, rather than the URI
 configuration, owns selection.
+
+Both `resolve_config` and `resolve_uri` report invalid selection, unavailable
+routes, and provider creation failures through structured registry errors. A
+full `resolve_config` can also report a credential-source conflict when the
+configuration combines an embedded URI secret with an external credential
+reference. `resolve_uri` has no external reference to conflict with. Creation
+errors retain ordered provider attempts and the decisive failure.
+
+Synchronous resolution calls the selected provider's `create_configured` while
+the method runs. Async resolution validates configuration and captures the
+provider snapshot before returning its future; `create_configured_async` starts
+when that future is polled. Inventory registration factories have already run
+inside `from_inventory` before it returns the registry; those are distinct
+from the service-creation calls made during resolution.
 
 When a URI scheme is used as a named selection, it is passed through
 `ProviderSelection::named`. The selector must be a nonempty ASCII token with an
@@ -246,6 +269,16 @@ credential conflicts before provider creation. This returns
 `reason_code()` is `credential_source_conflict` when an embedded URI
 secret and an external `CredentialRef` occupy the same slot. The reason code is
 safe structured data and contains no URI, reference, or secret payload.
+
+The URI carries the redaction-policy snapshot captured when it was parsed;
+registry checks also apply the standard sensitivity floor. Username-only
+userinfo such as `s3://reports-user@bucket/key` is allowed beside a reference.
+An invalid component or inspection that exceeds its budget is conservatively
+treated as secret-bearing. `NonSensitiveMetadata` validates keys against the
+standard sensitivity policy, but retains values unchanged. Read values
+explicitly when needed and apply an output policy before logging them. Providers
+are responsible for returning canonical URIs with clean, credential-free
+location information.
 
 Register providers and choose the default during startup, then call `seal()`
 when configuration is complete. Clones share the sealed state. After sealing,
@@ -612,7 +645,7 @@ local path fallback. The latest published 0.8.2 line works with `qubit-fs`
 0.3.3 and `qubit-fs-local` 0.11.2. This checkout's 0.8.3 candidate requires
 `qubit-fs ^0.4`, which currently has no matching crates.io release, so
 candidate mode fails at dependency resolution. The candidate provider graph
-must also be checked against `qubit-fs-local` 0.11.2 after the compatible
+must also be checked against `qubit-fs-local` 0.12 after the compatible
 `qubit-fs` release exists; the older published combination does not prove that
 compatibility. Keep the candidate check as a release gate and resolve that
 missing prerequisite first. Preserve diagnostics for either mode; a published
