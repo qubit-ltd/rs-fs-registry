@@ -102,8 +102,10 @@ class PublishedDocsTests(unittest.TestCase):
                 json.dumps(document_inputs, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
             "groups": [{
-                "features": {"local": True},
-                "packages": [package("qubit-fs-local"), package("qubit-local-files")],
+                "group": "0-1-0",
+                "features": {"async": False, "local": True, "inventory": False},
+                "packages": [package("qubit-fs-registry"), package("qubit-fs-local"), package("qubit-local-files")],
+                "programs": [{"target": "example", "run": True}, {"target": "example-no-run", "run": False}],
                 "examples": [{"target": "example", "status": "passed"},
                              {"target": "example-no-run", "status": "no_run"}],
             }],
@@ -121,6 +123,30 @@ class PublishedDocsTests(unittest.TestCase):
         missing_local["groups"][0]["packages"].pop()
         with self.assertRaisesRegex(ValueError, "omits"):
             checker.validate_documentation_evidence(missing_local, "candidate", "archive-digest", "input-digest")
+        cases = []
+        empty = json.loads(json.dumps(evidence)); empty["groups"] = []
+        cases.append((empty, "groups"))
+        empty_examples = json.loads(json.dumps(evidence)); empty_examples["groups"][0]["examples"] = []
+        cases.append((empty_examples, "examples"))
+        missing_registry = json.loads(json.dumps(evidence)); missing_registry["groups"][0]["packages"].pop(0)
+        cases.append((missing_registry, "registry identity"))
+        missing_provider = json.loads(json.dumps(evidence)); missing_provider["groups"][0]["packages"].pop(1)
+        cases.append((missing_provider, "omits"))
+        duplicate_group = json.loads(json.dumps(evidence)); duplicate_group["groups"].append(json.loads(json.dumps(duplicate_group["groups"][0])))
+        cases.append((duplicate_group, "duplicate"))
+        duplicate_package = json.loads(json.dumps(evidence)); duplicate_package["groups"][0]["packages"].append(
+            json.loads(json.dumps(duplicate_package["groups"][0]["packages"][0])))
+        cases.append((duplicate_package, "duplicate package identity"))
+        wrong_target = json.loads(json.dumps(evidence)); wrong_target["groups"][0]["examples"][0]["target"] = "other"
+        cases.append((wrong_target, "target"))
+        wrong_features = json.loads(json.dumps(evidence)); wrong_features["groups"][0]["features"]["async"] = True
+        cases.append((wrong_features, "feature"))
+        missing_artifact = json.loads(json.dumps(evidence)); missing_artifact["groups"][0]["artifacts"] = ["example"]
+        empty_packages = json.loads(json.dumps(evidence)); empty_packages["groups"][0]["packages"] = []
+        cases.append((empty_packages, "empty package identity"))
+        for invalid, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                checker.validate_documentation_evidence(invalid, "candidate", "archive-digest", "input-digest")
 
     def test_registry_check_never_probes_siblings_or_falls_back(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -505,9 +531,11 @@ path = "inert metadata, not a Cargo source"
                 "features": {"async": False, "local": True, "inventory": False},
                 "programs": [{"target": "example_bin", "run": True, "context": "doc example group=0-1-0"}],
             }
+            executable = root / "example_bin"
+            executable.write_text("#!/bin/sh\nexit 0\n")
             deadline = time.monotonic() + 60
             with patch.object(checker, "_run_rust_docs_helper", side_effect=[{"groups": [group]}, [] ,
-                                                                             {"example_bin": "/tmp/example_bin"}]) as helper, \
+                                                                             {"example_bin": str(executable)}]) as helper, \
                     patch.object(checker, "run", return_value='{"packages":[],"resolve":{"nodes":[]}}') as run_command:
                 evidence = checker._check_documentation_examples(
                     "cargo", test_root, {}, root, overall_deadline=deadline,
@@ -517,6 +545,22 @@ path = "inert metadata, not a Cargo source"
             self.assertEqual([call.args[4] for call in helper.call_args_list], ["prepare", "validate", "artifacts"])
             self.assertGreaterEqual(run_command.call_count, 4)
             self.assertTrue(all(call.kwargs["overall_deadline"] == deadline for call in run_command.call_args_list))
+
+    def test_no_run_example_requires_cargo_executable_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            test_root = root / "package"
+            project = root / "examples" / "0-0-0"
+            project.mkdir(parents=True)
+            group = {"group": "0-0-0", "project": str(project),
+                     "features": {"async": False, "local": False, "inventory": False},
+                     "programs": [{"target": "no_run", "run": False, "context": "example"}]}
+            with patch.object(checker, "_run_rust_docs_helper", side_effect=[{"groups": [group]}, [], {}]), \
+                    patch.object(checker, "run", return_value="{}"):
+                with self.assertRaisesRegex(ValueError, "executable artifact"):
+                    checker._check_documentation_examples(
+                        "cargo", test_root, {}, root, overall_deadline=time.monotonic() + 60,
+                    )
 
     def test_run_timeout_stops_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:
