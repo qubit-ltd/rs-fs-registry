@@ -232,6 +232,14 @@ fn test_bilingual_release_and_credential_contracts() {
     }
     for relative in ["doc/registry_contract_migration.md", "doc/registry_contract_migration.zh_CN.md"] {
         let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        let normalized = source.split_whitespace().collect::<Vec<_>>().join(" ");
+        if relative.ends_with(".zh_CN.md") {
+            assert!(normalized.contains("`qubit-fs-local` 0.12"), "{relative}: candidate local provider version");
+            assert!(normalized.contains("核验候选依赖图与 local provider 0.12 的兼容性"), "{relative}: candidate provider compatibility claim");
+        } else {
+            assert!(normalized.contains("local provider 0.12"), "{relative}: candidate local provider version");
+            assert!(normalized.contains("verify `qubit-fs-local` 0.12 compatibility"), "{relative}: candidate provider compatibility claim");
+        }
         assert!(source.contains("registry 0.8.2"), "{relative}: historical registry line");
         assert!(source.contains("0.3.3"), "{relative}: historical core patch version");
         assert!(source.contains("0.11.2"), "{relative}: historical local patch version");

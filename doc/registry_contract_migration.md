@@ -102,8 +102,8 @@ and raw URI text are not concatenated or reinterpreted as selector input.
    archive and Markdown. `python3 scripts/check_published_docs.py . --mode published`
    instead checks the latest published archive and its own Markdown. Candidate
    mode currently fails because crates.io has no `qubit-fs ^0.4` release; after
-   one is available, verify the candidate provider graph rather than assuming
-   local provider 0.11.2 compatibility from the older published combination.
+   one is available, verify `qubit-fs-local` 0.12 compatibility with the candidate
+   graph rather than assuming it from the older published combination.
 
 Historical first-release context: before registry 0.8 was published, local
 provider 0.11 required `qubit-fs-registry ^0.8`, while the strict registry 0.8

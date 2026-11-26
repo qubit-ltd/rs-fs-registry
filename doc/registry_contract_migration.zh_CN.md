@@ -141,7 +141,7 @@ URI 的安全结构由 `Uri` 类型保证。
 `python3 scripts/check_published_docs.py .` 默认检查当前候选归档和它的 Markdown；
 `python3 scripts/check_published_docs.py . --mode published` 则检查 crates.io 最新已发布归档及其自带 Markdown。
 当前候选因 crates.io 尚无 `qubit-fs ^0.4` 而无法通过依赖解析。该版本发布后，还须核验候选依赖图与
-local provider 0.11.2 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
+local provider 0.12 的兼容性；旧的已发布组合不能证明兼容。候选检查通过后再考虑发布。
 
 历史首发背景：registry 0.8 尚未发布时，local provider 0.11 已依赖
 `qubit-fs-registry ^0.8`，而 registry 0.8 的严格检查又要求 local provider 0.11 已发布，
