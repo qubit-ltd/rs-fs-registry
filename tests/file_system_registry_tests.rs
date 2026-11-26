@@ -26,6 +26,7 @@ use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_fs_registry::FileSystemResolution;
 use qubit_fs_registry::FileSystemSpec;
+use qubit_redact::RedactionPolicy;
 use qubit_spi::FallbackPolicy;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
@@ -48,9 +49,12 @@ fn test_registry_register_shared_accepts_arc_trait_object() {
         .register_shared(provider)
         .expect("register shared trait object");
 
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("shared-trait-object:///resource").expect("URI should parse"));
-    let resolution = registry.resolve_config(&config).expect("resolve shared provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("shared-trait-object:///resource").expect("URI should parse"),
+    );
+    let resolution = registry
+        .resolve_config(&config)
+        .expect("resolve shared provider");
 
     assert_eq!(
         resolution.file_system().properties().info().provider_id(),
@@ -84,7 +88,9 @@ fn test_sealed_registry_preserves_successful_resolution() {
     let calls = Arc::clone(&provider.calls);
     registry.register(provider).expect("register provider");
     let selection = ProviderSelection::named("sealed-provider").expect("selection");
-    registry.set_default_selection(selection.clone()).expect("set default");
+    registry
+        .set_default_selection(selection.clone())
+        .expect("set default");
     let clone = registry.clone();
     let uri = ConnectionUri::parse("sealed-provider:///resource").expect("URI");
     let config = FileSystemConfig::new(uri.clone());
@@ -123,11 +129,19 @@ fn test_registry_seal_is_shared_and_rejects_mutation() {
     let registration = clone
         .register(FailingProvider::new("late"))
         .expect_err("sealed registry");
-    assert!(matches!(&registration, FileSystemRegistryError::RegistryMutation(_)));
+    assert!(matches!(
+        &registration,
+        FileSystemRegistryError::RegistryMutation(_)
+    ));
     assert_eq!(registration.reason_code(), "registry_sealed");
     let selection = ProviderSelection::named("late").expect("valid selection");
-    let mutation = clone.set_default_selection(selection).expect_err("sealed registry");
-    assert!(matches!(&mutation, FileSystemRegistryError::RegistryMutation(_)));
+    let mutation = clone
+        .set_default_selection(selection)
+        .expect_err("sealed registry");
+    assert!(matches!(
+        &mutation,
+        FileSystemRegistryError::RegistryMutation(_)
+    ));
     assert_eq!(mutation.reason_code(), "registry_sealed");
     assert_eq!(registry.len(), 0);
     assert_eq!(registry.default_selection(), original_selection);
@@ -136,26 +150,36 @@ fn test_registry_seal_is_shared_and_rejects_mutation() {
 /// Embedded URI secrets conflict with an external credential reference.
 #[test]
 fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution() {
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"))
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"),
+    )
             .with_credential(CredentialRef::Profile {
                 name: "integration".to_owned(),
             });
     let error = FileSystemRegistry::default()
         .resolve_config(&config)
         .expect_err("credential sources conflict");
-    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict
+    ));
 }
 
 /// A username without secret material may coexist with a credential reference.
 #[test]
 fn test_registry_allows_username_only_connection_uri_with_credential_reference() {
-    let config = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI should parse"))
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user@bucket/key").expect("URI should parse"),
+    )
         .with_credential(CredentialRef::DefaultChain);
-    let error = FileSystemRegistry::default()
+    let _resolution = registry
         .resolve_config(&config)
-        .expect_err("empty registry should fail after credential validation");
-    assert!(matches!(error, FileSystemRegistryError::Resolution(_)));
+        .expect("username is not a secret");
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
 }
 
 /// Provider creation failures preserve provider registration order.
@@ -168,13 +192,16 @@ fn test_registry_aggregates_provider_failures_in_registration_order() {
     registry
         .register(FailingProvider::new("second"))
         .expect("register second");
-    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI should parse"))
+    let config =
+        FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI should parse"))
         .with_selection(
             ProviderSelection::chain(["first", "second"])
                 .expect("selection should parse")
                 .with_fallback_policy(FallbackPolicy::OnAnyError),
         );
-    let error = registry.resolve_config(&config).expect_err("providers fail");
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("providers fail");
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected aggregate creation error")
     };
@@ -221,7 +248,9 @@ fn test_registry_inspection_and_resolution_entry_points() {
 #[test]
 fn test_registry_selected_config_rejects_conflicting_selection() {
     let registry = FileSystemRegistry::default();
-    let config = FileSystemConfig::new(ConnectionUri::parse("configured:///resource").expect("URI should parse"))
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
+    )
         .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
     let requested = ProviderSelection::named("requested").expect("selection should parse");
     assert!(matches!(
@@ -239,15 +268,18 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
         .register(FailingProvider::new("matching"))
         .expect("register provider");
     let selection = ProviderSelection::named("matching").expect("selection should parse");
-    let matching = FileSystemConfig::new(ConnectionUri::parse("matching:///resource").expect("URI should parse"))
+    let matching = FileSystemConfig::new(
+        ConnectionUri::parse("matching:///resource").expect("URI should parse"),
+    )
         .with_selection(selection.clone());
     assert!(matches!(
         registry.resolve_selected_config(&selection, &matching),
         Err(FileSystemRegistryError::Creation(_))
     ));
 
-    let query_credential =
-        FileSystemConfig::new(ConnectionUri::parse("s3://bucket/key?token=secret").expect("URI should parse"))
+    let query_credential = FileSystemConfig::new(
+        ConnectionUri::parse("s3://bucket/key?token=secret").expect("URI should parse"),
+    )
             .with_credential(CredentialRef::DefaultChain);
     assert!(matches!(
         FileSystemRegistry::default().resolve_config(&query_credential),
@@ -261,15 +293,22 @@ fn test_registry_validates_matching_selection_and_query_credentials() {
 fn test_registry_default_selection_conflict_precedes_default_resolution() {
     let registry = FileSystemRegistry::default();
     registry
-        .set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"))
+        .set_default_selection(
+            ProviderSelection::named("missing-default").expect("selection should parse"),
+        )
         .expect("unsealed registry should accept default selection");
-    let config = FileSystemConfig::new(ConnectionUri::parse("configured:///resource").expect("URI should parse"))
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("configured:///resource").expect("URI should parse"),
+    )
         .with_selection(ProviderSelection::named("configured").expect("selection should parse"));
 
     let error = registry
         .resolve_default_config(&config)
         .expect_err("the configured selection should conflict before resolution");
-    assert!(matches!(error, FileSystemRegistryError::SelectionConflict { .. }));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::SelectionConflict { .. }
+    ));
 }
 
 /// Credential validation takes precedence over resolving an unknown default.
@@ -277,17 +316,23 @@ fn test_registry_default_selection_conflict_precedes_default_resolution() {
 fn test_registry_default_config_validates_credentials_before_resolution() {
     let registry = FileSystemRegistry::default();
     registry
-        .set_default_selection(ProviderSelection::named("missing-default").expect("selection should parse"))
+        .set_default_selection(
+            ProviderSelection::named("missing-default").expect("selection should parse"),
+        )
         .expect("unsealed registry should accept default selection");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("configured://user:password@bucket/resource").expect("URI should parse"),
+        ConnectionUri::parse("configured://user:password@bucket/resource")
+            .expect("URI should parse"),
     )
     .with_credential(CredentialRef::DefaultChain);
 
     let error = registry
         .resolve_default_config(&config)
         .expect_err("credential conflict should precede default resolution");
-    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict
+    ));
 }
 
 /// Credential validation prevents provider creation from observing conflicting
@@ -297,17 +342,24 @@ fn test_registry_rejects_credential_conflict_before_provider_creation() {
     let create_calls = Arc::new(AtomicUsize::new(0));
     let registry = FileSystemRegistry::default();
     registry
-        .register(CountingProvider::new("credential-counter", Arc::clone(&create_calls)))
+        .register(CountingProvider::new(
+            "credential-counter",
+            Arc::clone(&create_calls),
+        ))
         .expect("register provider");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("credential-counter://user:password@bucket/resource").expect("URI should parse"),
+        ConnectionUri::parse("credential-counter://user:password@bucket/resource")
+            .expect("URI should parse"),
     )
     .with_credential(CredentialRef::DefaultChain);
 
     let error = registry
         .resolve_config(&config)
         .expect_err("credential conflict should fail before provider creation");
-    assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict
+    ));
     assert_eq!(create_calls.load(Ordering::SeqCst), 0);
 }
 
@@ -318,14 +370,111 @@ fn test_resolve_config_prefers_explicit_selection_over_uri_scheme() {
     registry
         .register(FailingProvider::new("selected-provider"))
         .expect("register provider");
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("unregistered-scheme:///resource").expect("URI should parse"))
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("unregistered-scheme:///resource").expect("URI should parse"),
+    )
             .with_selection(ProviderSelection::named("selected-provider").expect("selection should parse"));
 
     assert!(matches!(
         registry.resolve_config(&config),
         Err(FileSystemRegistryError::Creation(_))
     ));
+}
+
+struct DescriptorObservedProvider {
+    id: &'static str,
+    descriptor_calls: Arc<AtomicUsize>,
+    on_descriptor: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+impl ProviderMetadata for DescriptorObservedProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.descriptor_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(callback) = &self.on_descriptor {
+            callback();
+        }
+        ProviderDescriptor::new(ProviderId::new(self.id).expect("provider ID"))
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for DescriptorObservedProvider {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+        Err(ProviderFailure::unavailable(FsError::new(
+            FsErrorKind::ProviderUnavailable,
+            FsOperation::Provider,
+            "unavailable",
+        )))
+    }
+}
+
+fn descriptor_observed(id: &'static str) -> (DescriptorObservedProvider, Arc<AtomicUsize>) {
+    let descriptor_calls = Arc::new(AtomicUsize::new(0));
+    (
+        DescriptorObservedProvider {
+            id,
+            descriptor_calls: Arc::clone(&descriptor_calls),
+            on_descriptor: None,
+        },
+        descriptor_calls,
+    )
+}
+
+#[test]
+fn test_sealed_registry_owned_and_shared_registration_skip_descriptor() {
+    let registry = FileSystemRegistry::default();
+    registry.seal();
+    let (owned, owned_calls) = descriptor_observed("owned");
+    let error = registry.register(owned).expect_err("sealed registry");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(owned_calls.load(Ordering::SeqCst), 0);
+    let (shared, shared_calls) = descriptor_observed("shared");
+    let error = registry
+        .register_shared(Arc::new(shared))
+        .expect_err("sealed registry");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(shared_calls.load(Ordering::SeqCst), 0);
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn test_registry_sealing_during_descriptor_callback_blocks_insertion() {
+    let registry = FileSystemRegistry::default();
+    let callback_registry = registry.clone();
+    let descriptor_calls = Arc::new(AtomicUsize::new(0));
+    let provider = DescriptorObservedProvider {
+        id: "callback-seals",
+        descriptor_calls: Arc::clone(&descriptor_calls),
+        on_descriptor: Some(Arc::new(move || callback_registry.seal())),
+    };
+    let error = registry
+        .register(provider)
+        .expect_err("callback seals before insertion");
+    assert_eq!(error.reason_code(), "registry_sealed");
+    assert_eq!(descriptor_calls.load(Ordering::SeqCst), 1);
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn test_registry_successful_registration_calls_descriptor_once_and_resolves_snapshot() {
+    let registry = FileSystemRegistry::default();
+    let (provider, descriptor_calls) = descriptor_observed("snapshot-once");
+    registry.register(provider).expect("register");
+    assert_eq!(descriptor_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(registry.descriptors()[0].id().as_str(), "snapshot-once");
+    let result =
+        registry.resolve_uri(&ConnectionUri::parse("snapshot-once:///resource").expect("URI"));
+    assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
+    assert_eq!(registry.descriptors()[0].id().as_str(), "snapshot-once");
+
+    let (shared, shared_descriptor_calls) = descriptor_observed("shared-once");
+    registry
+        .register_shared(Arc::new(shared))
+        .expect("register shared");
+    assert_eq!(shared_descriptor_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(registry.descriptors()[1].id().as_str(), "shared-once");
 }
 
 pub(crate) struct FailingProvider {
@@ -350,7 +499,10 @@ impl ProviderMetadata for CountingProvider {
 }
 
 impl ServiceProvider<FileSystemSpec> for CountingProvider {
-    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         self.create_calls.fetch_add(1, Ordering::SeqCst);
         Err(ProviderFailure::unavailable(FsError::new(
             FsErrorKind::ProviderUnavailable,
@@ -380,7 +532,10 @@ impl ProviderMetadata for FailingProvider {
     }
 }
 impl ServiceProvider<FileSystemSpec> for FailingProvider {
-    fn create_configured(&self, _: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::unavailable(FsError::new(
             FsErrorKind::ProviderUnavailable,
             FsOperation::Provider,
@@ -408,7 +563,9 @@ fn test_default_snapshot_survives_changes_during_creation() {
             .expect("release signal");
     }));
     registry.register(first).expect("first");
-    registry.register(ObservedProvider::new("old")).expect("old");
+    registry
+        .register(ObservedProvider::new("old"))
+        .expect("old");
     registry
         .set_default_selection(ProviderSelection::chain(["first", "old"]).expect("chain"))
         .expect("unsealed registry should accept default selection");
@@ -428,7 +585,9 @@ fn test_default_snapshot_survives_changes_during_creation() {
     release_tx.send(()).expect("release");
     let old = worker.join().expect("worker").expect("old resolution");
     assert_eq!(old.file_system().properties().info().provider_id(), "old");
-    let new = registry.resolve_default_config(&config).expect("new resolution");
+    let new = registry
+        .resolve_default_config(&config)
+        .expect("new resolution");
     assert_eq!(new.file_system().properties().info().provider_id(), "new");
 }
 
@@ -442,9 +601,66 @@ fn test_username_and_reference_reach_provider_unchanged() {
     registry.register(provider).expect("provider");
     let config = FileSystemConfig::new(ConnectionUri::parse("s3://user@bucket/key").expect("URI"))
         .with_credential(CredentialRef::DefaultChain);
-    let resolution = registry.resolve_config(&config).expect("username does not conflict");
-    assert_eq!(resolution.file_system().properties().info().provider_id(), "s3");
+    let resolution = registry
+        .resolve_config(&config)
+        .expect("username does not conflict");
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "s3"
+    );
     assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
+
+/// Explicit URI policies classify provider-specific credentials before creation.
+#[test]
+fn test_registry_explicit_policy_and_inspection_budget_fail_closed() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    calls.lock().expect("calls").clear();
+
+    let policy = RedactionPolicy::builder()
+        .fields(|fields| {
+            fields.secret_sensitive("tenant_payload");
+        })
+        .expect("policy should be valid")
+        .build()
+        .expect("policy should build");
+    let custom_secret = FileSystemConfig::new(
+        ConnectionUri::parse_with_policy("s3://bucket/key?tenant_payload=value", &policy)
+            .expect("URI"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+    let error = registry
+        .resolve_config(&custom_secret)
+        .expect_err("custom secret conflicts");
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict
+    ));
+    assert_eq!(error.reason_code(), "credential_source_conflict");
+
+    let limited = RedactionPolicy::builder()
+        .limits(|limits| {
+            limits.max_input_bytes(1);
+        })
+        .expect("policy should be valid")
+        .build()
+        .expect("policy should build");
+    let budget_exhausted = FileSystemConfig::new(
+        ConnectionUri::parse_with_policy("s3://bucket/key?region=cn", &limited).expect("URI"),
+    )
+    .with_credential(CredentialRef::DefaultChain);
+    let error = registry
+        .resolve_config(&budget_exhausted)
+        .expect_err("incomplete credential inspection is rejected");
+    assert!(matches!(
+        error,
+        FileSystemRegistryError::CredentialSourceConflict
+    ));
+    assert_eq!(error.reason_code(), "credential_source_conflict");
+    assert!(calls.lock().expect("calls").is_empty());
 }
 
 /// Each entry point rejects credential conflicts without invoking a provider.
@@ -458,16 +674,22 @@ fn test_all_entry_points_validate_credentials_before_creation() {
     registry
         .set_default_selection(selection.clone())
         .expect("unsealed registry should accept default selection");
-    for uri in ["s3://user:password@bucket/key", "s3://bucket/key?token=secret"] {
-        let config =
-            FileSystemConfig::new(ConnectionUri::parse(uri).expect("URI")).with_credential(CredentialRef::DefaultChain);
+    for uri in [
+        "s3://user:password@bucket/key",
+        "s3://bucket/key?token=secret",
+    ] {
+        let config = FileSystemConfig::new(ConnectionUri::parse(uri).expect("URI"))
+            .with_credential(CredentialRef::DefaultChain);
         for result in [
             registry.resolve_config(&config),
             registry.resolve_selected_config(&selection, &config),
             registry.resolve_default_config(&config),
         ] {
             let error = result.expect_err("conflict");
-            assert!(matches!(error, FileSystemRegistryError::CredentialSourceConflict));
+            assert!(matches!(
+                error,
+                FileSystemRegistryError::CredentialSourceConflict
+            ));
             assert_eq!(error.reason_code(), "credential_source_conflict");
         }
     }
@@ -482,11 +704,15 @@ fn test_registration_binds_original_descriptor() {
     let descriptor = Arc::clone(&provider.descriptor);
     let registry = FileSystemRegistry::default();
     registry.register(provider).expect("register");
-    *descriptor.lock().expect("descriptor") = ProviderDescriptor::new(ProviderId::new("changed").expect("ID"));
+    *descriptor.lock().expect("descriptor") =
+        ProviderDescriptor::new(ProviderId::new("changed").expect("ID"));
     let resolution = registry
         .resolve_uri(&ConnectionUri::parse("original:///resource").expect("URI"))
         .expect("original identity");
-    assert_eq!(resolution.file_system().properties().info().provider_id(), "original");
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "original"
+    );
     assert_eq!(registry.provider_ids()[0].as_str(), "original");
 }
 
@@ -511,7 +737,10 @@ fn test_provider_panic_sync_does_not_fallback() {
     }))
     .expect_err("provider panic must propagate");
 
-    assert_eq!(payload.downcast_ref::<&str>().copied(), Some("provider-panic-marker"));
+    assert_eq!(
+        payload.downcast_ref::<&str>().copied(),
+        Some("provider-panic-marker")
+    );
     assert_eq!(first_calls.lock().expect("first calls").len(), 1);
     assert!(second_calls.lock().expect("second calls").is_empty());
 }
