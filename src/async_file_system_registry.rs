@@ -152,6 +152,9 @@ impl AsyncFileSystemRegistry {
     /// Propagates a panic raised while obtaining the provider descriptor.
     #[inline]
     pub fn register_shared(&self, provider: Arc<AsyncFileSystemProvider>) -> FileSystemRegistryResult<()> {
+        if self.providers.is_sealed() {
+            return Err(qubit_spi::error::RegistryMutationError::Sealed.into());
+        }
         self.providers
             .register(ValidatingAsyncFileSystemProvider::new(provider))
             .map_err(Into::into)
