@@ -154,8 +154,11 @@ pub fn run_with_timeout(command: &mut Command, timeout: Duration, context: &str)
                 let (out, err) = read_output(&mut stdout_reader, &mut stderr_reader)?;
                 return Err(io::Error::new(
                     error.kind(),
-                    format!("{context}: wait failed for {description}: {error}; cleanup: {cleanup}; stdout: {}; stderr: {}",
-                        String::from_utf8_lossy(&out), String::from_utf8_lossy(&err)),
+                    format!(
+                        "{context}: wait failed for {description}: {error}; cleanup: {cleanup}; stdout: {}; stderr: {}",
+                        String::from_utf8_lossy(&out),
+                        String::from_utf8_lossy(&err)
+                    ),
                 ));
             }
         }

@@ -169,7 +169,8 @@ impl FileSystemConfig {
         self
     }
 
-    /// Replaces factory options after their keys have passed sensitivity checks.
+    /// Replaces factory options after their keys have passed sensitivity
+    /// checks.
     ///
     /// Values are retained unchanged. Reading them explicitly does not make
     /// them safe to log or expose.
@@ -202,7 +203,8 @@ impl FileSystemConfig {
         self
     }
 
-    /// Replaces provider metadata after its keys have passed sensitivity checks.
+    /// Replaces provider metadata after its keys have passed sensitivity
+    /// checks.
     ///
     /// Values are retained unchanged. Reading them explicitly does not make
     /// them safe to log or expose.

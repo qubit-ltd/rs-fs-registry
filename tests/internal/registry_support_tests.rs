@@ -6,12 +6,13 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use crate::support::provider_fixtures::ObservedProvider;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_spi::ProviderSelection;
+
+use crate::support::provider_fixtures::ObservedProvider;
 
 /// A URI scheme can be valid URI syntax while failing the provider selector
 /// grammar; that failure does not fall back to the registry default.
@@ -28,9 +29,7 @@ fn test_valid_uri_scheme_outside_selector_grammar_does_not_use_default() {
     let config = FileSystemConfig::new(uri.clone());
 
     for error in [
-        registry
-            .resolve_uri(&uri)
-            .expect_err("URI selection is invalid"),
+        registry.resolve_uri(&uri).expect_err("URI selection is invalid"),
         registry
             .resolve_config(&config)
             .expect_err("config selection is invalid"),
@@ -41,14 +40,8 @@ fn test_valid_uri_scheme_outside_selector_grammar_does_not_use_default() {
     assert!(calls.lock().expect("calls").is_empty());
 
     let resolution = registry
-        .resolve_selected_config(
-            &ProviderSelection::named("archive").expect("selection"),
-            &config,
-        )
+        .resolve_selected_config(&ProviderSelection::named("archive").expect("selection"), &config)
         .expect("explicit valid selection should route");
-    assert_eq!(
-        resolution.file_system().properties().info().provider_id(),
-        "archive"
-    );
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "archive");
     assert_eq!(calls.lock().expect("calls").len(), 1);
 }

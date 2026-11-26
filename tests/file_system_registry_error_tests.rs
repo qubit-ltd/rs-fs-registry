@@ -338,11 +338,7 @@ fn test_creation_display_is_structured_without_leaf_message() {
 fn test_creation_conversion_preserves_decisive_failure_and_sources() {
     let registry = FileSystemRegistry::default();
     for (id, kind, source_message) in [
-        (
-            "second",
-            FsErrorKind::ProviderContractViolation,
-            "second-source",
-        ),
+        ("second", FsErrorKind::ProviderContractViolation, "second-source"),
         ("first", FsErrorKind::InvalidOptions, "first-source"),
     ] {
         registry
@@ -356,8 +352,7 @@ fn test_creation_conversion_preserves_decisive_failure_and_sources() {
     let selection = ProviderSelection::chain(["first", "second"])
         .expect("fixture chain")
         .with_fallback_policy(FallbackPolicy::OnAnyError);
-    let config =
-        FileSystemConfig::new(ConnectionUri::parse("fixture:///resource").expect("fixture URI"));
+    let config = FileSystemConfig::new(ConnectionUri::parse("fixture:///resource").expect("fixture URI"));
     assert_eq!(
         registry
             .descriptors()

@@ -24,10 +24,34 @@ const HEARTBEAT: &str = "QUBIT_PROCESS_RUNNER_HEARTBEAT";
 fn test_process_runner_observation_respects_deadline_and_remaining_wait() {
     let start = Instant::now();
     let deadline = start + Duration::from_millis(100);
-    assert!(matches!(poll_observation(Ok(Some(7)), start + Duration::from_millis(99), deadline, Duration::from_millis(10)), PollObservation::Exited(7)));
-    assert!(matches!(poll_observation(Ok(Option::<u8>::None), deadline, deadline, Duration::from_millis(10)), PollObservation::TimedOut));
-    assert!(matches!(poll_observation(Ok(Some(7)), deadline + Duration::from_nanos(1), deadline, Duration::from_millis(10)), PollObservation::TimedOut));
-    let PollObservation::Running(wait) = poll_observation(Ok(Option::<u8>::None), start + Duration::from_millis(95), deadline, Duration::from_millis(10)) else {
+    assert!(matches!(
+        poll_observation(
+            Ok(Some(7)),
+            start + Duration::from_millis(99),
+            deadline,
+            Duration::from_millis(10)
+        ),
+        PollObservation::Exited(7)
+    ));
+    assert!(matches!(
+        poll_observation(Ok(Option::<u8>::None), deadline, deadline, Duration::from_millis(10)),
+        PollObservation::TimedOut
+    ));
+    assert!(matches!(
+        poll_observation(
+            Ok(Some(7)),
+            deadline + Duration::from_nanos(1),
+            deadline,
+            Duration::from_millis(10)
+        ),
+        PollObservation::TimedOut
+    ));
+    let PollObservation::Running(wait) = poll_observation(
+        Ok(Option::<u8>::None),
+        start + Duration::from_millis(95),
+        deadline,
+        Duration::from_millis(10),
+    ) else {
         panic!("a poll before the deadline must continue");
     };
     assert_eq!(wait, Duration::from_millis(5));
@@ -121,8 +145,12 @@ fn test_process_runner_preserves_success_and_nonzero_output() {
 
 #[test]
 fn test_process_runner_rejects_success_observed_after_deadline() {
-    let near = run_with_timeout(&mut helper("near-deadline"), Duration::from_millis(100), "near deadline")
-        .expect("completion before deadline");
+    let near = run_with_timeout(
+        &mut helper("near-deadline"),
+        Duration::from_millis(100),
+        "near deadline",
+    )
+    .expect("completion before deadline");
     assert!(near.status.success());
     let late = run_with_timeout(&mut helper("late-success"), Duration::from_millis(100), "late success")
         .expect_err("completion after deadline must time out");
