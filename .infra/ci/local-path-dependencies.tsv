@@ -1,4 +1,9 @@
 # relative git root<TAB>repository URL<TAB>default branch
-../rs-fs	https://github.com/qubit-ltd/rs-fs.git	main
-../rs-fs-local	https://github.com/qubit-ltd/rs-fs-local.git	main
-../rs-local-files	https://github.com/qubit-ltd/rs-local-files.git	main
+../rs-fs	https://github.com/qubit-ltd/rs-fs.git	dev-starfish
+../rs-fs-local	https://github.com/qubit-ltd/rs-fs-local.git	dev-starfish
+../rs-local-files	https://github.com/qubit-ltd/rs-local-files.git	dev-starfish
+
+# Revisions captured by T1 metadata inspection for the assigned source inputs:
+# ../rs-fs c7ea1d035498aa633f4f3c04d90fdb5d4b73de97
+# ../rs-fs-local 3bf4275ed601e39fdbf8532f9d80d563d9cc7182
+# ../rs-local-files 80d4357b354f572e695f0c17ac1182f0aaad22c0

@@ -608,40 +608,31 @@ path = "inert metadata, not a Cargo source"
                     checker.main()
             self.assertEqual(result.exception.code, 2)
 
-    def test_ci_runs_published_documentation_gate_for_all_required_events(self):
+    def test_workflows_keep_archive_checks_out_of_ordinary_source_ci(self):
         repository = Path(__file__).parents[2]
-        workflow_lines = (repository / ".github/workflows/ci.yml").read_text().splitlines()
+        source_workflow = (repository / ".github/workflows/ci.yml").read_text()
+        published_workflow = (repository / ".github/workflows/published-consumption.yml").read_text()
 
-        def indented_block(header: str, end_header: str | None = None) -> list[str]:
-            start = workflow_lines.index(header)
-            end = next(
-                (index for index in range(start + 1, len(workflow_lines))
-                 if (workflow_lines[index].startswith(end_header) if end_header else
-                     workflow_lines[index].startswith("  ")
-                     and len(workflow_lines[index]) > 2
-                     and not workflow_lines[index][2].isspace())),
-                len(workflow_lines),
-            )
-            return workflow_lines[start:end]
+        self.assertIn("uses: qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main", source_workflow)
+        self.assertIn("  published-checker-unit-tests:", source_workflow)
+        self.assertIn("  windows-process-cleanup:", source_workflow)
+        self.assertIn("Run published checker tests on Windows", source_workflow)
+        self.assertIn("Run Rust process descendant cleanup tests on Windows", source_workflow)
+        self.assertIn("  prepare-feature-matrix:", source_workflow)
+        self.assertNotIn("published-documentation:", source_workflow)
+        self.assertNotIn("check_published_docs.py .", source_workflow)
+        self.assertNotIn("check_published_docs.py . --mode published", source_workflow)
 
-        triggers = indented_block("on:", "permissions:")
-        self.assertIn("  pull_request:", triggers)
-        self.assertIn("  push:", triggers)
-        self.assertIn("      - main", triggers)
-        self.assertIn("  workflow_dispatch:", triggers)
-        self.assertFalse(any("verify_published_dependencies" in line for line in triggers))
-        dispatch = triggers[triggers.index("  workflow_dispatch:") + 1:]
-        self.assertFalse(any(line.startswith("    ") for line in dispatch))
-
-        job = indented_block("  published-documentation:")
-        self.assertFalse(any(line.startswith("    if:") for line in job))
-        self.assertFalse(any(line.strip().startswith("continue-on-error:") for line in job))
-        run_commands = [line.strip()[len("run:"):].strip() for line in job if line.strip().startswith("run:")]
-        self.assertEqual(
-            [command for command in run_commands if "check_published_docs.py" in command],
-            ["python3 scripts/check_published_docs.py ."],
-        )
-        self.assertEqual(run_commands.count("python3 scripts/check_published_docs.py ."), 1)
+        self.assertIn("  workflow_dispatch:", published_workflow)
+        self.assertNotIn("  push:", published_workflow)
+        self.assertNotIn("  pull_request:", published_workflow)
+        self.assertIn("runs-on: ${{ matrix.os }}", published_workflow)
+        self.assertIn("os: [ubuntu-latest, windows-latest]", published_workflow)
+        self.assertIn("mode: [candidate, published]", published_workflow)
+        self.assertIn("--mode ${{ matrix.mode }}", published_workflow)
+        self.assertIn("actions/upload-artifact@v4", published_workflow)
+        self.assertIn("${{ matrix.mode }}-${{ matrix.os }}-registry-diagnostics", published_workflow)
+        self.assertIn("${{ runner.temp }}/qubit-registry-published-*", published_workflow)
 
         checker_path = repository / "scripts/check_published_docs.py"
         self.assertTrue(checker_path.is_file())

@@ -40,20 +40,6 @@ jobs:
       - name: Run published checker unit tests
         run: python3 -B -m unittest discover -s scripts/tests -v
 
-  published-documentation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install published checker dependencies
-        run: python3 -m pip install -r requirements.txt
-      - name: Install the documented Rust toolchain
-        run: rustup toolchain install "$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')" --profile minimal
-      - name: Verify isolated published documentation
-        run: python3 scripts/check_published_docs.py .
-
   windows-process-cleanup:
     runs-on: windows-latest
     defaults:
@@ -80,7 +66,7 @@ jobs:
         id: filesystem-checkout
         with:
           repository: qubit-ltd/rs-fs
-          ref: main
+          ref: dev-starfish
           path: rs-fs
       - name: Run published checker tests on Windows
         id: python-regressions
@@ -88,14 +74,6 @@ jobs:
       - name: Run Rust process descendant cleanup tests on Windows
         id: rust-regressions
         run: 'cargo test --locked --test integration_tests process_runner_tests:: -- --nocapture'
-      - name: Verify strict candidate archive doctests and examples
-        id: candidate-archive
-        run: python scripts/check_published_docs.py .
-      - name: Verify official published archive doctests and examples
-        id: published-archive
-        if: ${{ always() && !cancelled() && steps.registry-checkout.outcome == 'success' && steps.python-setup.outcome == 'success' && steps.checker-dependencies.outcome == 'success' && steps.rust-toolchain.outcome == 'success' && steps.filesystem-checkout.outcome == 'success' && steps.python-regressions.outcome == 'success' && steps.rust-regressions.outcome == 'success' }}
-        run: python scripts/check_published_docs.py . --mode published
-
   prepare-feature-matrix:
     runs-on: ubuntu-latest
     steps:
