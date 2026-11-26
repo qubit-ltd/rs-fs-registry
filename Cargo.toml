@@ -17,6 +17,7 @@ include = [
   "/LICENSE",
   "/README.md",
   "/README.zh_CN.md",
+  "/requirements.txt",
   "/rust-toolchain.toml",
   "/doc/async_resolution_example.md",
   "/doc/async_resolution_example.zh_CN.md",
