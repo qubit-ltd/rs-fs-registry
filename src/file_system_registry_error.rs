@@ -74,8 +74,12 @@ pub enum FileSystemRegistryError {
         /// Typed SPI error describing the rejected registration or mutation.
         RegistryMutationError,
     ),
-    /// A linked provider could not be registered while building an inventory
-    /// registry.
+    /// Inventory providers could not be assembled into a filesystem registry.
+    ///
+    /// This retains the typed inventory submission source for both
+    /// `inventory_registration_conflict` and `inventory_source_ambiguity`.
+    /// A registration conflict also retains its typed mutation cause; source
+    /// ambiguity has no mutation cause and is reported before any factory runs.
     #[cfg(feature = "inventory")]
     InventoryBuild(
         /// Typed SPI error retaining the submission source and registration
@@ -114,7 +118,8 @@ impl FileSystemRegistryError {
     ///
     /// # Returns
     ///
-    /// A static identifier such as `credential_source_conflict` or
+    /// A static identifier such as `credential_source_conflict`,
+    /// `inventory_registration_conflict`, `inventory_source_ambiguity`, or
     /// `provider_creation_failed`.
     #[must_use]
     pub const fn reason_code(&self) -> &'static str {

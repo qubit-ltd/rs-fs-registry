@@ -110,6 +110,8 @@ pub use file_system_registry_error::FileSystemRegistryResult;
 pub use file_system_resolution::FileSystemResolution;
 pub use file_system_spec::FileSystemSpec;
 #[cfg(all(feature = "inventory", feature = "async"))]
+#[doc = "Async SPI provider inventory. Its `build_registry` and `build_registry_with` functions return raw SPI registries; use `AsyncFileSystemRegistry::from_inventory` or facade resolution for filesystem guarantees."]
 pub use inventory::async_file_system_providers;
 #[cfg(feature = "inventory")]
+#[doc = "Sync SPI provider inventory. Its `build_registry` and `build_registry_with` functions return raw SPI registries; use `FileSystemRegistry::from_inventory` or facade resolution for filesystem guarantees."]
 pub use inventory::sync_file_system_providers;

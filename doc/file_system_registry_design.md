@@ -110,15 +110,23 @@ submission-source order. `async` and `inventory` together expose the matching
 `inventory`. All discovered providers pass through the same validating adapter
 as explicit registration, including facade provider-ID checks.
 
+The generated `build_registry` and `build_registry_with` functions expose the
+raw SPI registry and do not apply filesystem facade checks. Use
+`FileSystemRegistry::from_inventory()` (or its async counterpart) to adapt
+inventory providers with filesystem guarantees. Facade resolution likewise
+validates providers that were registered directly. The public `Entry` types
+remain available for provider submissions.
+
 Duplicate IDs or aliases fail construction with
 `FileSystemRegistryError::InventoryBuild`, retaining the SPI inventory error's
 submission source and mutation error. Conflicting registrations report
 `inventory_registration_conflict`; ambiguous submission sources report
-`inventory_source_ambiguity`. This ambiguity means multiple discovered entries
-share one declaration source; the build reports that source and runs no factories.
-A registration conflict means a submitted provider violates registry mutation
-rules, such as reusing a provider ID or alias; the error retains its source and
-mutation error.
+`inventory_source_ambiguity`. Both errors retain the typed inventory submission
+source. Ambiguity means multiple discovered entries share one declaration
+source; it has no mutation cause and is reported before any factory runs. A
+registration conflict means a submitted provider violates registry mutation
+rules, such as reusing a provider ID or alias; it retains both the source and
+typed mutation cause.
 Factories run during construction, so their registration-time validation and
 side effects happen before the registry is returned. Service creation remains
 deferred until resolution (and until polling for async providers).
@@ -212,7 +220,7 @@ an ordinary cache key or a raw-string getter/deref abstraction.
 | InvalidConfiguration | Static message | InvalidOptions |
 | CredentialSourceConflict | No source | InvalidOptions |
 | RegistryMutation | RegistryMutationError (`registry_sealed` or `registration_conflict`) | Conflict |
-| InventoryBuild | Inventory-gated `ProviderInventoryBuildError` retaining submission source and registration conflict | Conflict |
+| InventoryBuild | Inventory-gated `ProviderInventoryBuildError` retaining typed submission source; registration conflicts also retain a typed mutation cause | Conflict |
 | Selection | ProviderSelectionBuildError | InvalidUri |
 | SelectionConflict | Requested and configured selections | InvalidOptions |
 | Resolution | UnknownProviders, NoCandidates, EmptyRegistry, etc. | ProviderUnavailable |
@@ -225,8 +233,10 @@ All conversions use the provider operation and retain the typed registry source.
 
 `reason_code()` distinguishes inventory registration conflicts
 (`inventory_registration_conflict`) from ambiguous inventory submission sources
-(`inventory_source_ambiguity`). These codes identify the failure category only;
-the typed source retains the diagnostic details.
+(`inventory_source_ambiguity`). Both retain a typed inventory source; only a
+registration conflict has a mutation cause. Ambiguity is reported before any
+factory runs. These codes identify the failure category only; the typed source
+retains the diagnostic details.
 
 `Display`/`Debug` format bounded safe context with immutable `Redactor::standard()`.
 They do not read the application-default redactor, emit internal messages as raw text,
