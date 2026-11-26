@@ -93,6 +93,15 @@ submitting provider crate. Discovered providers receive the same identity
 validation as explicitly registered ones. Duplicate selectors return a typed
 inventory build error with the submission source.
 
+The two inventory failure codes are `inventory_registration_conflict` and
+`inventory_source_ambiguity`. Both retain the typed submission source; only a
+registration conflict carries a typed mutation cause. Ambiguity is detected
+before any factory runs. The generated `build_registry` and
+`build_registry_with` functions return raw SPI registries without filesystem
+facade checks. `from_inventory` adapts discovered providers to filesystem
+guarantees, and facade resolution validates directly registered providers.
+The public `Entry` remains the provider submission type.
+
 With the local provider used in this guide, the `registry` feature on
 `qubit-fs-local` enables inventory support. The linked provider crate submits a
 factory for a host-wide provider using `LocalResourcePolicy::standard()`; it
@@ -211,13 +220,27 @@ returns the resolution.
 | Entry point | Selection rule |
 | --- | --- |
 | `resolve_config` | Configuration selection, otherwise a named selection from the URI scheme. |
-| `resolve_uri` | A named selection from the URI scheme. |
+| `resolve_uri` | A named selection from the URI scheme; the URI-only input cannot provide an external credential reference. |
 | `resolve_selected_config` | The supplied selection; a different embedded selection is an error. |
 | `resolve_default_config` | The current registry default; a different embedded selection is an error. |
 
 Therefore `resolve_config` does not fall back to the registry default. Use the
 explicit/default entry points only when the caller, rather than the URI
 configuration, owns selection.
+
+Both `resolve_config` and `resolve_uri` report invalid selection, unavailable
+routes, and provider creation failures through structured registry errors. A
+full `resolve_config` can also report a credential-source conflict when the
+configuration combines an embedded URI secret with an external credential
+reference. `resolve_uri` has no external reference to conflict with. Creation
+errors retain ordered provider attempts and the decisive failure.
+
+Synchronous resolution calls the selected provider's `create_configured` while
+the method runs. Async resolution validates configuration and captures the
+provider snapshot before returning its future; `create_configured_async` starts
+when that future is polled. Inventory registration factories have already run
+inside `from_inventory` before it returns the registry; those are distinct
+from the service-creation calls made during resolution.
 
 When a URI scheme is used as a named selection, it is passed through
 `ProviderSelection::named`. The selector must be a nonempty ASCII token with an

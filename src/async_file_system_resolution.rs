@@ -23,16 +23,15 @@ use crate::internal::validate_resolution;
 /// # Examples
 ///
 /// ```
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # #[cfg(feature = "async")]
-/// # {
+/// use qubit_fs::AsyncFileSystem;
+/// use qubit_fs::Path;
+/// use qubit_fs::path::Uri;
 /// use qubit_fs_registry::AsyncFileSystemResolution;
-/// # use qubit_fs::Path;
-/// # use qubit_fs::path::Uri;
+///
 /// # mod fixture {
 /// #     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/resolution_doctest.rs"));
 /// # }
-/// # let filesystem = fixture::async_file_system()?;
+/// fn resolve_example(filesystem: AsyncFileSystem) -> Result<(), Box<dyn std::error::Error>> {
 /// let resolution = AsyncFileSystemResolution::try_new(
 ///     filesystem, Path::parse("/report.csv")?, Uri::parse("file:///report.csv")?,
 /// )?;
@@ -42,7 +41,10 @@ use crate::internal::validate_resolution;
 /// assert_eq!(filesystem.properties().info().provider_id(), "example");
 /// assert_eq!(path.as_str(), "/report.csv");
 /// assert_eq!(uri.as_str(), "file:///report.csv");
+/// # Ok(())
 /// # }
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # resolve_example(fixture::async_file_system()?)?;
 /// # Ok(())
 /// # }
 /// ```

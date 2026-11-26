@@ -204,11 +204,17 @@ provider ID。重复 ID 或别名使构建返回
 `FileSystemRegistryError::InventoryBuild`，保留提交来源及 SPI 注册错误，且不会
 暴露部分构建的注册表。注册冲突的 reason code 为
 `inventory_registration_conflict`，提交来源歧义为
-`inventory_source_ambiguity`。多个发现条目声明自同一来源时属于歧义错误；错误会指出该来源，
-且不会运行任何工厂。注册冲突则表示提交的 provider 违反注册表修改规则，例如 provider ID
-或别名重复；错误保留提交来源与 mutation error。构建时运行
+`inventory_source_ambiguity`。两种错误都会保留 typed inventory source；仅注册冲突带有
+typed mutation cause。多个发现条目声明自同一来源时属于歧义错误；它没有 mutation cause，且在
+运行任何工厂前报告。注册冲突则表示提交的 provider 违反注册表修改规则，例如 provider ID
+或别名重复；错误同时保留提交来源与 typed mutation cause。构建时运行
 provider 工厂，因此正常注册阶段的校验与副作用发生在注册表返回前；实际 service 创建仍发生在
 resolution 阶段，异步情况下发生于 future 被轮询时。
+
+生成模块中的 `build_registry` 和 `build_registry_with` 返回原始 SPI registry，不执行
+filesystem facade 校验。使用 `FileSystemRegistry::from_inventory()`（或异步对应入口）才能将
+发现的 provider 接入 filesystem 保证；facade resolution 也会校验直接注册的 provider。公开的
+`Entry` 类型仍供 provider submission 使用。
 
 ## 8. Selection 与 fallback
 
@@ -406,7 +412,8 @@ Operation SPI 的 `ProviderContractViolation` 不由 registry 改写为 registry
 时使用 `Conflict`，并保留原始错误作为 source。
 
 `reason_code()` 将 inventory 注册冲突（`inventory_registration_conflict`）与提交来源
-歧义（`inventory_source_ambiguity`）区分开。reason code 只标识失败类别；详细诊断仍由
+歧义（`inventory_source_ambiguity`）区分开。两者都保留 typed inventory source，但只有注册冲突
+带 mutation cause；来源歧义在任何工厂运行前报告。reason code 只标识失败类别，详细诊断由
 typed source 保留。
 
 ## 12. 与 `qubit-spi` 的边界
