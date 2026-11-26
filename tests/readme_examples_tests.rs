@@ -311,6 +311,26 @@ fn test_candidate_and_published_manifests_do_not_probe_sibling_sources() {
     );
     assert!(candidate["dependencies"]["qubit-fs"].get("path").is_none());
     assert!(candidate["dependencies"]["qubit-fs-registry"].get("path").is_some());
+    let candidate_local = documentation_manifest_for_source(
+        root,
+        &input,
+        false,
+        true,
+        false,
+        DependencySource::CandidateArchive,
+        Some("0.8.3"),
+    );
+    assert_eq!(
+        candidate_local["patch"]["crates-io"]["qubit-fs-registry"]["path"].as_str(),
+        candidate_local["dependencies"]["qubit-fs-registry"]["path"].as_str(),
+        "candidate local provider must be patched to the exact candidate archive path",
+    );
+    let sibling_local = documentation_manifest(root, &input, false, true, false);
+    assert_eq!(
+        PathBuf::from(sibling_local["dependencies"]["qubit-fs-local"]["path"].as_str().unwrap()),
+        root.join("../rs-fs-local").canonicalize().unwrap(),
+    );
+    assert!(sibling_local.get("patch").is_none(), "sibling source graph needs no archive patch");
 
     let published = documentation_manifest_for_source(
         root,
@@ -500,6 +520,38 @@ fn test_graph_checks_registry_features() {
             ..GraphOptions::default()
         },
     );
+    let candidate_root = tempfile::tempdir().expect("candidate archive");
+    let candidate_manifest = candidate_root.path().join("Cargo.toml");
+    std::fs::write(&candidate_manifest, "[package]\nname='qubit-fs-registry'\nversion='0.8.3'\n").unwrap();
+    let candidate_id = "qubit-fs-registry 0.8.3 (path+file:///candidate)";
+    let provider_id = "qubit-fs-local 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    let local_files_id = "qubit-local-files 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)";
+    let candidate_graph = serde_json::json!({
+        "packages": [
+            {"name":"qubit-fs-registry", "id":candidate_id, "manifest_path":candidate_manifest, "source":null},
+            {"name":"qubit-fs-local", "id":provider_id, "manifest_path":"/local/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"},
+            {"name":"qubit-local-files", "id":local_files_id, "manifest_path":"/local-files/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"},
+        ],
+        "resolve": {"nodes": [
+            {"id":candidate_id, "features":["inventory"], "dependencies":[]},
+            {"id":provider_id, "features":["registry"], "dependencies":[candidate_id, local_files_id]},
+            {"id":local_files_id, "features":[], "dependencies":[]},
+        ]}
+    });
+    let consumer = tempfile::tempdir().expect("candidate consumer");
+    let consumer_manifest = consumer.path().join("Cargo.toml");
+    std::fs::write(&consumer_manifest, "[package]\nname='filesystem-documentation-check'\nversion='0.0.0'\n").unwrap();
+    let candidate_options = GraphOptions { registry: true, local: true, example_manifest: Some(&consumer_manifest), ..GraphOptions::default() };
+    check_graph(&candidate_graph, "qubit-fs-registry", candidate_root.path(), candidate_options);
+    let mut wrong_archive = candidate_graph.clone();
+    wrong_archive["packages"][0]["manifest_path"] = serde_json::json!(root.join("Cargo.toml"));
+    assert!(std::panic::catch_unwind(|| check_graph(&wrong_archive, "qubit-fs-registry", candidate_root.path(), candidate_options)).is_err());
+    let mut wrong_edge = candidate_graph.clone();
+    wrong_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!(registry_id);
+    assert!(std::panic::catch_unwind(|| check_graph(&wrong_edge, "qubit-fs-registry", candidate_root.path(), candidate_options)).is_err());
+    let mut wrong_host = candidate_graph.clone();
+    wrong_host["packages"][1]["source"] = serde_json::json!("registry+https://example.invalid/index");
+    assert!(std::panic::catch_unwind(|| check_graph(&wrong_host, "qubit-fs-registry", candidate_root.path(), candidate_options)).is_err());
     let mut missing_registry_edge = local.clone();
     missing_registry_edge["resolve"]["nodes"][1]["dependencies"][0] = serde_json::json!("wrong-registry-id");
     assert!(
