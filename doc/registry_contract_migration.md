@@ -1,8 +1,9 @@
 # Registry Contract Migration
 
 For application and provider authors adopting the current filesystem facade/SPI
-contracts in `qubit-fs-registry` 0.8 with `qubit-fs` 0.3, `qubit-fs-local` 0.11
-and `qubit-spi` 0.14. These contracts are already implemented; this guide
+contracts in the 0.8.3 source candidate with `qubit-fs` 0.4, `qubit-fs-local`
+0.12 and `qubit-spi` 0.14. The compatible historical published combination is
+registry 0.8.2, `qubit-fs` 0.3.3 and `qubit-fs-local` 0.11.2. These contracts are already implemented; this guide
 clarifies their observable behavior without introducing a new public API or
 changing selection/fallback semantics.
 
@@ -48,7 +49,8 @@ provider creation remains lazy and starts on polling.
 | InvalidConfiguration | Provider-specific configuration rejected | No |
 | InitializationFailed | Initialization failed after accepting the request | No |
 
-Never stops after the first failure; OnAnyError may continue after every leaf failure.
+`FallbackPolicy::Never` stops after the first failure; `OnAnyError` may continue
+after every leaf failure.
 Named selections have one candidate and never fall back. Aggregates preserve actual
 attempt order; the last actual attempt is decisive. UnknownProviders, NoCandidates
 and EmptyRegistry happen before invocation and do not create fictional attempts.
@@ -92,7 +94,7 @@ and raw URI text are not concatenated or reinterpreted as selector input.
 6. Use the documented selector grammar; do not route by userinfo, authority or query.
 7. Keep the facade with its decoded path and canonical URI; preserve provider-owned semantics.
 8. The current source candidate is registry 0.8.3 with `qubit-fs ^0.4`, local
-   provider 0.11.2, `qubit-local-files` 0.6.0, and `qubit-spi` 0.14. The currently
+   provider 0.12, `qubit-local-files` 0.6.0, and `qubit-spi` 0.14. The currently
    published working combination is registry 0.8.2, `qubit-fs` 0.3.3, and local
    provider 0.11.2. Install Python dependencies with
    `python3 -m pip install -r requirements.txt` (Python 3.12+), then run
@@ -110,5 +112,17 @@ cycle at the time. This is a historical release condition; the current
 candidate blocker is the missing `qubit-fs ^0.4` release, and its provider
 compatibility still needs verification. This history does not change the
 current release requirements.
+
+To reproduce the historical published combination, constrain every package
+exactly and preserve the local provider feature:
+
+```bash
+cargo add qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2
+cargo add qubit-fs-local@=0.11.2 --features registry
+```
+
+Candidate examples use the sibling source workspace. The ordinary source
+workflow checks the checkout; the manual published-consumption workflow checks
+the latest published archive and its shipped Markdown.
 
 [Design](file_system_registry_design.md) · [User guide](user_guide.md)

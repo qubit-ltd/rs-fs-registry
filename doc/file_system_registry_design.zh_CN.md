@@ -307,6 +307,14 @@ cache eligibility/key；registry 不能只排除 credential value 后自行猜�
 - 可选 `CredentialRef`；
 - 必要的非敏感 metadata。
 
+`ConnectionUri` 保留解析时捕获的 redaction policy snapshot；credential 检查同时应用该快照与
+标准敏感度下限。仅用户名的 userinfo（例如 `s3://reports-user@bucket/key`）不算 secret；URI
+检查无效或无法完成时，registry 保守地按包含 secret 处理。
+
+`NonSensitiveMetadata` 在添加每个键时按标准敏感度策略校验键。值原样保留，只能通过显式读取
+访问；键通过校验不表示值适合写入日志。Provider 必须在返回 canonical URI 前清理 provider
+控制的位置数据，确保规范 URI 不带凭据且定位信息干净。
+
 普通 provider options 不得承载 secret。需要 secret 的 provider 必须使用
 `ConnectionUri` 的受控输入或 `CredentialRef`；不能把 token/password 塞进任意
 字符串 map 后绕过 redaction 与 cache policy。

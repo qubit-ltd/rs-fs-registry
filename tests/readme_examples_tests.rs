@@ -194,6 +194,55 @@ fn test_documentation_commands_follow_manifest() {
     }
 }
 
+#[test]
+fn test_bilingual_release_and_credential_contracts() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let registry = input["package"]["version"].as_str().unwrap();
+    let fs_dependency = dependency(&input["dependencies"]["qubit-fs"]);
+    let fs = fs_dependency["version"].as_str().unwrap().trim_start_matches('^');
+    let local = input["package"]["metadata"]["documentation"]["dependencies"]["qubit-fs-local"]["version"]
+        .as_str().unwrap();
+    let candidate = format!("{registry}");
+    let fs_candidate = format!("{fs}");
+    let local_candidate = format!("{local}");
+    let (sync_command, local_command, _) = installation_commands(root, &input);
+    let files = ["README.md", "README.zh_CN.md", "doc/user_guide.md", "doc/user_guide.zh_CN.md"];
+    for relative in files {
+        let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        assert!(source.contains(&candidate), "{relative}: candidate registry version");
+        assert!(source.contains(&fs_candidate), "{relative}: candidate core version");
+        assert!(source.contains(&local_candidate), "{relative}: candidate local provider version");
+        assert!(source.contains("qubit-fs-registry@0.8"), "{relative}: candidate command");
+        assert!(source.contains("qubit-fs-local@0.12 --features registry"), "{relative}: local command and feature");
+        assert!(source.contains("registry 0.8.2"), "{relative}: exact historical registry line");
+        assert!(source.contains("0.3.3"), "{relative}: historical core patch version");
+        assert!(source.contains("0.11.2"), "{relative}: historical local patch version");
+        assert!(source.contains("--features registry"), "{relative}: historical registry feature");
+        assert!(source.contains("source workspace") || source.contains("source-workspace") || source.contains("源码工作区"), "{relative}: source workflow");
+        assert!(source.contains("qubit-fs-registry@0.8"), "{relative}: candidate registry install command");
+        assert!(source.contains("qubit-fs@0.4"), "{relative}: candidate core requirement");
+        assert!(source.contains(&local_command), "{relative}: manifest-derived local candidate command");
+        assert!(source.contains(&sync_command), "{relative}: manifest-derived sync candidate command");
+        let changed = source.replace(&sync_command, "removed candidate command");
+        assert!(
+            std::panic::catch_unwind(|| assert!(changed.contains(&sync_command))).is_err(),
+            "{relative}: manifest-derived command assertion must fail after negative substitution"
+        );
+    }
+    for relative in ["doc/registry_contract_migration.md", "doc/registry_contract_migration.zh_CN.md"] {
+        let source = std::fs::read_to_string(root.join(relative)).unwrap();
+        assert!(source.contains("registry 0.8.2"), "{relative}: historical registry line");
+        assert!(source.contains("0.3.3"), "{relative}: historical core patch version");
+        assert!(source.contains("0.11.2"), "{relative}: historical local patch version");
+        assert!(source.contains("qubit-fs@=0.3.3 qubit-fs-registry@=0.8.2"), "{relative}: exact historical core and registry constraints");
+        assert!(source.contains("qubit-fs-local@=0.11.2 --features registry"), "{relative}: exact historical local constraint and feature");
+    }
+    let migration = std::fs::read_to_string(root.join("doc/registry_contract_migration.md")).unwrap();
+    assert!(migration.contains("FallbackPolicy::Never"));
+    assert!(migration.contains("first failure"));
+}
+
 /// Both migration guides keep every SPI release declaration aligned with Cargo.
 #[test]
 fn test_migration_spi_versions_follow_manifest() {

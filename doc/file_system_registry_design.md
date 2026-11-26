@@ -178,10 +178,18 @@ local filesystems can have identical canonical URIs but different authority and 
 
 ## 10. Configuration and Credentials
 
-`FileSystemConfig` contains a redacting `ConnectionUri`, optional selection,
-validated non-sensitive options/metadata, and optional `CredentialRef`.
-Options must not contain tokens/passwords; providers use controlled connection input
-or external credential references instead.
+`FileSystemConfig` contains a `ConnectionUri` with its parse-time redaction-policy
+snapshot, optional selection, non-sensitive options/metadata, and optional
+`CredentialRef`. Credential checks combine that captured policy with the
+standard sensitivity floor. Username-only userinfo such as
+`s3://reports-user@bucket/key` is allowed. Invalid or incomplete URI inspection
+is conservatively treated as secret-bearing.
+
+`NonSensitiveMetadata` validates keys against the standard sensitivity policy;
+values are retained unchanged and can be accessed only through explicit reads.
+Their validated keys do not make values safe to log. Options must not contain
+tokens/passwords; providers use controlled connection input or external
+credential references instead.
 
 Any detected embedded secret plus an external reference returns
 `CredentialSourceConflict` before creation. There are no provider-specific exceptions.
@@ -191,7 +199,8 @@ Username-only userinfo is allowed with a reference because it contains no secret
 
 `CredentialRef` carries profile/environment/provider names, never actual secret values.
 Providers may temporarily access connection input through explicitly named controlled
-APIs, then return credential-free canonical URIs. Secrets cannot enter properties,
+APIs, then must return credential-free canonical URIs with clean location information.
+Secrets cannot enter properties,
 ordinary error formatting, or implicit serialization. Config clones retain protected
 values; normal formatting delegates to redacting components. `ConnectionUri` is not
 an ordinary cache key or a raw-string getter/deref abstraction.

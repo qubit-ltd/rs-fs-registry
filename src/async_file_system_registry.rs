@@ -251,6 +251,10 @@ impl AsyncFileSystemRegistry {
     ///
     /// Validation and provider snapshotting occur before this method returns;
     /// the resulting future owns both the configuration and snapshot.
+    /// Credential validation uses the URI policy snapshot captured at parse
+    /// time together with the standard sensitivity floor. Username-only
+    /// userinfo is allowed; invalid or incomplete inspection is conservatively
+    /// treated as an embedded secret.
     ///
     /// # Parameters
     ///
@@ -283,6 +287,10 @@ impl AsyncFileSystemRegistry {
     }
     /// Resolves an owned URI-only configuration through its scheme-derived
     /// selection.
+    ///
+    /// Credential inspection uses the policy snapshot captured when the URI
+    /// was parsed and the standard sensitivity floor. Invalid or incomplete
+    /// inspection is conservatively treated as secret-bearing.
     ///
     /// # Parameters
     ///
