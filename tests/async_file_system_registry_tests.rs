@@ -41,6 +41,117 @@ use qubit_spi::error::ProviderFailure;
 use crate::support::common;
 use crate::support::provider_fixtures::ObservedProvider;
 
+/// Valid URI syntax with an invalid provider selector fails through both
+/// async URI and config routes before provider creation.
+#[test]
+fn test_async_registry_rejects_unselectable_uri_without_creation() {
+    let provider = ObservedProvider::new("archive");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("register provider");
+    registry
+        .set_default_selection(ProviderSelection::named("archive").expect("selection"))
+        .expect("set default");
+    let uri = ConnectionUri::parse("archive+:///report").expect("URI should parse");
+    let config = FileSystemConfig::new(uri.clone());
+
+    for error in [
+        common::block_on(registry.resolve_uri(uri.clone())).expect_err("URI selection is invalid"),
+        common::block_on(registry.resolve_config(config.clone()))
+            .expect_err("config selection is invalid"),
+    ] {
+        assert!(matches!(error, FileSystemRegistryError::Selection(_)));
+        assert_eq!(error.reason_code(), "invalid_selection");
+    }
+    assert!(calls.lock().expect("calls").is_empty());
+
+    let resolution = common::block_on(registry.resolve_selected_config(
+        ProviderSelection::named("archive").expect("selection"),
+        config,
+    ))
+    .expect("explicit valid selection should route");
+    assert_eq!(
+        resolution.file_system().properties().info().provider_id(),
+        "archive"
+    );
+    assert_eq!(calls.lock().expect("calls").len(), 1);
+}
+
+/// Async candidate attempts follow selection order even when registration
+/// order is reversed, and `OnAnyError` runs through the decisive candidate.
+#[test]
+fn test_async_registry_aggregates_failures_in_selection_order() {
+    let mut second = ObservedProvider::new("second");
+    second.fail = true;
+    let second_calls = Arc::clone(&second.calls);
+    let mut first = ObservedProvider::new("first");
+    first.fail = true;
+    let first_calls = Arc::clone(&first.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("selection")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI"));
+    let error = common::block_on(registry.resolve_selected_config(selection, config))
+        .expect_err("both selected providers fail");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected aggregate creation error");
+    };
+
+    assert_eq!(
+        registry
+            .descriptors()
+            .iter()
+            .map(|item| item.id().as_str())
+            .collect::<Vec<_>>(),
+        ["second", "first"],
+    );
+    assert_eq!(creation.attempts().len(), 2);
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|item| item.provider_id().as_str())
+            .collect::<Vec<_>>(),
+        ["first", "second"],
+    );
+    assert_eq!(creation.decisive_attempt().provider_id().as_str(), "second");
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|item| item.failure().kind())
+            .collect::<Vec<_>>(),
+        [qubit_spi::error::ProviderFailureKind::Unavailable; 2],
+    );
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert_eq!(second_calls.lock().expect("second calls").len(), 1);
+}
+
+/// A successful first async candidate stops selection-driven fallback.
+#[test]
+fn test_async_registry_success_stops_selection_driven_fallback() {
+    let second = ObservedProvider::new("second");
+    let second_calls = Arc::clone(&second.calls);
+    let first = ObservedProvider::new("first");
+    let first_calls = Arc::clone(&first.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("selection")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI"));
+
+    let resolution = common::block_on(registry.resolve_selected_config(selection, config))
+        .expect("first provider succeeds");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "first");
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
+}
+
 /// Shared asynchronous providers can be registered through their public
 /// trait-object contract.
 #[test]
@@ -172,6 +283,22 @@ fn test_async_registry_rejects_embedded_and_referenced_credentials() {
         error,
         FileSystemRegistryError::CredentialSourceConflict
     ));
+}
+
+/// Embedded URI credentials remain routable without an external reference.
+#[test]
+fn test_async_registry_allows_embedded_credentials_without_reference() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = AsyncFileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"),
+    );
+
+    let _resolution = common::block_on(registry.resolve_config(config.clone()))
+        .expect("single source is allowed");
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
 }
 
 /// Async credential routing honors explicit URI policy and fails closed when

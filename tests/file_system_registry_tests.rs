@@ -165,6 +165,23 @@ fn test_registry_rejects_embedded_and_referenced_credentials_before_resolution()
     ));
 }
 
+/// Embedded URI credentials remain routable when no external reference exists.
+#[test]
+fn test_registry_allows_embedded_credentials_without_reference() {
+    let provider = ObservedProvider::new("s3");
+    let calls = Arc::clone(&provider.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("provider");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("s3://user:password@bucket/key").expect("URI should parse"),
+    );
+
+    let _resolution = registry
+        .resolve_config(&config)
+        .expect("single source is allowed");
+    assert_eq!(*calls.lock().expect("calls"), vec![config]);
+}
+
 /// A username without secret material may coexist with a credential reference.
 #[test]
 fn test_registry_allows_username_only_connection_uri_with_credential_reference() {
@@ -182,16 +199,18 @@ fn test_registry_allows_username_only_connection_uri_with_credential_reference()
     assert_eq!(*calls.lock().expect("calls"), vec![config]);
 }
 
-/// Provider creation failures preserve provider registration order.
+/// Provider attempts follow selection order independently of catalog order.
 #[test]
-fn test_registry_aggregates_provider_failures_in_registration_order() {
+fn test_registry_aggregates_provider_failures_in_selection_order() {
+    let mut second = ObservedProvider::new("second");
+    second.fail = true;
+    let second_calls = Arc::clone(&second.calls);
+    let mut first = ObservedProvider::new("first");
+    first.fail = true;
+    let first_calls = Arc::clone(&first.calls);
     let registry = FileSystemRegistry::default();
-    registry
-        .register(FailingProvider::new("first"))
-        .expect("register first");
-    registry
-        .register(FailingProvider::new("second"))
-        .expect("register second");
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
     let config =
         FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI should parse"))
         .with_selection(
@@ -205,12 +224,54 @@ fn test_registry_aggregates_provider_failures_in_registration_order() {
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected aggregate creation error")
     };
+    assert_eq!(
+        registry
+            .descriptors()
+            .iter()
+            .map(|item| item.id().as_str())
+            .collect::<Vec<_>>(),
+        ["second", "first"],
+    );
     let ids: Vec<_> = creation
         .attempts()
         .iter()
         .map(|attempt| attempt.provider_id().as_str())
         .collect();
     assert_eq!(ids, ["first", "second"]);
+    assert_eq!(creation.decisive_attempt().provider_id().as_str(), "second");
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert_eq!(second_calls.lock().expect("second calls").len(), 1);
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|attempt| attempt.failure().kind())
+            .collect::<Vec<_>>(),
+        [qubit_spi::error::ProviderFailureKind::Unavailable; 2],
+    );
+}
+
+/// A successful first selected provider stops fallback before the next one.
+#[test]
+fn test_registry_success_stops_selection_driven_fallback() {
+    let second = ObservedProvider::new("second");
+    let second_calls = Arc::clone(&second.calls);
+    let first = ObservedProvider::new("first");
+    let first_calls = Arc::clone(&first.calls);
+    let registry = FileSystemRegistry::default();
+    registry.register(second).expect("register second first");
+    registry.register(first).expect("register first second");
+    let selection = ProviderSelection::chain(["first", "second"])
+        .expect("selection")
+        .with_fallback_policy(FallbackPolicy::OnAnyError);
+    let config = FileSystemConfig::new(ConnectionUri::parse("first:///resource").expect("URI"));
+
+    let resolution = registry
+        .resolve_selected_config(&selection, &config)
+        .expect("first provider succeeds");
+    assert_eq!(resolution.file_system().properties().info().provider_id(), "first");
+    assert_eq!(first_calls.lock().expect("first calls").len(), 1);
+    assert!(second_calls.lock().expect("second calls").is_empty());
 }
 
 /// Registry inspection and each public resolution entry point preserve the
