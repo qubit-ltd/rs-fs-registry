@@ -19,6 +19,7 @@ use crate::support::markdown_examples::check_graph;
 use crate::support::markdown_examples::dependency;
 use crate::support::markdown_examples::documentation_manifest;
 use crate::support::markdown_examples::documentation_manifest_for_source;
+use crate::support::markdown_examples::documentation_manifest_for_source_at;
 use crate::support::markdown_examples::executable_artifacts;
 use crate::support::markdown_examples::manifest;
 use crate::support::markdown_examples::prepare_documents_for_external;
@@ -351,7 +352,9 @@ fn test_documentation_versions_follow_manifest() {
     );
     assert!(output["dependencies"].get("qubit-fs-local").is_none());
     assert_eq!(
-        PathBuf::from(output["dependencies"]["qubit-fs"]["path"].as_str().unwrap()),
+        root.join(output["dependencies"]["qubit-fs"]["path"].as_str().unwrap())
+            .canonicalize()
+            .unwrap(),
         root.join("../rs-fs").canonicalize().unwrap()
     );
     assert!(output["dependencies"].get("futures").is_none());
@@ -381,10 +384,14 @@ fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
         (true, false, true, vec!["async", "inventory"]),
     ] {
         let output = documentation_manifest(root, &input, asynchronous, local, inventory);
-        for (name, relative) in [("qubit-fs", "../rs-fs"), ("qubit-fs-registry", ".")] {
+        for name in ["qubit-fs", "qubit-fs-registry"] {
             assert_eq!(
-                PathBuf::from(output["dependencies"][name]["path"].as_str().unwrap()),
-                root.join(relative).canonicalize().unwrap(),
+                root.join(output["dependencies"][name]["path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                root.join(if name == "qubit-fs" { "../rs-fs" } else { "." })
+                    .canonicalize()
+                    .unwrap(),
                 "{name} must resolve to the intended sibling source"
             );
         }
@@ -396,7 +403,9 @@ fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
         );
         if local {
             assert_eq!(
-                PathBuf::from(output["dependencies"]["qubit-fs-local"]["path"].as_str().unwrap()),
+                root.join(output["dependencies"]["qubit-fs-local"]["path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
                 root.join("../rs-fs-local").canonicalize().unwrap(),
             );
         }
@@ -411,6 +420,31 @@ fn test_documentation_manifest_uses_sibling_sources_and_manifest_features() {
         actual.sort_unstable();
         assert_eq!(actual, expected);
     }
+}
+
+#[test]
+fn test_generated_source_consumer_uses_relative_adapter_path() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input = manifest(root);
+    let workspace = tempfile::tempdir().expect("generated consumer workspace");
+    let project = workspace.path().join("consumer");
+    std::fs::create_dir_all(&project).expect("consumer directory");
+    let output = documentation_manifest_for_source_at(
+        root,
+        &input,
+        false,
+        true,
+        false,
+        DependencySource::SiblingSource,
+        None,
+        &project,
+    );
+    let adapter = Path::new(output["dependencies"]["qubit-fs-local"]["path"].as_str().unwrap());
+    assert!(!adapter.is_absolute(), "generated adapter path must be relative");
+    assert_eq!(
+        project.join(adapter).canonicalize().unwrap(),
+        root.join("../rs-fs-local").canonicalize().unwrap()
+    );
 }
 
 #[test]
